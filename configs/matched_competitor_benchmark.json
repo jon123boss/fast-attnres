@@ -1,0 +1,749 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "schema": "attnres.matched_competitor_benchmark.v1",
+  "version": 1,
+  "status": "sealed",
+  "sealed": true,
+  "description": "Pre-registered matched-competitor protocol; selection and timing parameters are immutable after the first result. The v7 pinned Gluon compile envelope and smoke cases are development-only; no Gluon promotion occurs before independent H100 and B200 gates.",
+  "hardware_order": [
+    "H100!",
+    "B200"
+  ],
+  "gpus": [
+    "H100!",
+    "B200"
+  ],
+  "hardware": {
+    "H100!": {
+      "modal_name": "H100!",
+      "compute_capability": "sm90",
+      "same_device_pairing": true
+    },
+    "B200": {
+      "modal_name": "B200",
+      "compute_capability": "sm100",
+      "same_device_pairing": true
+    }
+  },
+  "runtime": {
+    "pytorch": "2.13.0",
+    "triton": "3.7.1",
+    "same_runtime_for_all_arms": true,
+    "runtime_selection_is_immutable": true
+  },
+  "dtypes": [
+    "bf16",
+    "fp32"
+  ],
+  "bf16": {
+    "rtol": 0.05,
+    "atol": 0.05
+  },
+  "fp32": {
+    "rtol": 0.001,
+    "atol": 0.0001
+  },
+  "oracle": {
+    "path": "validation/oracle.py",
+    "entrypoint": "validation.oracle.oracle",
+    "math_dtype": "fp32",
+    "checks": [
+      "output",
+      "values_gradient",
+      "query_gradient"
+    ],
+    "must_pass_before_timing": true,
+    "tolerances": {
+      "bf16": {
+        "rtol": 0.05,
+        "atol": 0.05
+      },
+      "fp32": {
+        "rtol": 0.001,
+        "atol": 0.0001
+      }
+    }
+  },
+  "model": {
+    "layers": 24,
+    "width": 1024,
+    "heads": 16,
+    "ffn": 2816,
+    "batch": 2,
+    "sequence": 2048,
+    "vocab": 32768,
+    "block_count": 8,
+    "source_layout": "list",
+    "timing_scope": "complete_training_step",
+    "optimizer": "capturable_adamw",
+    "accumulation": 1
+  },
+  "operator_cases": {
+    "smoke": [
+      {
+        "S": 1,
+        "N": 2,
+        "D": 128,
+        "R": 16,
+        "dtype": "bf16"
+      },
+      {
+        "S": 9,
+        "N": 65,
+        "D": 768,
+        "R": 64,
+        "dtype": "bf16"
+      },
+      {
+        "S": 33,
+        "N": 128,
+        "D": 1536,
+        "R": 128,
+        "dtype": "bf16"
+      },
+      {
+        "S": 97,
+        "N": 16,
+        "D": 4096,
+        "R": 64,
+        "dtype": "bf16"
+      },
+      {
+        "S": 129,
+        "N": 8,
+        "D": 7168,
+        "R": 128,
+        "dtype": "bf16"
+      },
+      {
+        "S": 129,
+        "N": 8,
+        "D": 8192,
+        "R": 8192,
+        "dtype": "bf16"
+      },
+      {
+        "S": 9,
+        "N": 32,
+        "D": 3000,
+        "R": 127,
+        "dtype": "bf16"
+      },
+      {
+        "S": 9,
+        "N": 3,
+        "D": 256,
+        "R": 256,
+        "dtype": "bf16"
+      },
+      {
+        "S": 1,
+        "N": 2,
+        "D": 128,
+        "R": 128,
+        "dtype": "bf16"
+      },
+      {
+        "S": 9,
+        "N": 32,
+        "D": 2048,
+        "R": 2048,
+        "dtype": "bf16"
+      },
+      {
+        "S": 33,
+        "N": 8,
+        "D": 2048,
+        "R": 2048,
+        "dtype": "bf16"
+      }
+    ],
+    "primary": [
+      {
+        "S": 9,
+        "N": 4096,
+        "D": 768,
+        "R": 768,
+        "dtype": "bf16"
+      },
+      {
+        "S": 33,
+        "N": 4096,
+        "D": 1536,
+        "R": 1536,
+        "dtype": "bf16"
+      },
+      {
+        "S": 97,
+        "N": 1024,
+        "D": 4096,
+        "R": 4096,
+        "dtype": "bf16"
+      },
+      {
+        "S": 33,
+        "N": 512,
+        "D": 7168,
+        "R": 7168,
+        "dtype": "bf16"
+      },
+      {
+        "S": 129,
+        "N": 256,
+        "D": 8192,
+        "R": 8192,
+        "dtype": "bf16"
+      }
+    ],
+    "heldout": [
+      {
+        "S": 13,
+        "N": 67,
+        "D": 512,
+        "R": 3,
+        "dtype": "bf16"
+      },
+      {
+        "S": 73,
+        "N": 129,
+        "D": 2048,
+        "R": 64,
+        "dtype": "bf16"
+      },
+      {
+        "S": 127,
+        "N": 31,
+        "D": 5120,
+        "R": 256,
+        "dtype": "bf16"
+      },
+      {
+        "S": 17,
+        "N": 257,
+        "D": 6144,
+        "R": 127,
+        "dtype": "bf16"
+      }
+    ]
+  },
+  "ranks": [
+    16,
+    64,
+    128,
+    512,
+    1024
+  ],
+  "arms": {
+    "standard_operator": {
+      "kind": "operator",
+      "variant": "standard",
+      "mode": "forward_backward",
+      "rank": 1024,
+      "rank_equals_width": true,
+      "source_layout": "list"
+    },
+    "full": {
+      "kind": "model",
+      "variant": "full",
+      "mode": "full",
+      "rank": 1024,
+      "source_layout": "list",
+      "block_path": "public_attnres_per_read",
+      "cached_block": false
+    },
+    "block_per_read": {
+      "kind": "model",
+      "variant": "block",
+      "mode": "block",
+      "rank": 1024,
+      "source_layout": "list",
+      "block_path": "public_attnres_per_read",
+      "cached_block": false
+    },
+    "lr_ranks": {
+      "kind": "model",
+      "variant": "sliced",
+      "mode": "full_and_block",
+      "ranks": [
+        16,
+        64,
+        128,
+        512,
+        1024
+      ],
+      "source_layout": "list",
+      "implicit_key": "last_R_value_coordinates",
+      "value_width": "full_width"
+    }
+  },
+  "competitors": {
+    "native_fla_triton_checkpoint1": {
+      "implementation": "fla_native",
+      "backend": "triton",
+      "checkpoint": 1,
+      "role": "eligible",
+      "eligible_denominator": true,
+      "qualification": "same_oracle_and_all_parameter_gradients",
+      "source": "fla-org/flash-linear-attention",
+      "capability": {
+        "family": "fla",
+        "adapter": "benchmarks.competitors",
+        "eligible_denominator": true,
+        "rank_scope": "R=D",
+        "max_sources": 129,
+        "max_width": 8192,
+        "dtypes": [
+          "bf16",
+          "fp32"
+        ],
+        "modes": [
+          "standard_operator",
+          "full",
+          "block_per_read"
+        ],
+        "schedules": {
+          "full": "per_read",
+          "block_per_read": "per_read"
+        },
+        "external_route": false,
+        "model_scope": "operator_and_model",
+        "cuda_required": true,
+        "oracle": "validation.oracle.oracle",
+        "revision": "5e02dd3a7651f5f2797eb8b12bbec401826031e1",
+        "tree": "7e4199902fb291c78b3937f223b08ae7bca82bb1",
+        "origin": "https://github.com/fla-org/flash-linear-attention.git",
+        "source": "fla-org/flash-linear-attention",
+        "source_hashes": {
+          "fla/ops/attnres/fused.py": "0e4683ab291086a9c3919d7352e2a998112973c94f5363e58f76ea7efea114f3",
+          "fla/ops/attnres/backends/gluon.py": "f8f163fb7ebb8d035236674aeb668483812fb4e9a29572ed2ae937c626990190"
+        },
+        "package_sha256": "2cd59a9a50f34ecc4d9535ad51c9668cd4d8b67f519b8eb78b45ce2156288781",
+        "license": "MIT",
+        "license_sha256": "41a83c8187efc1e3ccc21909e806a9e52338e69448554d9754706c3d1cd610e7"
+      },
+      "eligibility": {
+        "scope": "R=D Full and per-read Block",
+        "predicate": "CUDA; R=D; 1<=S<=129; 1<=D<=8192",
+        "status": "eligible"
+      }
+    },
+    "native_fla_gluon": {
+      "implementation": "fla_native",
+      "backend": "gluon",
+      "checkpoint": null,
+      "role": "conditional_eligible",
+      "eligible_denominator": true,
+      "qualification": "include_only_after_same_oracle_and_all_parameter_gradients",
+      "source": "fla-org/flash-linear-attention",
+      "capability": {
+        "family": "fla",
+        "adapter": "benchmarks.competitors",
+        "eligible_denominator": true,
+        "rank_scope": "R=D",
+        "max_sources": 129,
+        "max_width": 8192,
+        "compile_envelope": {
+          "padded_width_rule": "BD=next_power_of_two(D)",
+          "max_padded_width": 4096,
+          "source_width_product_rule": "S*BD",
+          "max_source_width_product": 262144,
+          "checkpoint1_static_work_rule": "33*S*BD",
+          "checkpoint1_static_work_multiplier": 33,
+          "max_checkpoint1_static_work": 8650752
+        },
+        "dtypes": [
+          "bf16",
+          "fp32"
+        ],
+        "modes": [
+          "standard_operator",
+          "full",
+          "block_per_read"
+        ],
+        "schedules": {
+          "full": "per_read",
+          "block_per_read": "per_read"
+        },
+        "external_route": false,
+        "model_scope": "operator_and_model",
+        "cuda_required": true,
+        "oracle": "validation.oracle.oracle",
+        "revision": "5e02dd3a7651f5f2797eb8b12bbec401826031e1",
+        "tree": "7e4199902fb291c78b3937f223b08ae7bca82bb1",
+        "origin": "https://github.com/fla-org/flash-linear-attention.git",
+        "source": "fla-org/flash-linear-attention",
+        "source_hashes": {
+          "fla/ops/attnres/fused.py": "0e4683ab291086a9c3919d7352e2a998112973c94f5363e58f76ea7efea114f3",
+          "fla/ops/attnres/backends/gluon.py": "f8f163fb7ebb8d035236674aeb668483812fb4e9a29572ed2ae937c626990190"
+        },
+        "package_sha256": "2cd59a9a50f34ecc4d9535ad51c9668cd4d8b67f519b8eb78b45ce2156288781",
+        "license": "MIT",
+        "license_sha256": "41a83c8187efc1e3ccc21909e806a9e52338e69448554d9754706c3d1cd610e7"
+      },
+      "eligibility": {
+        "scope": "R=D Full and per-read Block after independent qualification",
+        "predicate": "CUDA; R=D; 1<=S<=129; 1<=D<=8192; Gluon compile envelope BD=nextpow2(D)<=4096; S*BD<=262144; checkpoint1 static work=33*S*BD<=8650752",
+        "status": "conditional"
+      }
+    },
+    "native_fla_triton_checkpoint0": {
+      "implementation": "fla_native",
+      "backend": "triton",
+      "checkpoint": 0,
+      "role": "diagnostic",
+      "eligible_denominator": false,
+      "qualification": "retain_known_gradient_failure",
+      "source": "fla-org/flash-linear-attention",
+      "capability": {
+        "family": "fla",
+        "adapter": "benchmarks.competitors",
+        "eligible_denominator": false,
+        "rank_scope": "R=D",
+        "max_sources": 129,
+        "max_width": 8192,
+        "dtypes": [
+          "bf16",
+          "fp32"
+        ],
+        "modes": [
+          "standard_operator",
+          "full",
+          "block_per_read"
+        ],
+        "schedules": {
+          "full": "per_read",
+          "block_per_read": "per_read"
+        },
+        "external_route": false,
+        "model_scope": "operator_and_model",
+        "cuda_required": true,
+        "oracle": "validation.oracle.oracle",
+        "revision": "5e02dd3a7651f5f2797eb8b12bbec401826031e1",
+        "tree": "7e4199902fb291c78b3937f223b08ae7bca82bb1",
+        "origin": "https://github.com/fla-org/flash-linear-attention.git",
+        "source": "fla-org/flash-linear-attention",
+        "source_hashes": {
+          "fla/ops/attnres/fused.py": "0e4683ab291086a9c3919d7352e2a998112973c94f5363e58f76ea7efea114f3",
+          "fla/ops/attnres/backends/gluon.py": "f8f163fb7ebb8d035236674aeb668483812fb4e9a29572ed2ae937c626990190"
+        },
+        "package_sha256": "2cd59a9a50f34ecc4d9535ad51c9668cd4d8b67f519b8eb78b45ce2156288781",
+        "license": "MIT",
+        "license_sha256": "41a83c8187efc1e3ccc21909e806a9e52338e69448554d9754706c3d1cd610e7"
+      },
+      "eligibility": {
+        "scope": "diagnostic R=D Full and per-read Block only",
+        "predicate": "CUDA; R=D; 1<=S<=129; 1<=D<=8192",
+        "status": "diagnostic_only"
+      }
+    },
+    "liger": {
+      "implementation": "liger_native",
+      "backend": "triton",
+      "checkpoint": null,
+      "role": "conditional_eligible",
+      "eligible_denominator": true,
+      "qualification": "include_only_after_same_oracle_and_all_parameter_gradients",
+      "source": "linkedin/Liger-Kernel",
+      "capability": {
+        "family": "liger",
+        "adapter": "benchmarks.liger",
+        "eligible_denominator": true,
+        "rank_scope": "R=D",
+        "max_sources": 32,
+        "max_width": 8192,
+        "dtypes": [
+          "bf16",
+          "fp32"
+        ],
+        "modes": [
+          "standard_operator",
+          "full",
+          "block_per_read"
+        ],
+        "schedules": {
+          "full": "per_read",
+          "block_per_read": "per_read"
+        },
+        "external_route": false,
+        "model_scope": "operator_and_model",
+        "cuda_required": true,
+        "oracle": "validation.oracle.oracle",
+        "revision": "000be60929938fd1358e03524c6ab398b6d421bd",
+        "tree": "746af1fc03014cf47cad895d01cf0d23fddf5e75",
+        "origin": "https://github.com/linkedin/Liger-Kernel.git",
+        "source": "linkedin/Liger-Kernel",
+        "source_hashes": {
+          "src/liger_kernel/ops/attn_res.py": "57da6fed98f794088b2a56223e6c7ef9fc920824f0c483cb0ef0b5a343dab0b1"
+        },
+        "license": "BSD-2-Clause",
+        "license_sha256": "3a1ccb0c7274b68e1af2ca1d54b10b662085ca56753400182ecf87ae33f2d1a8",
+        "notice_sha256": "9e3c27a0f64b87d00df12250cf1bc218b1e2fbc5fffc0bd64737ba8e8357218f",
+        "pyproject_sha256": "f55effccdecc17ca87357ed8ecd4e73a58b1a56ee275367bfe5db2827dc9ac22"
+      },
+      "eligibility": {
+        "scope": "R=D; per-read Block and Full only when the cell S<=32",
+        "predicate": "CUDA; R=D; 1<=S<=32; 1<=D<=8192",
+        "status": "conditional"
+      }
+    },
+    "catswe_phase1": {
+      "implementation": "catswe_native",
+      "backend": "triton",
+      "checkpoint": null,
+      "role": "external_comparator",
+      "eligible_denominator": true,
+      "qualification": "phase1_standard_operator_oracle_before_external_timing",
+      "source": "catswe/flash-attn-res",
+      "capability": {
+        "family": "catswe",
+        "adapter": "benchmarks.catswe",
+        "eligible_denominator": true,
+        "rank_scope": "R=D",
+        "max_sources": 129,
+        "max_width": 8192,
+        "max_program_elements": 1048576,
+        "requires_power_of_two_width": true,
+        "dtypes": [
+          "bf16"
+        ],
+        "modes": [
+          "standard_operator"
+        ],
+        "schedules": {
+          "standard_operator": "native_phase1_one_query"
+        },
+        "external_route": false,
+        "model_scope": "standard_operator_only",
+        "cuda_required": true,
+        "oracle": "validation.oracle.oracle",
+        "revision": "ff92865e4e1b18809da7a8f0c0c5252039cded7c",
+        "tree": "f4f96a21dbe609044edef2fdbaf66a820c260fc0",
+        "origin": "https://github.com/catswe/flash-attention-residuals.git",
+        "source": "catswe/flash-attn-res",
+        "source_hashes": {
+          "src/flash_attn_res/__init__.py": "04d5c0eefd4d4a994f7521b26fb04d7fbe4fe29245c6f9ff64ac9a56fe224868",
+          "src/flash_attn_res/kernels/configs.py": "ebec80ad42fa781e54169e69b53d154c00c1b80ac2e1bb7a63a5ec817ef9bf85",
+          "src/flash_attn_res/kernels/phase_1.py": "bd45efeb8a69b6ff47f2caee66103a56d19494e5a0e50640b3bf4ba5b4048982",
+          "src/flash_attn_res/ops/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "src/flash_attn_res/ops/phase_1.py": "251610079e6a8847c860391641c8903f250e9dd628ec4522e1039ecadb4e7060"
+        },
+        "license": "Apache-2.0",
+        "license_sha256": "299e72fdffa70bc47c4c6b7e60d71d698c9f0808b82275ba524538ed8233e08f"
+      },
+      "eligibility": {
+        "scope": "standard CUDA phase1 standard operator only",
+        "predicate": "CUDA BF16; R=D; 1<=S<=129; 1<=D<=8192; D is power-of-two; nextpow2(S)*D<=1048576; native phase1",
+        "status": "external_comparator"
+      }
+    },
+    "manish_hydra_2p": {
+      "implementation": "manish_hydra_2p",
+      "backend": "triton",
+      "checkpoint": null,
+      "role": "small_d_panel",
+      "eligible_denominator": true,
+      "qualification": "small_d_standard_operator_and_block_panel_oracle",
+      "source": "manishklach/attnres-kernel-lab",
+      "capability": {
+        "family": "manish",
+        "adapter": "benchmarks.hydra",
+        "eligible_denominator": true,
+        "rank_scope": "R=D",
+        "max_sources": 129,
+        "max_width": 8192,
+        "timing_max_width": 256,
+        "dtypes": [
+          "bf16",
+          "fp32"
+        ],
+        "modes": [
+          "standard_operator",
+          "block_panel"
+        ],
+        "schedules": {
+          "standard_operator": "native_operator",
+          "block_panel": "native_block"
+        },
+        "external_route": false,
+        "model_scope": "small_d_operator_panel_only",
+        "supports_per_read_block": false,
+        "block_scope": "external_block_panel",
+        "cuda_required": true,
+        "oracle": "validation.oracle.oracle",
+        "revision": "ea1f63eda8e31b0f10456b3b49cacd8fb66091dc",
+        "tree": "b6ae55c737f9b17c9c7ea064b17bd0210510496a",
+        "origin": "https://github.com/manishklach/attnres-kernel-lab.git",
+        "source": "manishklach/attnres-kernel-lab",
+        "source_hashes": {
+          "src/attnres_kernel/api.py": "5067773602c08aaf7c44837dd15f9d95e839c788199a0385407ae9bb80d81b44",
+          "src/attnres_kernel/triton_impl.py": "520dbf69280f0b200e6b6b2f5ef9bf30863b20778795f7e1b1c23f99176b7e1c"
+        },
+        "license": "MIT",
+        "license_sha256": "6d7cc4b730aafd6e596d41c5cb2250c30a9ef8bcffd350fe5e3fe566936a6ebd"
+      },
+      "eligibility": {
+        "scope": "small-D standard operator and Block panel only",
+        "predicate": "CUDA; R=D; 1<=S<=129; 1<=D<=8192; native timing D<=256",
+        "status": "small_d_panel_only"
+      }
+    }
+  },
+  "comparison_families": {
+    "primary": {
+      "competitors": [
+        "native_fla_triton_checkpoint1",
+        "native_fla_gluon"
+      ],
+      "eligibility": "every_required_arm_has_120_ok_rows",
+      "unqualified_competitor_policy": "incomplete_unavailable",
+      "per_seed_gate": true,
+      "pool_seeds": false,
+      "pool_gpus": false
+    },
+    "diagnostic": {
+      "competitors": [
+        "native_fla_triton_checkpoint0"
+      ],
+      "eligibility": "never_in_primary_denominator",
+      "unqualified_competitor_policy": "retain_failure_only",
+      "per_seed_gate": false,
+      "pool_seeds": false,
+      "pool_gpus": false
+    },
+    "liger": {
+      "competitors": [
+        "liger"
+      ],
+      "eligibility": "R_equals_D_and_full_cells_require_S_at_most_32",
+      "unqualified_competitor_policy": "incomplete_unavailable",
+      "per_seed_gate": true,
+      "pool_seeds": false,
+      "pool_gpus": false
+    },
+    "catswe_external": {
+      "competitors": [
+        "catswe_phase1"
+      ],
+      "eligibility": "native_phase1_standard_operator_only_cached_schedule_excluded",
+      "unqualified_competitor_policy": "external_route_incomplete_unavailable",
+      "per_seed_gate": true,
+      "pool_seeds": false,
+      "pool_gpus": false
+    },
+    "manish_small_d": {
+      "competitors": [
+        "manish_hydra_2p"
+      ],
+      "eligibility": "standard_operator_and_block_panel_only_D_at_most_256",
+      "unqualified_competitor_policy": "small_d_panel_incomplete_unavailable",
+      "per_seed_gate": true,
+      "pool_seeds": false,
+      "pool_gpus": false
+    }
+  },
+  "seeds": [
+    20260827,
+    20260903,
+    20260911
+  ],
+  "warmup": 10,
+  "warmup_rounds": 10,
+  "rounds": 120,
+  "timed_rounds": 120,
+  "schedule": {
+    "paired": true,
+    "order": "balanced_forward_reverse_pairs",
+    "round_order_rule": "one deterministic arm permutation per cell; even rounds use it and odd rounds use its exact reverse",
+    "shared_inputs_per_pair": true,
+    "shared_inputs_across_arms": true,
+    "same_initial_state_across_arms": true,
+    "same_device_for_pair": true,
+    "synchronize_device_before_measurement": true,
+    "warmup_excluded_from_timing": true,
+    "timing_boundary": {
+      "operator": "operator_forward_backward",
+      "model": "complete_compiled_training_step"
+    },
+    "order_selection_after_results": false
+  },
+  "statistics": {
+    "estimator": "simultaneous_paired_ratio_bootstrap",
+    "ratio": "candidate_over_baseline",
+    "confidence": 0.95,
+    "bootstrap_samples": 20000,
+    "common_resample_indices": true,
+    "familywise_scope": "all planned comparisons within each GPU_seed_predeclared_competitor_family_cell",
+    "per_seed_gate": true,
+    "pool_seeds": false,
+    "pool_gpus": false,
+    "plateau_margin": 0.01,
+    "comparison_plan": [
+      {
+        "id": "full_over_standard_operator",
+        "baseline": "standard_operator",
+        "candidate": "full"
+      },
+      {
+        "id": "block_per_read_over_full",
+        "baseline": "full",
+        "candidate": "block_per_read"
+      },
+      {
+        "id": "lr_rank_over_standard_operator",
+        "baseline": "standard_operator",
+        "candidate": "lr_ranks"
+      },
+      {
+        "id": "lr_adjacent_rank_edges",
+        "baseline": "larger_lr_rank",
+        "candidate": "smaller_lr_rank"
+      }
+    ],
+    "selection_after_results": false
+  },
+  "failure_policy": {
+    "retain_failures": true,
+    "retain_raw_samples": true,
+    "drop_failures": false,
+    "drop_incomplete_cells": false,
+    "missing_sample_is_failure": true,
+    "statistics_require_complete_ok": true,
+    "failure_statuses": [
+      "failed",
+      "skipped_due_to_failure",
+      "not_applicable"
+    ],
+    "skipped_rounds_are_recorded": true,
+    "required_row_fields": [
+      "seed",
+      "gpu",
+      "round_index",
+      "order_index",
+      "input_hash",
+      "arm",
+      "status",
+      "latency_ms",
+      "failure_phase",
+      "failure_reason",
+      "failure_at_round",
+      "failure_at_order"
+    ],
+    "raw_artifact_format": "jsonl",
+    "no_interpolation": true,
+    "no_retry_of_unchanged_failure": true
+  },
+  "gpu_launch": false,
+  "launch_policy": {
+    "enabled": false,
+    "dry_run_only": true,
+    "owner": "root",
+    "agent_may_launch": false
+  },
+  "provenance": {
+    "base_revision": "3f2da420d8dc1394c6331ba59c2a61eca276062b",
+    "config_hash_is_content_addressed": true,
+    "mutable_overrides": [],
+    "results_may_not_modify_config": true,
+    "selection_must_precede_results": true
+  }
+}

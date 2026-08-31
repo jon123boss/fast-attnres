@@ -1,0 +1,320 @@
+{
+  "claim_boundary": "Screening evidence only; not pooled across GPUs or cells and not a global fastest claim.",
+  "derived_artifacts": {
+    "figure_b200_png": {
+      "path": "docs/assets/compiled_step_screen_b200.png",
+      "sha256": "23b2e03b63473660b2e7664e517d9be886557746d9515fb779c77805c2a82920"
+    },
+    "figure_b200_svg": {
+      "path": "docs/assets/compiled_step_screen_b200.svg",
+      "sha256": "d3b9b4a26a6c8962d3a28c76a860057b3b9937a61c561ce37982ed10409fa1c0"
+    },
+    "figure_h100_png": {
+      "path": "docs/assets/compiled_step_screen_h100.png",
+      "sha256": "1aa520a82d1ddf58ebe2e3ecf26729776b7e4eb17f846e646b0adcbad89e6c71"
+    },
+    "figure_h100_svg": {
+      "path": "docs/assets/compiled_step_screen_h100.svg",
+      "sha256": "7f7f4242049360d9babf40d87e7449af3504c366a836e74d18873b94d026da90"
+    },
+    "generator": {
+      "path": "benchmarks/plot_compiled_step_sweep.py",
+      "sha256": "ded91b02715ce19e46eeec0a6c5473f3e26d2797c9609dec122018b990d6d6d2"
+    },
+    "measurement_frozen_manifest": {
+      "path": "results/adoption/compiled_step_screen/measurement_frozen.json",
+      "sha256": "9286b3b5b7cbe3a8fb7c062ce5a795b2b1fe3c0d03dc2cf2b6848483b9ed1a31"
+    },
+    "table_csv": {
+      "path": "results/adoption/compiled_step_screen/results.csv",
+      "sha256": "670d55d8375f73f1975af3c3d036e7293fd0f728f2e728508fa685928606aa87"
+    },
+    "table_markdown": {
+      "path": "results/adoption/compiled_step_screen/results.md",
+      "sha256": "24dad370fbf2fa9183e85ba671c2af12980397779b86c62190106cbb0b7807d1"
+    }
+  },
+  "project_provenance": {
+    "catswe": {
+      "clean_required": true,
+      "license": "Apache-2.0",
+      "license_file": "LICENSE",
+      "license_sha256": "299e72fdffa70bc47c4c6b7e60d71d698c9f0808b82275ba524538ed8233e08f",
+      "origin": "https://github.com/catswe/flash-attention-residuals.git",
+      "revision": "ff92865e4e1b18809da7a8f0c0c5252039cded7c",
+      "root_field": "remote_catswe_root",
+      "source_hashes": {
+        "src/flash_attn_res/__init__.py": "04d5c0eefd4d4a994f7521b26fb04d7fbe4fe29245c6f9ff64ac9a56fe224868",
+        "src/flash_attn_res/kernels/configs.py": "ebec80ad42fa781e54169e69b53d154c00c1b80ac2e1bb7a63a5ec817ef9bf85",
+        "src/flash_attn_res/kernels/phase_1.py": "bd45efeb8a69b6ff47f2caee66103a56d19494e5a0e50640b3bf4ba5b4048982",
+        "src/flash_attn_res/ops/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "src/flash_attn_res/ops/phase_1.py": "251610079e6a8847c860391641c8903f250e9dd628ec4522e1039ecadb4e7060"
+      },
+      "tree": "f4f96a21dbe609044edef2fdbaf66a820c260fc0",
+      "vendor_file_sha256": {
+        "LICENSE": "299e72fdffa70bc47c4c6b7e60d71d698c9f0808b82275ba524538ed8233e08f",
+        "pyproject.toml": "081b3067bca515c24edb090678fad477e52ef759a9cfa571449962f0ff63f164",
+        "src/flash_attn_res/__init__.py": "04d5c0eefd4d4a994f7521b26fb04d7fbe4fe29245c6f9ff64ac9a56fe224868",
+        "src/flash_attn_res/kernels/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "src/flash_attn_res/kernels/configs.py": "ebec80ad42fa781e54169e69b53d154c00c1b80ac2e1bb7a63a5ec817ef9bf85",
+        "src/flash_attn_res/kernels/phase_1.py": "bd45efeb8a69b6ff47f2caee66103a56d19494e5a0e50640b3bf4ba5b4048982",
+        "src/flash_attn_res/kernels/phase_2.py": "aa2e92e5979d3093d26bbf477bf28daad834cea98b0d35e4225dd1d8c621623d",
+        "src/flash_attn_res/kernels/reduce.py": "8dfdeb9a5031a0a4b25d9cb49e003ea39fd49157ee4a571fe91ff91e5b04ce0b",
+        "src/flash_attn_res/ops/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "src/flash_attn_res/ops/phase_1.py": "251610079e6a8847c860391641c8903f250e9dd628ec4522e1039ecadb4e7060",
+        "src/flash_attn_res/ops/phase_2.py": "b56aecf3856be87b48c7891aabb249a7b34f6a59be0af7f89eacb9ff07cd9479"
+      }
+    },
+    "clean": true,
+    "clean_required": true,
+    "frozen_manifest": {
+      "path": "validation/frozen.json",
+      "sha256": "9286b3b5b7cbe3a8fb7c062ce5a795b2b1fe3c0d03dc2cf2b6848483b9ed1a31"
+    },
+    "kernel_sha256": {
+      "src/attnres/_kernels/fixed_tail.py": "2333b3034e3c0e6493855b1246280ed91e65d29a962ce1d150beff71e8bbd34e",
+      "src/attnres/_kernels/fixed_tail_sources.py": "1373614c93d7291ad96697b1b8ff627120590b75f63f7e38bd65d50b19fcfb4a",
+      "src/attnres/_kernels/fla_full_sources.py": "8749c72c4714145214e33e8bc7d37f57b47a79b67f2e83044205db72cda416fa"
+    },
+    "revision": "79a5ad623fd223f93dc00933b9885831977712d3",
+    "tree": "37786d60fdb27f2c9071db61b608224105d56b4b"
+  },
+  "protocol": {
+    "batch": 2,
+    "bootstrap_samples": 20000,
+    "confidence": 0.95,
+    "flattened_rows_n": 1024,
+    "layers": 8,
+    "rounds": 40,
+    "seed": 20260827,
+    "sequence": 512,
+    "timed_inside": [
+      "optimizer zero_grad",
+      "BF16 autocast model forward",
+      "cross_entropy",
+      "backward and gradient accumulation",
+      "capturable fused AdamW step"
+    ],
+    "timed_outside": [
+      "input copies",
+      "tensor hashing",
+      "torch.compile",
+      "qualification",
+      "warmup",
+      "CUDA Graph capture",
+      "report serialization"
+    ],
+    "timing_method": "cuda_graph",
+    "vocab": 8192,
+    "warmup": 5
+  },
+  "reports": [
+    {
+      "cell_id": "block-bs2-l8-d1536-rd4",
+      "event_block_size": 2,
+      "failed_arms": [],
+      "gpu": "B200",
+      "max_read_sources": 9,
+      "mode": "block",
+      "model_timing_status": "complete",
+      "not_applicable_arms": [
+        "Liger",
+        "Catswe"
+      ],
+      "numeric_arms": [
+        "FLA Triton"
+      ],
+      "path": "results/adoption/compiled_step_screen/raw/b200_block_d1536_r384_s9.json",
+      "rank": 384,
+      "rank_relation": "R=D/4",
+      "report_status": "complete",
+      "sha256": "9251fd126c25225f0b21be6cc765d0a5386b2db9e13ca236e574006836b64800",
+      "width": 1536
+    },
+    {
+      "cell_id": "block-bs8-l8-d1536-rd",
+      "event_block_size": 8,
+      "failed_arms": [],
+      "gpu": "B200",
+      "max_read_sources": 3,
+      "mode": "block",
+      "model_timing_status": "complete",
+      "not_applicable_arms": [
+        "Catswe"
+      ],
+      "numeric_arms": [
+        "FLA Triton",
+        "Liger"
+      ],
+      "path": "results/adoption/compiled_step_screen/raw/b200_block_d1536_s3.json",
+      "rank": 1536,
+      "rank_relation": "R=D",
+      "report_status": "complete",
+      "sha256": "5d9bd8029095fc74d7931f41322ed6d63de6969261a9aa35e7f02421c8a9f714",
+      "width": 1536
+    },
+    {
+      "cell_id": "block-bs2-l8-d1536-rd",
+      "event_block_size": 2,
+      "failed_arms": [],
+      "gpu": "B200",
+      "max_read_sources": 9,
+      "mode": "block",
+      "model_timing_status": "complete",
+      "not_applicable_arms": [
+        "Catswe"
+      ],
+      "numeric_arms": [
+        "FLA Triton",
+        "Liger"
+      ],
+      "path": "results/adoption/compiled_step_screen/raw/b200_block_d1536_s9.json",
+      "rank": 1536,
+      "rank_relation": "R=D",
+      "report_status": "complete",
+      "sha256": "4d8124e47d4b604218f939f760791a4b7240b105188f9530787d367465002447",
+      "width": 1536
+    },
+    {
+      "cell_id": "block-bs2-l8-d2048-rd",
+      "event_block_size": 2,
+      "failed_arms": [
+        {
+          "arm": "Liger",
+          "reason": "Tensor-likes are not close! Mismatched elements: 1 / 8388608 (0.0%) Greatest absolute difference: 0.053955078125 at index (0, 251, 6860) (up to 0.05 allowed) Greatest relative difference: 0.73828125 at index (0, 251, 6860) (up to 0.05 allowed)"
+        }
+      ],
+      "gpu": "B200",
+      "max_read_sources": 9,
+      "mode": "block",
+      "model_timing_status": "incomplete",
+      "not_applicable_arms": [],
+      "numeric_arms": [
+        "FLA Triton",
+        "Catswe"
+      ],
+      "path": "results/adoption/compiled_step_screen/raw/b200_block_d2048_s9.json",
+      "rank": 2048,
+      "rank_relation": "R=D",
+      "report_status": "failed",
+      "sha256": "4af61b3d7b9d7a57a973d6ab5027bfaff36691c9d4fdc9e437beaf3bd2548223",
+      "width": 2048
+    },
+    {
+      "cell_id": "full-l8-d1024-rd",
+      "event_block_size": null,
+      "failed_arms": [],
+      "gpu": "B200",
+      "max_read_sources": 17,
+      "mode": "full",
+      "model_timing_status": "complete",
+      "not_applicable_arms": [],
+      "numeric_arms": [
+        "FLA Triton",
+        "Liger",
+        "Catswe"
+      ],
+      "path": "results/adoption/compiled_step_screen/raw/b200_full_d1024_s17.json",
+      "rank": 1024,
+      "rank_relation": "R=D",
+      "report_status": "complete",
+      "sha256": "c8677c97ba2ab3a13fe0629fd1a40ec5d056f14a10feb9fb265c644adacd118d",
+      "width": 1024
+    },
+    {
+      "cell_id": "block-bs2-l8-d1536-rd4",
+      "event_block_size": 2,
+      "failed_arms": [],
+      "gpu": "H100",
+      "max_read_sources": 9,
+      "mode": "block",
+      "model_timing_status": "complete",
+      "not_applicable_arms": [
+        "Liger",
+        "Catswe"
+      ],
+      "numeric_arms": [
+        "FLA Triton"
+      ],
+      "path": "results/adoption/compiled_step_screen/raw/h100_block_d1536_r384_s9.json",
+      "rank": 384,
+      "rank_relation": "R=D/4",
+      "report_status": "complete",
+      "sha256": "7d9f57f2784917265a1b070b359dcd5d82bc5f256dc8ad53932a9e53e1899db3",
+      "width": 1536
+    },
+    {
+      "cell_id": "block-bs2-l8-d1536-rd",
+      "event_block_size": 2,
+      "failed_arms": [],
+      "gpu": "H100",
+      "max_read_sources": 9,
+      "mode": "block",
+      "model_timing_status": "complete",
+      "not_applicable_arms": [
+        "Catswe"
+      ],
+      "numeric_arms": [
+        "FLA Triton",
+        "Liger"
+      ],
+      "path": "results/adoption/compiled_step_screen/raw/h100_block_d1536_s9.json",
+      "rank": 1536,
+      "rank_relation": "R=D",
+      "report_status": "complete",
+      "sha256": "31aa8e1c8ba44c932dd6bd8325bceff7706d72b82f2c97a43171bb7ddbc4927a",
+      "width": 1536
+    },
+    {
+      "cell_id": "full-l8-d1024-rd",
+      "event_block_size": null,
+      "failed_arms": [],
+      "gpu": "H100",
+      "max_read_sources": 17,
+      "mode": "full",
+      "model_timing_status": "complete",
+      "not_applicable_arms": [],
+      "numeric_arms": [
+        "FLA Triton",
+        "Liger",
+        "Catswe"
+      ],
+      "path": "results/adoption/compiled_step_screen/raw/h100_full_d1024_s17.json",
+      "rank": 1024,
+      "rank_relation": "R=D",
+      "report_status": "complete",
+      "sha256": "4c8b9020689774669a731d376db3a06dce3284cdd6d5502a910cd5462b41e1e7",
+      "width": 1024
+    }
+  ],
+  "runtime_by_gpu": {
+    "B200": {
+      "compute_capability": [
+        10,
+        0
+      ],
+      "cuda": "13.0",
+      "gpu": "B200",
+      "name": "NVIDIA B200",
+      "status": "passed",
+      "torch": "2.13.0+cu130",
+      "total_memory": 191503007744,
+      "triton": "3.7.1"
+    },
+    "H100": {
+      "compute_capability": [
+        9,
+        0
+      ],
+      "cuda": "13.0",
+      "gpu": "H100",
+      "name": "NVIDIA H100 80GB HBM3",
+      "status": "passed",
+      "torch": "2.13.0+cu130",
+      "total_memory": 85017493504,
+      "triton": "3.7.1"
+    }
+  },
+  "schema": "attnres.compiled_step_screen.manifest.v1",
+  "scope": "BF16 compiled complete-training-step one-seed screen"
+}

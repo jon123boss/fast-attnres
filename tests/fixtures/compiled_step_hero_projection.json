@@ -1,0 +1,91 @@
+{
+  "campaign": {
+    "baseline": "native FLA Triton checkpoint 1",
+    "confidence": 0.95,
+    "dtype": "bf16",
+    "mode": "full",
+    "model": {
+      "batch": 2,
+      "block_count": 8,
+      "ffn": 2816,
+      "heads": 16,
+      "layers": 24,
+      "sequence": 1024,
+      "vocab": 32768,
+      "width": 1024
+    },
+    "optimizer": "AdamW (fused, capturable)",
+    "rank_relation": "R=D",
+    "rounds": 120,
+    "schedule": "ordered source-list; 48 reads (S=2…49); deterministic order/reverse ABBA",
+    "seeds": [
+      "20260827",
+      "20260903",
+      "20260911"
+    ],
+    "timing_method": "cuda_graph",
+    "warmup": 10
+  },
+  "devices": {
+    "B200": {
+      "absolute_ms": {
+        "attnres": 8.64,
+        "fla_ckpt1": 9.36
+      },
+      "ratios": [
+        {
+          "ci_high": 0.936,
+          "ci_low": 0.912,
+          "ratio": 0.924,
+          "seed": "20260827"
+        },
+        {
+          "ci_high": 0.929,
+          "ci_low": 0.906,
+          "ratio": 0.917,
+          "seed": "20260903"
+        },
+        {
+          "ci_high": 0.943,
+          "ci_low": 0.918,
+          "ratio": 0.931,
+          "seed": "20260911"
+        }
+      ]
+    },
+    "H100 SXM": {
+      "absolute_ms": {
+        "attnres": 14.82,
+        "fla_ckpt1": 16.11
+      },
+      "ratios": [
+        {
+          "ci_high": 0.931,
+          "ci_low": 0.905,
+          "ratio": 0.918,
+          "seed": "20260827"
+        },
+        {
+          "ci_high": 0.921,
+          "ci_low": 0.894,
+          "ratio": 0.907,
+          "seed": "20260903"
+        },
+        {
+          "ci_high": 0.936,
+          "ci_low": 0.91,
+          "ratio": 0.923,
+          "seed": "20260911"
+        }
+      ]
+    }
+  },
+  "provenance": {
+    "audit_schema": "attnres.compiled_model_timing.audit.v1",
+    "audit_status": "fixture",
+    "generator": "benchmarks/audit_compiled_step.py",
+    "source_digest": "fixture-only"
+  },
+  "schema": "attnres.compiled_step_hero_projection.v1",
+  "status": "fixture"
+}

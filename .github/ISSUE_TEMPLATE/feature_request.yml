@@ -1,0 +1,44 @@
+name: Feature request
+description: Propose a focused improvement to Fast-AttnRes.
+title: "[Feature]: "
+labels:
+  - enhancement
+body:
+  - type: markdown
+    attributes:
+      value: |
+        A clear use case and a way to verify the behavior make a proposal much
+        easier to evaluate.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or use case
+      description: What are you trying to do, and what is missing today?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed change
+      description: Describe the behavior or interface you would like.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Explain existing workarounds or design alternatives.
+  - type: textarea
+    id: verification
+    attributes:
+      label: Verification plan
+      description: Explain the test or evidence that would show the change is correct. If performance is relevant, say how correctness will be gated before timing.
+    validations:
+      required: true
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checks
+      options:
+        - label: I searched existing issues and removed secrets/private data.
+          required: true

@@ -1,0 +1,62 @@
+{
+  "bytes": 9671027,
+  "gpu": "B200",
+  "median_advantage_pct": 15.519781490590379,
+  "results": [
+    {
+      "bootstrap_samples": 20000,
+      "candidate_mean_ms": 16.528320010503133,
+      "ci": [
+        0.845938808970568,
+        0.8461479966472689
+      ],
+      "ci_high": 0.8461479966472689,
+      "ci_low": 0.845938808970568,
+      "classification": "gain",
+      "confidence": 0.95,
+      "estimate": 0.8460434028089184,
+      "fla_mean_ms": 19.536021296183268,
+      "n": 120,
+      "ratio": 0.8460434028089184,
+      "seed": 20260827,
+      "simultaneous": true
+    },
+    {
+      "bootstrap_samples": 20000,
+      "candidate_mean_ms": 16.530072530110676,
+      "ci": [
+        0.8446765132042848,
+        0.8449278569839076
+      ],
+      "ci_high": 0.8449278569839076,
+      "ci_low": 0.8446765132042848,
+      "classification": "gain",
+      "confidence": 0.95,
+      "estimate": 0.8448021850940962,
+      "fla_mean_ms": 19.566798973083497,
+      "n": 120,
+      "ratio": 0.8448021850940962,
+      "seed": 20260903,
+      "simultaneous": true
+    },
+    {
+      "bootstrap_samples": 20000,
+      "candidate_mean_ms": 16.524753665924074,
+      "ci": [
+        0.8446279827095358,
+        0.8449158162667287
+      ],
+      "ci_high": 0.8449158162667287,
+      "ci_low": 0.8446279827095358,
+      "classification": "gain",
+      "confidence": 0.95,
+      "estimate": 0.8447718994881322,
+      "fla_mean_ms": 19.56120621363322,
+      "n": 120,
+      "ratio": 0.8447718994881322,
+      "seed": 20260911,
+      "simultaneous": true
+    }
+  ],
+  "sha256": "9db6cea6616ea749ff3a7724840772b10adf057fad977af7814ea51aaab393bc"
+}

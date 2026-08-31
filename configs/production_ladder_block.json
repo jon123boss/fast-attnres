@@ -1,0 +1,126 @@
+{
+  "schema": "attnres.production_ladder_config.v1",
+  "scope": "primary",
+  "phases": [
+    "model"
+  ],
+  "variant": "sliced",
+  "mode": "block",
+  "ranks": [
+    1,
+    2,
+    4,
+    8,
+    16,
+    32,
+    64,
+    128,
+    256,
+    512,
+    768,
+    1024
+  ],
+  "pairwise": false,
+  "reference_timing": false,
+  "include_fla": false,
+  "include_fla_model": false,
+  "include_fla_compile": true,
+  "fla_compile_backends": [
+    "triton"
+  ],
+  "standard_fla_comparison": true,
+  "include_baseline": false,
+  "include_packed_comparison": false,
+  "model_state_protocol": "canonical_implicit_max_rank_v1",
+  "model_timing": "cuda_graph",
+  "model_warmup": 10,
+  "model_rounds": 120,
+  "accumulation": 1,
+  "lr": 0.0003,
+  "betas": [
+    0.9,
+    0.95
+  ],
+  "weight_decay": 0.1,
+  "seed": 20260827,
+  "bootstrap_samples": 20000,
+  "model_profile": false,
+  "model_config": {
+    "layers": 24,
+    "width": 1024,
+    "heads": 16,
+    "ffn": 2816,
+    "batch": 2,
+    "sequence": 2048,
+    "vocab": 32768,
+    "block_count": 8,
+    "variant": "sliced",
+    "mode": "block",
+    "source_layout": "list"
+  },
+  "production_ladder": {
+    "base_revision": "8ddb0bbaf184663703ded65b45839fddd1c429fc",
+    "base_tree": "a91fb6d7662c36652bf648aa2e8170c90887bc1a",
+    "state_protocol": "canonical_implicit_max_rank_v1",
+    "input_protocol": "shared_per_sample_timed_inputs_v1",
+    "source_layout": "list",
+    "block_path": "per_read_public_attnres",
+    "cached_block": false,
+    "schedule": "balanced_forward_reverse_pairs; adjacent edges stay within one split job",
+    "fla_anchor": {
+      "implementation": "triton",
+      "checkpoint_level": 1,
+      "rank": 1024,
+      "scope": "R=D anchor only"
+    },
+    "fla_checkout": {
+      "environment": "ATTNRES_FLA_DIR",
+      "layout": "clean checkout containing fla/",
+      "revision": "5e02dd3a7651f5f2797eb8b12bbec401826031e1",
+      "package_sha256": "2cd59a9a50f34ecc4d9535ad51c9668cd4d8b67f519b8eb78b45ce2156288781",
+      "required_clean": true
+    },
+    "resident_candidate": {
+      "fixed_tail_sources_sha256": "1373614c93d7291ad96697b1b8ff627120590b75f63f7e38bd65d50b19fcfb4a",
+      "fla_full_sources_sha256": "8749c72c4714145214e33e8bc7d37f57b47a79b67f2e83044205db72cda416fa",
+      "selection": "active standard-source autotune candidate; evaluator and timing contract unchanged",
+      "identity_scope": "current_autotuned_release_candidate"
+    },
+    "split_policy": {
+      "manifest": "production_ladder_split_manifest.json",
+      "max_kernel_ranks_per_job": 3,
+      "shared_inputs": "one changed input hash per sample across all timed arms in a job",
+      "cross_job_pairing": "forbidden"
+    },
+    "priority_first_gate": {
+      "manifest_key": "priority_first_gate",
+      "ranks": [
+        16,
+        64,
+        128,
+        512,
+        1024
+      ],
+      "adjacent_rank_order_pairs": [
+        [
+          16,
+          64
+        ],
+        [
+          64,
+          128
+        ],
+        [
+          128,
+          512
+        ],
+        [
+          512,
+          1024
+        ]
+      ],
+      "purpose": "bounded first gate; selected-rank pairs share one process; requested ladder edge splits remain authoritative"
+    },
+    "gate": "simultaneous paired adjacent smaller-R/larger-R ratio; gain or plateau on every edge"
+  }
+}

@@ -1,0 +1,17 @@
+include README.md LICENSE NOTICE PROVENANCE.md EVALUATION.md CITATION.cff pyproject.toml MANIFEST.in
+recursive-include src/attnres *.py
+recursive-include src/attnres *.pyi
+include src/attnres/py.typed
+recursive-include examples *.py
+recursive-include scripts *.py
+recursive-include benchmarks *.py
+recursive-include validation *.py *.json
+recursive-include configs *.json
+recursive-include docs *.md *.svg *.png
+recursive-include tests *.py
+prune outputs
+prune snapshots
+prune tmp
+prune work
+
+prune results

@@ -1,0 +1,63 @@
+Third-party notice
+==================
+
+Portions of Fast-AttnRes are adapted from the LR-AttnRes project by
+Jonnester. Those portions are available under the MIT License. The copyright
+notice and license text are included in LICENSE.
+
+FLA-derived source-list kernel
+------------------------------
+
+The source-list Full kernel in
+`src/attnres/_kernels/fla_full_sources.py` is adapted from
+`fla/ops/attnres/fused.py` in flash-linear-attention at pinned commit
+`5e02dd3a7651f5f2797eb8b12bbec401826031e1`:
+
+https://github.com/fla-org/flash-linear-attention/blob/5e02dd3a7651f5f2797eb8b12bbec401826031e1/fla/ops/attnres/fused.py
+
+The adapted source retains this copyright and MIT license notice from the
+pinned source:
+
+MIT License
+
+Copyright (c) 2023-2026 Songlin Yang, Yu Zhang, Zhiyuan Li
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+Optional external benchmark adapters
+------------------------------------
+
+The `benchmarks/` directory contains interoperability adapters for matched
+comparison against separately installed, pinned external packages. Flash-
+AttnRes does not redistribute those packages or copy their kernel sources into
+the wheel or source distribution. Their identities and licenses are:
+
+- Liger-Kernel at `000be60929938fd1358e03524c6ab398b6d421bd`,
+  BSD-2-Clause, with its upstream `NOTICE` retained by that distribution:
+  https://github.com/linkedin/Liger-Kernel
+- flash-attention-residuals at
+  `ff92865e4e1b18809da7a8f0c0c5252039cded7c`, Apache-2.0:
+  https://github.com/catswe/flash-attention-residuals
+- attnres-kernel-lab at
+  `ea1f63eda8e31b0f10456b3b49cacd8fb66091dc`, MIT:
+  https://github.com/manishklach/attnres-kernel-lab
+
+Users who install, benchmark, or redistribute an external comparator must
+follow that project's own license and notice requirements. Adapter metadata is
+not a substitute for the external package's license files.

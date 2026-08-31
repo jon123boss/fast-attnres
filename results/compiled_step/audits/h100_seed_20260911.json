@@ -1,0 +1,42 @@
+{
+  "attestation_verified": true,
+  "gpu": "H100",
+  "mode": "full",
+  "release_blockers": [
+    "model_only_subartifact",
+    "correctness_not_run",
+    "operator_timings_not_run",
+    "full_suite_claim_false"
+  ],
+  "release_promotable": false,
+  "report_sha256": "73e40bb71e64140bcdbd1731581e1513ce25378dca5afd158e8ed0e0d5837552",
+  "rounds": 120,
+  "schema": "attnres.compiled_step_campaign.audit.v1",
+  "seed": 20260911,
+  "sequence": 1024,
+  "statistics": {
+    "kernel_rank_1024_over_fla_triton_compile_standard_rank_1024": {
+      "bootstrap_samples": 20000,
+      "ci": [
+        0.9584077633750656,
+        0.958758550880628
+      ],
+      "ci_high": 0.958758550880628,
+      "ci_low": 0.9584077633750656,
+      "classification": "gain",
+      "confidence": 0.95,
+      "estimate": 0.9585831571278468,
+      "n": 120,
+      "ratio": 0.9585831571278468,
+      "simultaneous": true
+    }
+  },
+  "status": "timing_verified",
+  "timing_means_ms": {
+    "baseline": 29.274793672561646,
+    "candidate": 28.062315225601196
+  },
+  "timing_rows": 240,
+  "timing_verified": true,
+  "warmup": 10
+}

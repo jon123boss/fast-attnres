@@ -1,0 +1,1333 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://attnres.dev/schemas/matched_competitor_benchmark.v1.json",
+  "title": "AttnRes matched-competitor benchmark protocol",
+  "description": "Sealed, result-independent protocol for paired H100!/B200 measurements.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "$schema",
+    "schema",
+    "version",
+    "status",
+    "sealed",
+    "description",
+    "hardware_order",
+    "gpus",
+    "hardware",
+    "runtime",
+    "dtypes",
+    "bf16",
+    "fp32",
+    "oracle",
+    "model",
+    "operator_cases",
+    "ranks",
+    "arms",
+    "competitors",
+    "comparison_families",
+    "seeds",
+    "warmup",
+    "warmup_rounds",
+    "rounds",
+    "timed_rounds",
+    "schedule",
+    "statistics",
+    "failure_policy",
+    "gpu_launch",
+    "launch_policy",
+    "provenance"
+  ],
+  "properties": {
+    "$schema": {
+      "const": "https://json-schema.org/draft/2020-12/schema"
+    },
+    "schema": {
+      "const": "attnres.matched_competitor_benchmark.v1"
+    },
+    "version": {
+      "const": 1
+    },
+    "status": {
+      "const": "sealed"
+    },
+    "sealed": {
+      "const": true
+    },
+    "description": {
+      "type": "string",
+      "minLength": 1
+    },
+    "hardware_order": {
+      "const": [
+        "H100!",
+        "B200"
+      ]
+    },
+    "gpus": {
+      "const": [
+        "H100!",
+        "B200"
+      ]
+    },
+    "hardware": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "H100!",
+        "B200"
+      ],
+      "properties": {
+        "H100!": {
+          "$ref": "#/$defs/hardware_h100"
+        },
+        "B200": {
+          "$ref": "#/$defs/hardware_b200"
+        }
+      }
+    },
+    "runtime": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "pytorch",
+        "triton",
+        "same_runtime_for_all_arms",
+        "runtime_selection_is_immutable"
+      ],
+      "properties": {
+        "pytorch": {
+          "const": "2.13.0"
+        },
+        "triton": {
+          "const": "3.7.1"
+        },
+        "same_runtime_for_all_arms": {
+          "const": true
+        },
+        "runtime_selection_is_immutable": {
+          "const": true
+        }
+      }
+    },
+    "dtypes": {
+      "const": [
+        "bf16",
+        "fp32"
+      ]
+    },
+    "bf16": {
+      "$ref": "#/$defs/bf16_tolerance"
+    },
+    "fp32": {
+      "$ref": "#/$defs/fp32_tolerance"
+    },
+    "oracle": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "entrypoint",
+        "math_dtype",
+        "checks",
+        "must_pass_before_timing",
+        "tolerances"
+      ],
+      "properties": {
+        "path": {
+          "const": "validation/oracle.py"
+        },
+        "entrypoint": {
+          "const": "validation.oracle.oracle"
+        },
+        "math_dtype": {
+          "const": "fp32"
+        },
+        "checks": {
+          "const": [
+            "output",
+            "values_gradient",
+            "query_gradient"
+          ]
+        },
+        "must_pass_before_timing": {
+          "const": true
+        },
+        "tolerances": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "bf16",
+            "fp32"
+          ],
+          "properties": {
+            "bf16": {
+              "$ref": "#/$defs/bf16_tolerance"
+            },
+            "fp32": {
+              "$ref": "#/$defs/fp32_tolerance"
+            }
+          }
+        }
+      }
+    },
+    "model": {
+      "$ref": "#/$defs/model_geometry"
+    },
+    "operator_cases": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "smoke",
+        "primary",
+        "heldout"
+      ],
+      "properties": {
+        "smoke": {
+          "$ref": "#/$defs/operator_case_list"
+        },
+        "primary": {
+          "$ref": "#/$defs/operator_case_list"
+        },
+        "heldout": {
+          "$ref": "#/$defs/operator_case_list"
+        }
+      }
+    },
+    "ranks": {
+      "const": [
+        16,
+        64,
+        128,
+        512,
+        1024
+      ]
+    },
+    "arms": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "standard_operator",
+        "full",
+        "block_per_read",
+        "lr_ranks"
+      ],
+      "properties": {
+        "standard_operator": {
+          "$ref": "#/$defs/standard_operator_arm"
+        },
+        "full": {
+          "$ref": "#/$defs/full_arm"
+        },
+        "block_per_read": {
+          "$ref": "#/$defs/block_arm"
+        },
+        "lr_ranks": {
+          "$ref": "#/$defs/lr_arm"
+        }
+      }
+    },
+    "competitors": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "native_fla_triton_checkpoint1",
+        "native_fla_gluon",
+        "native_fla_triton_checkpoint0",
+        "liger",
+        "catswe_phase1",
+        "manish_hydra_2p"
+      ],
+      "properties": {
+        "native_fla_triton_checkpoint1": {
+          "$ref": "#/$defs/competitor"
+        },
+        "native_fla_gluon": {
+          "$ref": "#/$defs/competitor"
+        },
+        "native_fla_triton_checkpoint0": {
+          "$ref": "#/$defs/competitor"
+        },
+        "liger": {
+          "$ref": "#/$defs/competitor"
+        },
+        "catswe_phase1": {
+          "$ref": "#/$defs/competitor"
+        },
+        "manish_hydra_2p": {
+          "$ref": "#/$defs/competitor"
+        }
+      }
+    },
+    "comparison_families": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "primary",
+        "diagnostic",
+        "liger",
+        "catswe_external",
+        "manish_small_d"
+      ],
+      "properties": {
+        "primary": {
+          "$ref": "#/$defs/comparison_family"
+        },
+        "diagnostic": {
+          "$ref": "#/$defs/comparison_family"
+        },
+        "liger": {
+          "$ref": "#/$defs/comparison_family"
+        },
+        "catswe_external": {
+          "$ref": "#/$defs/comparison_family"
+        },
+        "manish_small_d": {
+          "$ref": "#/$defs/comparison_family"
+        }
+      }
+    },
+    "seeds": {
+      "const": [
+        20260827,
+        20260903,
+        20260911
+      ]
+    },
+    "warmup": {
+      "const": 10
+    },
+    "warmup_rounds": {
+      "const": 10
+    },
+    "rounds": {
+      "const": 120
+    },
+    "timed_rounds": {
+      "const": 120
+    },
+    "schedule": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "paired",
+        "order",
+        "round_order_rule",
+        "shared_inputs_per_pair",
+        "shared_inputs_across_arms",
+        "same_initial_state_across_arms",
+        "same_device_for_pair",
+        "synchronize_device_before_measurement",
+        "warmup_excluded_from_timing",
+        "timing_boundary",
+        "order_selection_after_results"
+      ],
+      "properties": {
+        "paired": {
+          "const": true
+        },
+        "order": {
+          "const": "balanced_forward_reverse_pairs"
+        },
+        "round_order_rule": {
+          "const": "one deterministic arm permutation per cell; even rounds use it and odd rounds use its exact reverse"
+        },
+        "shared_inputs_per_pair": {
+          "const": true
+        },
+        "shared_inputs_across_arms": {
+          "const": true
+        },
+        "same_initial_state_across_arms": {
+          "const": true
+        },
+        "same_device_for_pair": {
+          "const": true
+        },
+        "synchronize_device_before_measurement": {
+          "const": true
+        },
+        "warmup_excluded_from_timing": {
+          "const": true
+        },
+        "timing_boundary": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["operator", "model"],
+          "properties": {
+            "operator": {"const": "operator_forward_backward"},
+            "model": {"const": "complete_compiled_training_step"}
+          }
+        },
+        "order_selection_after_results": {
+          "const": false
+        }
+      }
+    },
+    "statistics": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "estimator",
+        "ratio",
+        "confidence",
+        "bootstrap_samples",
+        "common_resample_indices",
+        "familywise_scope",
+        "per_seed_gate",
+        "pool_seeds",
+        "pool_gpus",
+        "plateau_margin",
+        "comparison_plan",
+        "selection_after_results"
+      ],
+      "properties": {
+        "estimator": {
+          "const": "simultaneous_paired_ratio_bootstrap"
+        },
+        "ratio": {
+          "const": "candidate_over_baseline"
+        },
+        "confidence": {
+          "const": 0.95
+        },
+        "bootstrap_samples": {
+          "const": 20000
+        },
+        "common_resample_indices": {
+          "const": true
+        },
+        "familywise_scope": {
+          "const": "all planned comparisons within each GPU_seed_predeclared_competitor_family_cell"
+        },
+        "per_seed_gate": {
+          "const": true
+        },
+        "pool_seeds": {
+          "const": false
+        },
+        "pool_gpus": {
+          "const": false
+        },
+        "plateau_margin": {
+          "const": 0.01
+        },
+        "comparison_plan": {
+          "type": "array",
+          "minItems": 4,
+          "maxItems": 4,
+          "items": {
+            "$ref": "#/$defs/comparison"
+          }
+        },
+        "selection_after_results": {
+          "const": false
+        }
+      }
+    },
+    "failure_policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "retain_failures",
+        "retain_raw_samples",
+        "drop_failures",
+        "drop_incomplete_cells",
+        "missing_sample_is_failure",
+        "statistics_require_complete_ok",
+        "failure_statuses",
+        "skipped_rounds_are_recorded",
+        "required_row_fields",
+        "raw_artifact_format",
+        "no_interpolation",
+        "no_retry_of_unchanged_failure"
+      ],
+      "properties": {
+        "retain_failures": {
+          "const": true
+        },
+        "retain_raw_samples": {
+          "const": true
+        },
+        "drop_failures": {
+          "const": false
+        },
+        "drop_incomplete_cells": {
+          "const": false
+        },
+        "missing_sample_is_failure": {
+          "const": true
+        },
+        "statistics_require_complete_ok": {
+          "const": true
+        },
+        "failure_statuses": {
+          "const": [
+            "failed",
+            "skipped_due_to_failure",
+            "not_applicable"
+          ]
+        },
+        "skipped_rounds_are_recorded": {
+          "const": true
+        },
+        "required_row_fields": {
+          "const": [
+            "seed",
+            "gpu",
+            "round_index",
+            "order_index",
+            "input_hash",
+            "arm",
+            "status",
+            "latency_ms",
+            "failure_phase",
+            "failure_reason",
+            "failure_at_round",
+            "failure_at_order"
+          ]
+        },
+        "raw_artifact_format": {
+          "const": "jsonl"
+        },
+        "no_interpolation": {
+          "const": true
+        },
+        "no_retry_of_unchanged_failure": {
+          "const": true
+        }
+      }
+    },
+    "gpu_launch": {
+      "const": false
+    },
+    "launch_policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "enabled",
+        "dry_run_only",
+        "owner",
+        "agent_may_launch"
+      ],
+      "properties": {
+        "enabled": {
+          "const": false
+        },
+        "dry_run_only": {
+          "const": true
+        },
+        "owner": {
+          "const": "root"
+        },
+        "agent_may_launch": {
+          "const": false
+        }
+      }
+    },
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "base_revision",
+        "config_hash_is_content_addressed",
+        "mutable_overrides",
+        "results_may_not_modify_config",
+        "selection_must_precede_results"
+      ],
+      "properties": {
+        "base_revision": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{40}$"
+        },
+        "config_hash_is_content_addressed": {
+          "const": true
+        },
+        "mutable_overrides": {
+          "const": []
+        },
+        "results_may_not_modify_config": {
+          "const": true
+        },
+        "selection_must_precede_results": {
+          "const": true
+        }
+      }
+    }
+  },
+  "$defs": {
+    "tolerance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "rtol",
+        "atol"
+      ],
+      "properties": {
+        "rtol": {
+          "type": "number",
+          "minimum": 0
+        },
+        "atol": {
+          "type": "number",
+          "minimum": 0
+        }
+      }
+    },
+    "bf16_tolerance": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/tolerance"
+        },
+        {
+          "const": {
+            "rtol": 0.05,
+            "atol": 0.05
+          }
+        }
+      ]
+    },
+    "fp32_tolerance": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/tolerance"
+        },
+        {
+          "const": {
+            "rtol": 0.001,
+            "atol": 0.0001
+          }
+        }
+      ]
+    },
+    "hardware": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "modal_name",
+        "compute_capability",
+        "same_device_pairing"
+      ],
+      "properties": {
+        "modal_name": {
+          "type": "string"
+        },
+        "compute_capability": {
+          "type": "string",
+          "pattern": "^sm[0-9]+$"
+        },
+        "same_device_pairing": {
+          "const": true
+        }
+      }
+    },
+    "hardware_h100": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/hardware"
+        },
+        {
+          "const": {
+            "modal_name": "H100!",
+            "compute_capability": "sm90",
+            "same_device_pairing": true
+          }
+        }
+      ]
+    },
+    "hardware_b200": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/hardware"
+        },
+        {
+          "const": {
+            "modal_name": "B200",
+            "compute_capability": "sm100",
+            "same_device_pairing": true
+          }
+        }
+      ]
+    },
+    "model_geometry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "layers",
+        "width",
+        "heads",
+        "ffn",
+        "batch",
+        "sequence",
+        "vocab",
+        "block_count",
+        "source_layout",
+        "timing_scope",
+        "optimizer",
+        "accumulation"
+      ],
+      "properties": {
+        "layers": {
+          "const": 24
+        },
+        "width": {
+          "const": 1024
+        },
+        "heads": {
+          "const": 16
+        },
+        "ffn": {
+          "const": 2816
+        },
+        "batch": {
+          "const": 2
+        },
+        "sequence": {
+          "const": 2048
+        },
+        "vocab": {
+          "const": 32768
+        },
+        "block_count": {
+          "const": 8
+        },
+        "source_layout": {
+          "const": "list"
+        },
+        "timing_scope": {
+          "const": "complete_training_step"
+        },
+        "optimizer": {
+          "const": "capturable_adamw"
+        },
+        "accumulation": {
+          "const": 1
+        }
+      }
+    },
+    "operator_case": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "S",
+        "N",
+        "D",
+        "R",
+        "dtype"
+      ],
+      "properties": {
+        "S": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "N": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "D": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "R": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "dtype": {
+          "enum": [
+            "bf16",
+            "fp32"
+          ]
+        }
+      }
+    },
+    "operator_case_list": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/operator_case"
+      }
+    },
+    "standard_operator_arm": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "variant",
+        "mode",
+        "rank",
+        "rank_equals_width",
+        "source_layout"
+      ],
+      "properties": {
+        "kind": {
+          "const": "operator"
+        },
+        "variant": {
+          "const": "standard"
+        },
+        "mode": {
+          "const": "forward_backward"
+        },
+        "rank": {
+          "const": 1024
+        },
+        "rank_equals_width": {
+          "const": true
+        },
+        "source_layout": {
+          "const": "list"
+        }
+      }
+    },
+    "full_arm": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "variant",
+        "mode",
+        "rank",
+        "source_layout",
+        "block_path",
+        "cached_block"
+      ],
+      "properties": {
+        "kind": {
+          "const": "model"
+        },
+        "variant": {
+          "const": "full"
+        },
+        "mode": {
+          "const": "full"
+        },
+        "rank": {
+          "const": 1024
+        },
+        "source_layout": {
+          "const": "list"
+        },
+        "block_path": {
+          "const": "public_attnres_per_read"
+        },
+        "cached_block": {
+          "const": false
+        }
+      }
+    },
+    "block_arm": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "variant",
+        "mode",
+        "rank",
+        "source_layout",
+        "block_path",
+        "cached_block"
+      ],
+      "properties": {
+        "kind": {
+          "const": "model"
+        },
+        "variant": {
+          "const": "block"
+        },
+        "mode": {
+          "const": "block"
+        },
+        "rank": {
+          "const": 1024
+        },
+        "source_layout": {
+          "const": "list"
+        },
+        "block_path": {
+          "const": "public_attnres_per_read"
+        },
+        "cached_block": {
+          "const": false
+        }
+      }
+    },
+    "lr_arm": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "variant",
+        "mode",
+        "ranks",
+        "source_layout",
+        "implicit_key",
+        "value_width"
+      ],
+      "properties": {
+        "kind": {
+          "const": "model"
+        },
+        "variant": {
+          "const": "sliced"
+        },
+        "mode": {
+          "const": "full_and_block"
+        },
+        "ranks": {
+          "const": [
+            16,
+            64,
+            128,
+            512,
+            1024
+          ]
+        },
+        "source_layout": {
+          "const": "list"
+        },
+        "implicit_key": {
+          "const": "last_R_value_coordinates"
+        },
+        "value_width": {
+          "const": "full_width"
+        }
+      }
+    },
+    "competitor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "implementation",
+        "backend",
+        "checkpoint",
+        "role",
+        "eligible_denominator",
+        "qualification",
+        "source",
+        "capability",
+        "eligibility"
+      ],
+      "properties": {
+        "implementation": {
+          "type": "string",
+          "minLength": 1
+        },
+        "backend": {
+          "enum": [
+            "triton",
+            "gluon",
+            "cuda",
+            "python"
+          ]
+        },
+        "checkpoint": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "role": {
+          "type": "string",
+          "minLength": 1
+        },
+        "eligible_denominator": {
+          "type": "boolean"
+        },
+        "qualification": {
+          "type": "string",
+          "minLength": 1
+        },
+        "source": {
+          "type": "string",
+          "minLength": 1
+        },
+        "capability": {
+          "$ref": "#/$defs/competitor_capability"
+        },
+        "eligibility": {
+          "$ref": "#/$defs/competitor_eligibility"
+        }
+      }
+    },
+    "competitor_capability": {
+      "type": "object",
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {"properties": {"family": {"const": "catswe"}}},
+          "then": {
+            "required": ["max_program_elements", "requires_power_of_two_width"],
+            "properties": {
+              "max_program_elements": {"const": 1048576},
+              "requires_power_of_two_width": {"const": true}
+            }
+          }
+        },
+        {
+          "if": {
+            "required": ["family", "backend"],
+            "properties": {
+              "family": {"const": "fla"},
+              "backend": {"const": "gluon"}
+            }
+          },
+          "then": {
+            "required": ["compile_envelope"]
+          }
+        }
+      ],
+      "required": [
+        "family",
+        "adapter",
+        "eligible_denominator",
+        "rank_scope",
+        "max_sources",
+        "max_width",
+        "dtypes",
+        "modes",
+        "schedules",
+        "external_route",
+        "model_scope",
+        "cuda_required",
+        "oracle"
+      ],
+      "properties": {
+        "family": {"type": "string", "minLength": 1},
+        "adapter": {"type": "string", "minLength": 1},
+        "eligible_denominator": {"type": "boolean"},
+        "rank_scope": {"const": "R=D"},
+        "max_sources": {"type": "integer", "minimum": 1},
+        "max_width": {"type": "integer", "minimum": 1},
+        "timing_max_width": {"type": "integer", "minimum": 1},
+        "max_program_elements": {"type": "integer", "minimum": 1},
+        "compile_envelope": {
+          "$ref": "#/$defs/gluon_compile_envelope"
+        },
+        "requires_power_of_two_width": {"type": "boolean"},
+        "dtypes": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"enum": ["bf16", "fp32"]}
+        },
+        "modes": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"type": "string", "minLength": 1}
+        },
+        "schedules": {
+          "type": "object",
+          "additionalProperties": {"type": "string", "minLength": 1}
+        },
+        "external_route": {"type": "boolean"},
+        "model_scope": {"type": "string", "minLength": 1},
+        "supports_per_read_block": {"type": "boolean"},
+        "block_scope": {"type": "string", "minLength": 1},
+        "cuda_required": {"const": true},
+        "oracle": {"const": "validation.oracle.oracle"},
+        "revision": {"type": "string", "minLength": 1},
+        "tree": {"type": "string", "minLength": 1},
+        "origin": {"type": "string", "format": "uri", "minLength": 1},
+        "source": {"type": "string", "minLength": 1},
+        "source_hashes": {
+          "type": "object",
+          "additionalProperties": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+        },
+        "package_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "license": {"type": "string", "minLength": 1},
+        "license_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "notice_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "pyproject_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+      }
+    },
+    "gluon_compile_envelope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "padded_width_rule",
+        "max_padded_width",
+        "source_width_product_rule",
+        "max_source_width_product",
+        "checkpoint1_static_work_rule",
+        "checkpoint1_static_work_multiplier",
+        "max_checkpoint1_static_work"
+      ],
+      "properties": {
+        "padded_width_rule": {"const": "BD=next_power_of_two(D)"},
+        "max_padded_width": {"const": 4096},
+        "source_width_product_rule": {"const": "S*BD"},
+        "max_source_width_product": {"const": 262144},
+        "checkpoint1_static_work_rule": {"const": "33*S*BD"},
+        "checkpoint1_static_work_multiplier": {"const": 33},
+        "max_checkpoint1_static_work": {"const": 8650752}
+      }
+    },
+    "competitor_eligibility": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["scope", "predicate", "status"],
+      "properties": {
+        "scope": {"type": "string", "minLength": 1},
+        "predicate": {"type": "string", "minLength": 1},
+        "status": {"type": "string", "minLength": 1}
+      }
+    },
+    "eligible_triton_competitor": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/competitor"
+        },
+        {
+          "const": {
+            "implementation": "fla_native",
+            "backend": "triton",
+            "checkpoint": 1,
+            "role": "eligible",
+            "eligible_denominator": true,
+            "qualification": "same_oracle_and_all_parameter_gradients",
+            "source": "fla-org/flash-linear-attention"
+          }
+        }
+      ]
+    },
+    "conditional_gluon_competitor": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/competitor"
+        },
+        {
+          "const": {
+            "implementation": "fla_native",
+            "backend": "gluon",
+            "checkpoint": null,
+            "role": "conditional_eligible",
+            "eligible_denominator": true,
+            "qualification": "include_only_after_same_oracle_and_all_parameter_gradients",
+            "source": "fla-org/flash-linear-attention"
+          }
+        }
+      ]
+    },
+    "diagnostic_triton_competitor": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/competitor"
+        },
+        {
+          "const": {
+            "implementation": "fla_native",
+            "backend": "triton",
+            "checkpoint": 0,
+            "role": "diagnostic",
+            "eligible_denominator": false,
+            "qualification": "retain_known_gradient_failure",
+            "source": "fla-org/flash-linear-attention"
+          }
+        }
+      ]
+    },
+    "primary_family": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "competitors",
+        "eligibility",
+        "unqualified_competitor_policy",
+        "per_seed_gate",
+        "pool_seeds",
+        "pool_gpus"
+      ],
+      "properties": {
+        "competitors": {
+          "const": [
+            "native_fla_triton_checkpoint1",
+            "native_fla_gluon"
+          ]
+        },
+        "eligibility": {
+          "const": "every_required_arm_has_120_ok_rows"
+        },
+        "unqualified_competitor_policy": {
+          "const": "incomplete_unavailable"
+        },
+        "per_seed_gate": {
+          "const": true
+        },
+        "pool_seeds": {
+          "const": false
+        },
+        "pool_gpus": {
+          "const": false
+        }
+      }
+    },
+    "diagnostic_family": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "competitors",
+        "eligibility",
+        "unqualified_competitor_policy",
+        "per_seed_gate",
+        "pool_seeds",
+        "pool_gpus"
+      ],
+      "properties": {
+        "competitors": {
+          "const": [
+            "native_fla_triton_checkpoint0"
+          ]
+        },
+        "eligibility": {
+          "const": "never_in_primary_denominator"
+        },
+        "unqualified_competitor_policy": {
+          "const": "retain_failure_only"
+        },
+        "per_seed_gate": {
+          "const": false
+        },
+        "pool_seeds": {
+          "const": false
+        },
+        "pool_gpus": {
+          "const": false
+        }
+      }
+    },
+    "comparison_family": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "competitors",
+        "eligibility",
+        "unqualified_competitor_policy",
+        "per_seed_gate",
+        "pool_seeds",
+        "pool_gpus"
+      ],
+      "properties": {
+        "competitors": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"type": "string", "minLength": 1}
+        },
+        "eligibility": {"type": "string", "minLength": 1},
+        "unqualified_competitor_policy": {"type": "string", "minLength": 1},
+        "per_seed_gate": {"type": "boolean"},
+        "pool_seeds": {"const": false},
+        "pool_gpus": {"const": false}
+      }
+    },
+    "comparison": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "baseline",
+        "candidate"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "baseline": {
+          "type": "string",
+          "minLength": 1
+        },
+        "candidate": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "raw_sample": {
+      "type": "object",
+      "required": [
+        "seed",
+        "gpu",
+        "round_index",
+        "order_index",
+        "input_hash",
+        "arm",
+        "status",
+        "latency_ms",
+        "failure_phase",
+        "failure_reason",
+        "failure_at_round",
+        "failure_at_order"
+      ],
+      "properties": {
+        "seed": {
+          "type": "integer"
+        },
+        "gpu": {
+          "enum": [
+            "H100!",
+            "B200"
+          ]
+        },
+        "round_index": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 119
+        },
+        "order_index": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "input_hash": {
+          "type": "string",
+          "minLength": 1
+        },
+        "arm": {
+          "type": "string",
+          "minLength": 1
+        },
+        "status": {
+          "enum": [
+            "ok",
+            "failed",
+            "skipped_due_to_failure",
+            "not_applicable"
+          ]
+        },
+        "latency_ms": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "exclusiveMinimum": 0
+        },
+        "failure_phase": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "failure_reason": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "failure_at_round": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0,
+          "maximum": 119
+        },
+        "failure_at_order": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        }
+      }
+    }
+  }
+}

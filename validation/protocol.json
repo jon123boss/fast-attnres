@@ -1,0 +1,176 @@
+{
+  "version": 1,
+  "gpus": [
+    "H100!",
+    "B200"
+  ],
+  "seeds": [
+    20260827,
+    20260903,
+    20260911
+  ],
+  "bf16": {
+    "rtol": 0.05,
+    "atol": 0.05
+  },
+  "fp32": {
+    "rtol": 0.001,
+    "atol": 0.0001
+  },
+  "operator_smoke": [
+    [
+      1,
+      2,
+      128,
+      16
+    ],
+    [
+      9,
+      65,
+      768,
+      64
+    ],
+    [
+      33,
+      128,
+      1536,
+      128
+    ],
+    [
+      97,
+      16,
+      4096,
+      64
+    ],
+    [
+      129,
+      8,
+      7168,
+      128
+    ],
+    [
+      129,
+      8,
+      8192,
+      8192
+    ],
+    [
+      9,
+      32,
+      3000,
+      127
+    ]
+  ],
+  "operator_primary": [
+    [
+      9,
+      4096,
+      768
+    ],
+    [
+      33,
+      4096,
+      1536
+    ],
+    [
+      97,
+      1024,
+      4096
+    ],
+    [
+      33,
+      512,
+      7168
+    ],
+    [
+      129,
+      256,
+      8192
+    ]
+  ],
+  "operator_heldout": [
+    [
+      13,
+      67,
+      512,
+      3
+    ],
+    [
+      73,
+      129,
+      2048,
+      64
+    ],
+    [
+      127,
+      31,
+      5120,
+      256
+    ],
+    [
+      17,
+      257,
+      6144,
+      127
+    ]
+  ],
+  "smoke_model": {
+    "layers": 2,
+    "width": 128,
+    "heads": 4,
+    "ffn": 384,
+    "batch": 2,
+    "sequence": 64,
+    "vocab": 512,
+    "block_count": 2
+  },
+  "primary_model": {
+    "layers": 24,
+    "width": 1024,
+    "heads": 16,
+    "ffn": 2816,
+    "batch": 2,
+    "sequence": 2048,
+    "vocab": 32768,
+    "block_count": 8
+  },
+  "heldout_model": {
+    "layers": 12,
+    "width": 1536,
+    "heads": 12,
+    "ffn": 4096,
+    "batch": 1,
+    "sequence": 1024,
+    "vocab": 32768,
+    "block_count": 4
+  },
+  "ranks": [
+    1,
+    2,
+    4,
+    8,
+    16,
+    32,
+    64,
+    128,
+    256,
+    384,
+    512,
+    768,
+    1024,
+    1536,
+    3072
+  ],
+  "warmup": 10,
+  "rounds": 120,
+  "smoke_rounds": 12,
+  "bootstrap_samples": 20000,
+  "plateau_margin": 0.01,
+  "budget": {
+    "new_total_usd": 100,
+    "admission_limit_usd": 75,
+    "contingency_usd": 25,
+    "baseline_metered_usd": 43.04164904,
+    "max_concurrent_each_gpu": 1
+  }
+}

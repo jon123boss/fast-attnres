@@ -1,0 +1,332 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      run_cuda:
+        description: "Run the CUDA qualification on a configured self-hosted GPU runner"
+        required: false
+        default: false
+        type: boolean
+      run_benchmark:
+        description: "Run the opt-in correctness/model qualification benchmark after tests"
+        required: false
+        default: false
+        type: boolean
+      qualification_scope:
+        description: "Scope for the opt-in benchmark"
+        required: false
+        default: smoke
+        type: choice
+        options:
+          - smoke
+          - primary
+          - heldout
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  contract:
+    name: Frozen release contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11"
+      - name: Verify every frozen file hash once
+        run: |
+          python - <<'PY'
+          import hashlib
+          import json
+          from pathlib import Path
+
+          root = Path.cwd()
+          manifest = json.loads((root / "validation/frozen.json").read_text())
+          if not isinstance(manifest, dict) or not manifest:
+              raise SystemExit("validation/frozen.json must be a non-empty object")
+          mismatches = []
+          for name, expected in manifest.items():
+              relative = Path(name)
+              if (
+                  not isinstance(name, str)
+                  or not name
+                  or relative.is_absolute()
+                  or ".." in relative.parts
+              ):
+                  mismatches.append(f"{name!r}: unsafe manifest path")
+                  continue
+              if (
+                  not isinstance(expected, str)
+                  or len(expected) != 64
+                  or any(character not in "0123456789abcdef" for character in expected)
+              ):
+                  mismatches.append(f"{name}: invalid SHA-256 digest")
+                  continue
+              path = root / name
+              if not path.is_file():
+                  mismatches.append(f"{name}: missing")
+                  continue
+              actual = hashlib.sha256(path.read_bytes()).hexdigest()
+              if actual != expected:
+                  mismatches.append(f"{name}: expected {expected}, got {actual}")
+          if mismatches:
+              raise SystemExit("frozen release contract mismatch:\n" + "\n".join(mismatches))
+          print(f"verified {len(manifest)} frozen files")
+          PY
+
+  cpu:
+    name: CPU / Torch ${{ matrix.torch-version }} / Python ${{ matrix.python-version }}
+    needs: contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - python-version: "3.10"
+            torch-version: "2.9.0"
+          - python-version: "3.11"
+            torch-version: "2.9.0"
+          - python-version: "3.11"
+            torch-version: "2.13.0"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+      - name: Install CPU test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install --index-url https://download.pytorch.org/whl/cpu "torch==${{ matrix.torch-version }}"
+          python -m pip install "setuptools>=68" "pytest>=7" "numpy>=1.24,<3" \
+            "matplotlib>=3.8,<4" \
+            "tomli>=2; python_version < '3.11'"
+          # Keep the CPU path independent of Triton and CUDA packages.
+          python -m pip install --no-deps --no-build-isolation -e .
+      - name: Run CPU tests
+        env:
+          PYTHONDONTWRITEBYTECODE: "1"
+        run: python -m pytest -m "not cuda" -q
+
+  lint:
+    name: Ruff safety checks
+    needs: contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install Ruff
+        run: python -m pip install --upgrade pip "ruff>=0.8,<1"
+      - name: Run Ruff
+        # The legacy benchmark monolith is not style-clean yet. Gate the
+        # syntax and undefined-name rules that can catch correctness issues.
+        run: ruff check src tests benchmarks validation --select E9,F63,F7,F82 --output-format=github
+
+  evidence:
+    name: Published compiled-step screen
+    needs: contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install evidence dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install --index-url https://download.pytorch.org/whl/cpu torch==2.9.0
+          # The checked-in historical PNG/SVG were generated with 3.8.0;
+          # pin its glyph metrics for the byte-for-byte regeneration check.
+          python -m pip install "pytest>=7" "numpy>=1.24,<3" "matplotlib==3.8.0"
+          python -m pip install --no-deps --no-build-isolation -e .
+      - name: Verify current compiled-step evidence and populated chart
+        env:
+          PYTHONDONTWRITEBYTECODE: "1"
+          PYTHONPATH: src:.
+          MPLBACKEND: Agg
+        run: |
+          set -euo pipefail
+          python -m pytest tests/test_benchmark.py tests/test_production_ladder_configs.py \
+            tests/test_plot_compiled_step_sweep.py -q
+
+  package:
+    name: Build and install distributions
+    needs: [cpu, lint, evidence]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install packaging dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install --index-url https://download.pytorch.org/whl/cpu torch==2.9.0
+          python -m pip install "setuptools>=68" wheel "build>=1" "twine>=5"
+      - name: Build wheel and source distribution
+        env:
+          PYTHONDONTWRITEBYTECODE: "1"
+        run: |
+          dist_dir="${RUNNER_TEMP}/fast-attnres-dist"
+          mkdir -p "$dist_dir"
+          python -m build --wheel --sdist --no-isolation --outdir "$dist_dir"
+          DIST_DIR="$dist_dir" python - <<'PY'
+          import os
+          from pathlib import Path
+
+          dist = Path(os.environ["DIST_DIR"])
+          wheels = sorted(dist.glob("fast_attnres-*.whl"))
+          sdists = sorted(dist.glob("fast_attnres-*.tar.gz"))
+          assert len(wheels) == 1, wheels
+          assert len(sdists) == 1, sdists
+          print(wheels[0].name)
+          print(sdists[0].name)
+          PY
+          python -m twine check "$dist_dir"/*
+      - name: Install wheel and sdist into clean targets
+        env:
+          PYTHONDONTWRITEBYTECODE: "1"
+        run: |
+          dist_dir="${RUNNER_TEMP}/fast-attnres-dist"
+          for archive in "$dist_dir"/fast_attnres-*.whl "$dist_dir"/fast_attnres-*.tar.gz; do
+            install_dir="${RUNNER_TEMP}/install-$(basename "$archive")"
+            mkdir -p "$install_dir"
+            if [[ "$archive" == *.tar.gz ]]; then
+              python -m pip install --no-deps --no-build-isolation --target "$install_dir" "$archive"
+            else
+              python -m pip install --no-deps --target "$install_dir" "$archive"
+            fi
+            (
+              cd "$RUNNER_TEMP"
+              ATTNRES_INSTALL_DIR="$install_dir" PYTHONPATH="$install_dir" PYTHONNOUSERSITE=1 \
+                python - <<'PY'
+          import importlib.metadata
+          import os
+          from pathlib import Path
+
+          import torch
+
+          import attnres
+
+          install_dir = Path(os.environ["ATTNRES_INSTALL_DIR"]).resolve()
+          package_file = Path(attnres.__file__).resolve()
+          assert install_dir in package_file.parents, package_file
+          assert importlib.metadata.version("fast-attnres") == "1.0.0"
+          required_exports = {"attnres", "reference_attnres", "LearnedQuery", "__version__"}
+          assert required_exports <= set(attnres.__all__)
+          values = torch.randn(2, 1, 4)
+          query = torch.randn(4)
+          assert attnres.attnres(values, query).shape == (1, 4)
+          PY
+            )
+          done
+
+  cuda:
+    name: CUDA qualification / ${{ matrix.gpu }}
+    needs: contract
+    # Manual GPU work is restricted to protected main or a protected v* tag. This keeps
+    # pull requests and ordinary pushes free of self-hosted GPU execution.
+    if: >-
+      github.event_name == 'workflow_dispatch' &&
+      inputs.run_cuda == true &&
+      (
+        (github.ref == 'refs/heads/main' && github.ref_protected == true) ||
+        (startsWith(github.ref, 'refs/tags/v') && github.ref_protected == true)
+      )
+    runs-on: [self-hosted, linux, x64, gpu]
+    environment: gpu-qualification
+    concurrency:
+      group: fast-attnres-gpu-qualification
+      cancel-in-progress: false
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        gpu: ["H100!", "B200"]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install supported CUDA pair
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install --index-url https://download.pytorch.org/whl/cu130 "torch==2.13.0"
+          python -m pip install "triton==3.7.1" "setuptools>=68" wheel "pytest>=7" "numpy>=1.24,<3"
+          python -m pip install --no-deps --no-build-isolation -e .
+      - name: Verify device and runtime identity
+        env:
+          EXPECTED_GPU: ${{ matrix.gpu }}
+        run: |
+          python - <<'PY'
+          import os
+
+          import torch
+          import triton
+
+          expected = os.environ["EXPECTED_GPU"].rstrip("!").upper()
+          assert str(torch.__version__).split("+", 1)[0] == "2.13.0", torch.__version__
+          assert triton.__version__ == "3.7.1", triton.__version__
+          assert torch.cuda.is_available(), "CUDA is unavailable on the selected runner"
+          name = torch.cuda.get_device_name().upper()
+          assert expected in name, (expected, name)
+          capability = torch.cuda.get_device_capability()
+          expected_capability = (9, 0) if expected == "H100" else (10, 0)
+          assert capability == expected_capability, (expected, capability)
+          print({"device": name, "capability": capability, "torch": torch.__version__, "triton": triton.__version__})
+          PY
+      - name: Run CUDA correctness qualification
+        env:
+          PYTHONDONTWRITEBYTECODE: "1"
+        run: python -m pytest -m cuda -q
+      - name: Run opt-in qualification benchmark
+        if: ${{ inputs.run_benchmark == true }}
+        env:
+          PYTHONDONTWRITEBYTECODE: "1"
+        run: |
+          python -m benchmarks.run \
+            --scope "${{ inputs.qualification_scope }}" \
+            --phase correctness \
+            --phase operator \
+            --phase model \
+            --no-fla \
+            --out "${RUNNER_TEMP}/fast-attnres-${{ matrix.gpu }}-${{ inputs.qualification_scope }}.json"
+      - name: Upload opt-in benchmark report
+        if: ${{ inputs.run_benchmark == true }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: fast-attnres-${{ matrix.gpu }}-${{ inputs.qualification_scope }}
+          path: ${{ runner.temp }}/fast-attnres-${{ matrix.gpu }}-${{ inputs.qualification_scope }}.json
+          if-no-files-found: error

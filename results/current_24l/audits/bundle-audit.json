@@ -1,0 +1,138 @@
+{
+  "reports": {
+    "B200": {
+      "bytes": 9671027,
+      "gpu": "B200",
+      "median_advantage_pct": 15.519781490590379,
+      "report_sha256": "9db6cea6616ea749ff3a7724840772b10adf057fad977af7814ea51aaab393bc",
+      "results": [
+        {
+          "bootstrap_samples": 20000,
+          "candidate_mean_ms": 16.528320010503133,
+          "ci": [
+            0.845938808970568,
+            0.8461479966472689
+          ],
+          "ci_high": 0.8461479966472689,
+          "ci_low": 0.845938808970568,
+          "classification": "gain",
+          "confidence": 0.95,
+          "estimate": 0.8460434028089184,
+          "fla_mean_ms": 19.536021296183268,
+          "n": 120,
+          "ratio": 0.8460434028089184,
+          "seed": 20260827,
+          "simultaneous": true
+        },
+        {
+          "bootstrap_samples": 20000,
+          "candidate_mean_ms": 16.530072530110676,
+          "ci": [
+            0.8446765132042848,
+            0.8449278569839076
+          ],
+          "ci_high": 0.8449278569839076,
+          "ci_low": 0.8446765132042848,
+          "classification": "gain",
+          "confidence": 0.95,
+          "estimate": 0.8448021850940962,
+          "fla_mean_ms": 19.566798973083497,
+          "n": 120,
+          "ratio": 0.8448021850940962,
+          "seed": 20260903,
+          "simultaneous": true
+        },
+        {
+          "bootstrap_samples": 20000,
+          "candidate_mean_ms": 16.524753665924074,
+          "ci": [
+            0.8446279827095358,
+            0.8449158162667287
+          ],
+          "ci_high": 0.8449158162667287,
+          "ci_low": 0.8446279827095358,
+          "classification": "gain",
+          "confidence": 0.95,
+          "estimate": 0.8447718994881322,
+          "fla_mean_ms": 19.56120621363322,
+          "n": 120,
+          "ratio": 0.8447718994881322,
+          "seed": 20260911,
+          "simultaneous": true
+        }
+      ],
+      "schema": "attnres.current_24l.audit.v1",
+      "source_archive_sha256": "d0efbd3d70cdceb870d2c0b969a94a0444c968022b994f9203af046ef38a8648",
+      "status": "passed",
+      "verification_sha256": "c83af3c2c4a7f50c38f161cbb0d1641d760fe66062c819347acf6dc1e1adfd68"
+    },
+    "H100": {
+      "bytes": 9671771,
+      "gpu": "H100!",
+      "median_advantage_pct": 5.195676724310161,
+      "report_sha256": "38b6bb49736fbd735553dc48daa04033c5321a78ac0d9285f53cffc202d5b093",
+      "results": [
+        {
+          "bootstrap_samples": 20000,
+          "candidate_mean_ms": 28.40124077796936,
+          "ci": [
+            0.9474204481763568,
+            0.9477884592181323
+          ],
+          "ci_high": 0.9477884592181323,
+          "ci_low": 0.9474204481763568,
+          "classification": "gain",
+          "confidence": 0.95,
+          "estimate": 0.9476044536972446,
+          "fla_mean_ms": 29.971632544199625,
+          "n": 120,
+          "ratio": 0.9476044536972446,
+          "seed": 20260827,
+          "simultaneous": true
+        },
+        {
+          "bootstrap_samples": 20000,
+          "candidate_mean_ms": 28.42234123547872,
+          "ci": [
+            0.9478707896407577,
+            0.9482528606096574
+          ],
+          "ci_high": 0.9482528606096574,
+          "ci_low": 0.9478707896407577,
+          "classification": "gain",
+          "confidence": 0.95,
+          "estimate": 0.9480618251252075,
+          "fla_mean_ms": 29.979434124628703,
+          "n": 120,
+          "ratio": 0.9480618251252075,
+          "seed": 20260903,
+          "simultaneous": true
+        },
+        {
+          "bootstrap_samples": 20000,
+          "candidate_mean_ms": 28.414657815297446,
+          "ci": [
+            0.947863442978249,
+            0.9482230225355478
+          ],
+          "ci_high": 0.9482230225355478,
+          "ci_low": 0.947863442978249,
+          "classification": "gain",
+          "confidence": 0.95,
+          "estimate": 0.9480432327568984,
+          "fla_mean_ms": 29.971913003921507,
+          "n": 120,
+          "ratio": 0.9480432327568984,
+          "seed": 20260911,
+          "simultaneous": true
+        }
+      ],
+      "schema": "attnres.current_24l.audit.v1",
+      "source_archive_sha256": "d0efbd3d70cdceb870d2c0b969a94a0444c968022b994f9203af046ef38a8648",
+      "status": "passed",
+      "verification_sha256": "c83af3c2c4a7f50c38f161cbb0d1641d760fe66062c819347acf6dc1e1adfd68"
+    }
+  },
+  "schema": "attnres.current_24l.audit.v1",
+  "status": "passed"
+}

@@ -1,0 +1,1 @@
+"""Frozen independent validation inputs."""

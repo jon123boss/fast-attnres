@@ -1,0 +1,68 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "fast-attnres"
+version = "1.0.0"
+description = "Fast PyTorch training operators for standard and sliced low-rank Attention Residuals"
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [{name = "Jonathan Su"}]
+dependencies = ["torch>=2.9"]
+license = {text = "MIT"}
+keywords = ["pytorch", "attention", "residuals", "triton", "cuda", "bfloat16"]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Typing :: Typed",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+
+[project.urls]
+Homepage = "https://github.com/jon123boss/fast-attnres"
+Repository = "https://github.com/jon123boss/fast-attnres"
+Issues = "https://github.com/jon123boss/fast-attnres/issues"
+Documentation = "https://github.com/jon123boss/fast-attnres#readme"
+Citation = "https://github.com/jon123boss/fast-attnres/blob/v1.0.0/CITATION.cff"
+Paper = "https://arxiv.org/abs/2603.15031"
+"LR-AttnRes Paper" = "https://arxiv.org/abs/2607.09694"
+
+[project.scripts]
+fast-attnres-info = "attnres.info:main"
+
+[project.optional-dependencies]
+cuda = [
+    "torch==2.13.0; platform_system == 'Linux' and platform_machine == 'x86_64'",
+    "triton==3.7.1; platform_system == 'Linux' and platform_machine == 'x86_64'",
+]
+test = [
+    "pytest>=7",
+    "numpy>=1.24,<3",
+    "tomli>=2; python_version < '3.11'",
+]
+dev = ["build>=1", "ruff>=0.8"]
+benchmark = ["numpy>=1.24,<3", "einops>=0.8", "modal==1.5.4"]
+plot = ["matplotlib>=3.8,<4", "numpy>=1.24,<3"]
+
+[tool.setuptools]
+include-package-data = true
+license-files = ["LICENSE", "NOTICE"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+attnres = ["py.typed", "*.pyi"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src", "."]
+markers = ["cuda: requires a CUDA GPU and Triton"]
+
+[tool.ruff]
+line-length = 100

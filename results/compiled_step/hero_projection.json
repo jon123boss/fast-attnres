@@ -1,0 +1,91 @@
+{
+  "campaign": {
+    "baseline": "native FLA Triton checkpoint 1",
+    "confidence": 0.95,
+    "dtype": "bf16",
+    "mode": "full",
+    "model": {
+      "batch": 2,
+      "block_count": 8,
+      "ffn": 2816,
+      "heads": 16,
+      "layers": 24,
+      "sequence": 1024,
+      "vocab": 32768,
+      "width": 1024
+    },
+    "optimizer": "AdamW (fused, capturable)",
+    "rank_relation": "R=D",
+    "rounds": 120,
+    "schedule": "ordered source-list; 48 reads (S=2\u202649); deterministic order/reverse ABBA",
+    "seeds": [
+      "20260827",
+      "20260903",
+      "20260911"
+    ],
+    "timing_method": "cuda_graph",
+    "warmup": 10
+  },
+  "devices": {
+    "B200": {
+      "absolute_ms": {
+        "attnres": 17.24111772113376,
+        "fla_ckpt1": 19.516461584303116
+      },
+      "ratios": [
+        {
+          "ci_high": 0.8847295319235433,
+          "ci_low": 0.8845097884468889,
+          "ratio": 0.8846196601852161,
+          "seed": "20260827"
+        },
+        {
+          "ci_high": 0.8831292523912723,
+          "ci_low": 0.8828465192094216,
+          "ratio": 0.8829878858003469,
+          "seed": "20260903"
+        },
+        {
+          "ci_high": 0.8827986912462276,
+          "ci_low": 0.8824696265274634,
+          "ratio": 0.8826341588868455,
+          "seed": "20260911"
+        }
+      ]
+    },
+    "H100 SXM": {
+      "absolute_ms": {
+        "attnres": 28.497857718997533,
+        "fla_ckpt1": 29.722211451000636
+      },
+      "ratios": [
+        {
+          "ci_high": 0.9590955505067097,
+          "ci_low": 0.9587304735909733,
+          "ratio": 0.9589130120488415,
+          "seed": "20260827"
+        },
+        {
+          "ci_high": 0.9591156424679956,
+          "ci_low": 0.958725420227236,
+          "ratio": 0.9589205313476158,
+          "seed": "20260903"
+        },
+        {
+          "ci_high": 0.958758550880628,
+          "ci_low": 0.9584077633750656,
+          "ratio": 0.9585831571278468,
+          "seed": "20260911"
+        }
+      ]
+    }
+  },
+  "provenance": {
+    "audit_schema": "attnres.compiled_step_campaign.audit.v1",
+    "audit_status": "passed",
+    "generator": "benchmarks/audit_compiled_step.py",
+    "source_digest": "8c56a0d51566b064c7f874a5c0e23a56315f9f5d0219ed7ffebaf3fce18b3293"
+  },
+  "schema": "attnres.compiled_step_hero_projection.v1",
+  "status": "audited"
+}

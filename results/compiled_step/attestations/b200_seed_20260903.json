@@ -1,0 +1,25 @@
+{
+  "hardware": {
+    "capability": [
+      10,
+      0
+    ],
+    "gpu": "B200",
+    "multi_processor_count": 148,
+    "name": "NVIDIA B200",
+    "total_memory": 191503007744
+  },
+  "hashes": {
+    "hardware_sha256": "6ff3ca10178175f0f650157dfd577db227664b991e23023b19c4366661426232",
+    "vendor_sha256": "fd7a491e097761ba0a1c69b95e9c39b55660e79f4208e9d62c3c6ddb64a1318c"
+  },
+  "report_sha256": "ac51374ea002e3b5cc4a3dddab401b5cf066f070505679efdc0704937ac43954",
+  "schema": "attnres.compiled_step_campaign.attestation.v1",
+  "vendor": {
+    "git_dirty": false,
+    "origin": "https://github.com/fla-org/flash-linear-attention.git",
+    "package_file_count": 506,
+    "package_sha256": "2cd59a9a50f34ecc4d9535ad51c9668cd4d8b67f519b8eb78b45ce2156288781",
+    "revision": "5e02dd3a7651f5f2797eb8b12bbec401826031e1"
+  }
+}

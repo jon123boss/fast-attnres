@@ -1,0 +1,91 @@
+{
+  "campaign": {
+    "baseline": "native FLA Triton checkpoint 1",
+    "confidence": 0.95,
+    "dtype": "bf16",
+    "mode": "full",
+    "model": {
+      "batch": 2,
+      "block_count": 8,
+      "ffn": 2816,
+      "heads": 16,
+      "layers": 24,
+      "sequence": 1024,
+      "vocab": 32768,
+      "width": 1024
+    },
+    "optimizer": "AdamW (fused, capturable)",
+    "rank_relation": "R=D",
+    "rounds": 120,
+    "schedule": "ordered source-list; 48 reads (S=2\u202649); deterministic order/reverse ABBA",
+    "seeds": [
+      "20260827",
+      "20260903",
+      "20260911"
+    ],
+    "timing_method": "cuda_graph",
+    "warmup": 10
+  },
+  "devices": {
+    "B200": {
+      "absolute_ms": {
+        "attnres": 16.5277154,
+        "fla_ckpt1": 19.5546755
+      },
+      "ratios": [
+        {
+          "ci_high": 0.8461479966,
+          "ci_low": 0.845938809,
+          "ratio": 0.8460434028,
+          "seed": "20260827"
+        },
+        {
+          "ci_high": 0.844927857,
+          "ci_low": 0.8446765132,
+          "ratio": 0.8448021851,
+          "seed": "20260903"
+        },
+        {
+          "ci_high": 0.8449158163,
+          "ci_low": 0.8446279827,
+          "ratio": 0.8447718995,
+          "seed": "20260911"
+        }
+      ]
+    },
+    "H100 SXM": {
+      "absolute_ms": {
+        "attnres": 28.4127466,
+        "fla_ckpt1": 29.9743266
+      },
+      "ratios": [
+        {
+          "ci_high": 0.9477884592,
+          "ci_low": 0.9474204482,
+          "ratio": 0.9476044537,
+          "seed": "20260827"
+        },
+        {
+          "ci_high": 0.9482528606,
+          "ci_low": 0.9478707896,
+          "ratio": 0.9480618251,
+          "seed": "20260903"
+        },
+        {
+          "ci_high": 0.9482230225,
+          "ci_low": 0.947863443,
+          "ratio": 0.9480432328,
+          "seed": "20260911"
+        }
+      ]
+    }
+  },
+  "provenance": {
+    "audit_schema": "attnres.current_24l.audit.v1",
+    "audit_status": "passed",
+    "generator": "benchmarks/audit_current_24l.py",
+    "source_digest": "c83af3c2c4a7f50c38f161cbb0d1641d760fe66062c819347acf6dc1e1adfd68"
+  },
+  "schema": "attnres.compiled_step_hero_projection.v1",
+  "status": "audited"
+}

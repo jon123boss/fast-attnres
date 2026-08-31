@@ -1,0 +1,25 @@
+{
+  "hardware": {
+    "capability": [
+      9,
+      0
+    ],
+    "gpu": "H100",
+    "multi_processor_count": 132,
+    "name": "NVIDIA H100 80GB HBM3",
+    "total_memory": 85017493504
+  },
+  "hashes": {
+    "hardware_sha256": "b63b82b677fb4f5c597e1b6d5b4381c1e4fba5b671579235809f8adf9d446721",
+    "vendor_sha256": "fd7a491e097761ba0a1c69b95e9c39b55660e79f4208e9d62c3c6ddb64a1318c"
+  },
+  "report_sha256": "532c9f4ad46a5dca2396c3c1c86a3c02f62278e8ce2e6b1824ecb19624c96140",
+  "schema": "attnres.compiled_step_campaign.attestation.v1",
+  "vendor": {
+    "git_dirty": false,
+    "origin": "https://github.com/fla-org/flash-linear-attention.git",
+    "package_file_count": 506,
+    "package_sha256": "2cd59a9a50f34ecc4d9535ad51c9668cd4d8b67f519b8eb78b45ce2156288781",
+    "revision": "5e02dd3a7651f5f2797eb8b12bbec401826031e1"
+  }
+}

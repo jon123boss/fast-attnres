@@ -1,0 +1,202 @@
+{
+  "artifacts": {
+    "B200": {
+      "audit_path": "b200-audit.json",
+      "audit_result": {
+        "bytes": 9671027,
+        "gpu": "B200",
+        "median_advantage_pct": 15.519781490590379,
+        "results": [
+          {
+            "bootstrap_samples": 20000,
+            "candidate_mean_ms": 16.528320010503133,
+            "ci": [
+              0.845938808970568,
+              0.8461479966472689
+            ],
+            "ci_high": 0.8461479966472689,
+            "ci_low": 0.845938808970568,
+            "classification": "gain",
+            "confidence": 0.95,
+            "estimate": 0.8460434028089184,
+            "fla_mean_ms": 19.536021296183268,
+            "n": 120,
+            "ratio": 0.8460434028089184,
+            "seed": 20260827,
+            "simultaneous": true
+          },
+          {
+            "bootstrap_samples": 20000,
+            "candidate_mean_ms": 16.530072530110676,
+            "ci": [
+              0.8446765132042848,
+              0.8449278569839076
+            ],
+            "ci_high": 0.8449278569839076,
+            "ci_low": 0.8446765132042848,
+            "classification": "gain",
+            "confidence": 0.95,
+            "estimate": 0.8448021850940962,
+            "fla_mean_ms": 19.566798973083497,
+            "n": 120,
+            "ratio": 0.8448021850940962,
+            "seed": 20260903,
+            "simultaneous": true
+          },
+          {
+            "bootstrap_samples": 20000,
+            "candidate_mean_ms": 16.524753665924074,
+            "ci": [
+              0.8446279827095358,
+              0.8449158162667287
+            ],
+            "ci_high": 0.8449158162667287,
+            "ci_low": 0.8446279827095358,
+            "classification": "gain",
+            "confidence": 0.95,
+            "estimate": 0.8447718994881322,
+            "fla_mean_ms": 19.56120621363322,
+            "n": 120,
+            "ratio": 0.8447718994881322,
+            "seed": 20260911,
+            "simultaneous": true
+          }
+        ],
+        "sha256": "9db6cea6616ea749ff3a7724840772b10adf057fad977af7814ea51aaab393bc"
+      },
+      "audit_sha256": "0809de2853158acdc8de47d4d3efaa152fbd93893341eb4ba0424b49b2b67a38",
+      "report": "b200-report.json",
+      "report_sha256": "9db6cea6616ea749ff3a7724840772b10adf057fad977af7814ea51aaab393bc"
+    },
+    "H100": {
+      "audit_path": "h100-audit.json",
+      "audit_result": {
+        "bytes": 9671771,
+        "gpu": "H100!",
+        "median_advantage_pct": 5.195676724310161,
+        "results": [
+          {
+            "bootstrap_samples": 20000,
+            "candidate_mean_ms": 28.40124077796936,
+            "ci": [
+              0.9474204481763568,
+              0.9477884592181323
+            ],
+            "ci_high": 0.9477884592181323,
+            "ci_low": 0.9474204481763568,
+            "classification": "gain",
+            "confidence": 0.95,
+            "estimate": 0.9476044536972446,
+            "fla_mean_ms": 29.971632544199625,
+            "n": 120,
+            "ratio": 0.9476044536972446,
+            "seed": 20260827,
+            "simultaneous": true
+          },
+          {
+            "bootstrap_samples": 20000,
+            "candidate_mean_ms": 28.42234123547872,
+            "ci": [
+              0.9478707896407577,
+              0.9482528606096574
+            ],
+            "ci_high": 0.9482528606096574,
+            "ci_low": 0.9478707896407577,
+            "classification": "gain",
+            "confidence": 0.95,
+            "estimate": 0.9480618251252075,
+            "fla_mean_ms": 29.979434124628703,
+            "n": 120,
+            "ratio": 0.9480618251252075,
+            "seed": 20260903,
+            "simultaneous": true
+          },
+          {
+            "bootstrap_samples": 20000,
+            "candidate_mean_ms": 28.414657815297446,
+            "ci": [
+              0.947863442978249,
+              0.9482230225355478
+            ],
+            "ci_high": 0.9482230225355478,
+            "ci_low": 0.947863442978249,
+            "classification": "gain",
+            "confidence": 0.95,
+            "estimate": 0.9480432327568984,
+            "fla_mean_ms": 29.971913003921507,
+            "n": 120,
+            "ratio": 0.9480432327568984,
+            "seed": 20260911,
+            "simultaneous": true
+          }
+        ],
+        "sha256": "38b6bb49736fbd735553dc48daa04033c5321a78ac0d9285f53cffc202d5b093"
+      },
+      "audit_sha256": "a736ac2d303047da896ca30dc93a524d1080315c53b5647edd5ebab495426a73",
+      "report": "h100-report.json",
+      "report_sha256": "38b6bb49736fbd735553dc48daa04033c5321a78ac0d9285f53cffc202d5b093"
+    }
+  },
+  "fla": {
+    "origin": "https://github.com/fla-org/flash-linear-attention.git",
+    "package_sha256": "2cd59a9a50f34ecc4d9535ad51c9668cd4d8b67f519b8eb78b45ce2156288781",
+    "revision": "5e02dd3a7651f5f2797eb8b12bbec401826031e1",
+    "tree": "7e4199902fb291c78b3937f223b08ae7bca82bb1"
+  },
+  "invalidated_predecessor": {
+    "app_id": "ap-I4iNFEVkkZq3dPvBv3eR0x",
+    "reason": "FLA checkout lacked Git metadata; no ratios accepted"
+  },
+  "modal": {
+    "app_id": "ap-oODWwtqD2TumRub2B3fQxA",
+    "b200_call_id": "fc-01M1B2R1R9KAJP4DYV4J1KDDJX",
+    "h100_call_id": "fc-01M1B2R1F8237VFV3AXRFQFW5W",
+    "status": "stopped"
+  },
+  "protocol": {
+    "batch": 2,
+    "dtype": "bf16",
+    "ffn": 2816,
+    "heads": 16,
+    "layers": 24,
+    "mode": "full",
+    "optimizer": "AdamW(fused=True,capturable=True)",
+    "paired_rounds_per_seed": 120,
+    "pooled_gpus": false,
+    "pooled_seeds": false,
+    "rank": 1024,
+    "read_count": 48,
+    "seeds": [
+      20260827,
+      20260903,
+      20260911
+    ],
+    "sequence": 1024,
+    "source_count_range": [
+      2,
+      49
+    ],
+    "source_layout": "ordered list",
+    "timing": "CUDA Graph complete training step",
+    "vocab": 32768,
+    "warmups_per_arm": 10,
+    "width": 1024
+  },
+  "runtime": {
+    "cuda": "13.0",
+    "torch": "2.13.0+cu130",
+    "triton": "3.7.1"
+  },
+  "schema": "attnres.modal_24l_current_verification.v1",
+  "source": {
+    "checkout_clean": true,
+    "history_commit_count": 1,
+    "revision": "b8837e1d74eb708a39a455840332247725a26496",
+    "tree": "6a807f2f739c45f8ec9051e83df6d7ab4df560ba"
+  },
+  "status": "passed",
+  "transport": {
+    "path": "/private/tmp/attnres_modal_24l_current.py",
+    "sha256": "abe14e49aed9d31fba8517ca39dfb68e212db495817c0273e030c80cf20dc60e"
+  }
+}

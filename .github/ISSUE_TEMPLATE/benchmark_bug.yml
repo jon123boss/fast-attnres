@@ -1,0 +1,104 @@
+name: Benchmark or correctness report
+description: Report a broken benchmark, correctness failure, or non-reproducible performance result.
+title: "[Benchmark]: "
+labels:
+  - benchmark
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for preserving the evidence. In this project, correctness must
+        pass before timing is considered. A timing result from a failed,
+        skipped, fallback, or partial correctness gate is a diagnostic result,
+        not an accepted performance result. Remove secrets and private data
+        before posting artifacts.
+  - type: dropdown
+    id: report_type
+    attributes:
+      label: Report type
+      options:
+        - Correctness failure
+        - Benchmark harness or measurement bug
+        - Performance regression
+        - Non-reproducible performance result
+        - Other benchmark issue
+    validations:
+      required: true
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: State the result, failure, or discrepancy in a few sentences.
+    validations:
+      required: true
+  - type: input
+    id: commit
+    attributes:
+      label: Candidate commit or source hash
+      placeholder: Exact commit or source hash used for the run.
+    validations:
+      required: true
+  - type: textarea
+    id: setup
+    attributes:
+      label: Matched setup
+      description: Include candidate and baseline routes, device, OS, driver/runtime, framework/compiler versions, dtype, B/T/D/R/S, model configuration, source container, and route flags.
+      placeholder: |
+        Candidate route:
+        Baseline route:
+        Device and runtime:
+        Framework/compiler:
+        Dtype:
+        Batch / sequence / width / rank / sources:
+        Model configuration and flags:
+    validations:
+      required: true
+  - type: textarea
+    id: command
+    attributes:
+      label: Reproduction command
+      description: Include the exact command or a minimal script. Do not include credentials.
+      render: shell
+    validations:
+      required: true
+  - type: textarea
+    id: correctness
+    attributes:
+      label: Correctness gate
+      description: Name the independent FP32 equation oracle and report forward, loss, all relevant gradients, route identity, layouts, metadata, tolerances, and the complete shape matrix. State clearly whether the gate passed, failed, skipped, or was not run.
+      placeholder: |
+        Reference:
+        Tolerances:
+        Forward/loss:
+        Gradients:
+        Route, layouts, and metadata:
+        Shapes and cases:
+        Gate status:
+    validations:
+      required: true
+  - type: textarea
+    id: timing
+    attributes:
+      label: Timing evidence
+      description: If timing ran, include the complete timing boundary, warmups, repetitions, synchronization, timing method, raw samples or artifact link, and the speed criterion. A status of passed alone is not a speedup claim.
+      render: text
+  - type: textarea
+    id: output
+    attributes:
+      label: Logs and artifacts
+      description: Paste relevant output or link durable JSON/CSV/plots. Replace secrets with [REDACTED_SECRET].
+      render: text
+    validations:
+      required: true
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Reporting checks
+      options:
+        - label: I did not change evaluator inputs, timing code, or correctness logic to manufacture this result.
+          required: true
+        - label: I have labelled partial, skipped, untimed, fallback, provisional, rejected, and historical results accurately.
+          required: true
+        - label: I removed credentials and private data from this report and its artifacts.
+          required: true

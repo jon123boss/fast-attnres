@@ -1,0 +1,129 @@
+{
+  "config_path": "configs/compiled_step_campaign.json",
+  "config_sha256": "8109021e06f415ae08860ee6f18af83b953367e99f206b3133c7c35e3fb560ef",
+  "fla": {
+    "origin": "https://github.com/fla-org/flash-linear-attention.git",
+    "package_sha256": "2cd59a9a50f34ecc4d9535ad51c9668cd4d8b67f519b8eb78b45ce2156288781",
+    "revision": "5e02dd3a7651f5f2797eb8b12bbec401826031e1",
+    "source_sha256": {
+      "fla/ops/attnres/backends/gluon.py": "f8f163fb7ebb8d035236674aeb668483812fb4e9a29572ed2ae937c626990190",
+      "fla/ops/attnres/fused.py": "0e4683ab291086a9c3919d7352e2a998112973c94f5363e58f76ea7efea114f3"
+    }
+  },
+  "gpus": {
+    "B200": {
+      "capability": [
+        10,
+        0
+      ],
+      "name": "NVIDIA B200",
+      "selector": "B200"
+    },
+    "H100": {
+      "capability": [
+        9,
+        0
+      ],
+      "name": "NVIDIA H100 80GB HBM3",
+      "selector": "H100"
+    }
+  },
+  "jobs": [
+    {
+      "filename": "h100-full-seed20260827.json",
+      "gpu": "H100",
+      "seed": 20260827
+    },
+    {
+      "filename": "h100-full-seed20260903.json",
+      "gpu": "H100",
+      "seed": 20260903
+    },
+    {
+      "filename": "h100-full-seed20260911.json",
+      "gpu": "H100",
+      "seed": 20260911
+    },
+    {
+      "filename": "b200-full-seed20260827.json",
+      "gpu": "B200",
+      "seed": 20260827
+    },
+    {
+      "filename": "b200-full-seed20260903.json",
+      "gpu": "B200",
+      "seed": 20260903
+    },
+    {
+      "filename": "b200-full-seed20260911.json",
+      "gpu": "B200",
+      "seed": 20260911
+    }
+  ],
+  "repo_base_revision": "81dffbfeb0f84470513e846e3df8080e8ffb563d",
+  "rms_weight_lifecycle": {
+    "allocation_phase": "model_construction_before_compile_and_capture",
+    "compiled_model_fill_launches_avoided_per_step": 1,
+    "compiled_model_fill_launches_per_step": 0,
+    "contract": "native_fla_unit_rms_v1",
+    "direct_call_fallback": "query_ones",
+    "fill_phase": "model_construction_only",
+    "included_timed_operation": "native_kernel_reads_preallocated_buffer",
+    "model_rms_weight_allocation": "nonpersistent_buffer",
+    "model_rms_weight_dtype": "float32",
+    "model_rms_weight_name": "_backend_rms_weight",
+    "model_rms_weight_requires_grad": false,
+    "model_rms_weight_reuse": "one_buffer_per_model",
+    "model_rms_weight_shape": "[R]",
+    "output_rms_weight": null,
+    "value": "ones"
+  },
+  "runtime": {
+    "cuda_runtime": "13.0",
+    "torch": "2.13.0+cu130",
+    "triton": "3.7.1"
+  },
+  "schema": "attnres.compiled_step_campaign.manifest.v1",
+  "seeds": [
+    20260827,
+    20260903,
+    20260911
+  ],
+  "source_sha256": {
+    "benchmarks/competitors.py": "267d7dce63f3333762a1439bb2aaf8216648feffd0721fc5fd6dc2fd934b1306",
+    "benchmarks/fla_compile.py": "96e98ca3f488a36832aa767d5c3b12a5ae3544d8fc12d042c734037b62a25f75",
+    "benchmarks/model.py": "a921d49ed4e4c2e12113d87c2cda9743e7a297bd26d4c31e77cab71dc254c21d",
+    "benchmarks/run.py": "450e45d72145b3d890823cf5c47eb9c328d7d8e994d0c9857b706fa32c8d849f",
+    "benchmarks/training_graph.py": "b35e04997c5e2653087814b046d72b2bb5945017ed621ba880b53bb7d9f1524f",
+    "src/attnres/_kernels/fixed_tail.py": "2333b3034e3c0e6493855b1246280ed91e65d29a962ce1d150beff71e8bbd34e",
+    "src/attnres/_kernels/fixed_tail_sources.py": "1373614c93d7291ad96697b1b8ff627120590b75f63f7e38bd65d50b19fcfb4a",
+    "src/attnres/_kernels/fla_full_sources.py": "8749c72c4714145214e33e8bc7d37f57b47a79b67f2e83044205db72cda416fa"
+  },
+  "timing_contract": {
+    "event_call": "CUDA events around CapturedTrainingStep.replay only",
+    "inside_cuda_event": [
+      "BF16 autocast",
+      "zero_grad",
+      "model forward",
+      "cross_entropy loss",
+      "backward",
+      "gradient accumulation",
+      "AdamW optimizer.step"
+    ],
+    "outside_cuda_event": [
+      "input copies via CapturedTrainingStep.copy_inputs",
+      "logical input ID assignment; no tensor byte hashing",
+      "device-to-host validation and report serialization",
+      "torch.compile for the model and loss",
+      "optimizer construction and state initialization",
+      "warmup replays",
+      "CUDA Graph capture",
+      "CUDA event synchronization",
+      "pre-timing complete-step and changed-input graph gates"
+    ],
+    "per_round_numerical_checks": false,
+    "timed_input_copy": false,
+    "timed_qualification": false,
+    "timed_tensor_hashing": false
+  }
+}

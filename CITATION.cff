@@ -1,0 +1,36 @@
+cff-version: 1.2.0
+title: Fast Attention Residuals
+message: "If you use Fast-AttnRes in your work, please cite this software."
+type: software
+authors:
+  - family-names: Su
+    given-names: Jonathan
+repository-code: "https://github.com/jon123boss/fast-attnres"
+url: "https://github.com/jon123boss/fast-attnres"
+license: MIT
+version: 1.0.0
+date-released: "2026-08-31"
+keywords:
+  - Attention Residuals
+  - LR-AttnRes
+  - PyTorch
+  - Triton
+references:
+  - type: article
+    title: Low-Rank Attention Residuals
+    authors:
+      - family-names: Su
+        given-names: Jonathan
+    identifiers:
+      - type: url
+        value: "https://arxiv.org/abs/2607.09694"
+  - type: article
+    title: Attention Residuals
+    authors:
+      - name: Kimi Team
+    year: 2026
+    status: preprint
+    url: "https://arxiv.org/abs/2603.15031"
+    identifiers:
+      - type: url
+        value: "https://arxiv.org/abs/2603.15031"

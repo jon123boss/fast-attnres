@@ -1,0 +1,15 @@
+.venv/
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+build/
+dist/
+results/*
+!results/adoption/
+!results/adoption/**
+!results/compiled_step/
+!results/compiled_step/**
+!results/current_24l/
+!results/current_24l/**
+.DS_Store

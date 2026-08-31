@@ -1,0 +1,56 @@
+name: Support question
+description: Ask for help using, reproducing, or understanding Fast-AttnRes.
+title: "[Support]: "
+labels:
+  - question
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please include enough detail to reproduce the question, while removing
+        credentials, private data, and sensitive local paths.
+  - type: textarea
+    id: goal
+    attributes:
+      label: What are you trying to do?
+      description: Describe your command, experiment, or expected workflow.
+    validations:
+      required: true
+  - type: textarea
+    id: command
+    attributes:
+      label: Command or minimal example
+      description: Paste the smallest command or script that shows the issue.
+      render: shell
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Include commit, OS, Python, PyTorch, CUDA/Triton/driver, device, dtype, and relevant flags.
+      placeholder: |
+        Commit:
+        OS:
+        Python:
+        PyTorch:
+        CUDA/Triton/driver:
+        Device:
+        Dtype and flags:
+    validations:
+      required: true
+  - type: textarea
+    id: output
+    attributes:
+      label: Output and what you expected
+      description: Include the relevant output and explain the expected result. Replace secrets with [REDACTED_SECRET].
+      render: text
+    validations:
+      required: true
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checks
+      options:
+        - label: I searched the README and existing issues and removed secrets/private data.
+          required: true

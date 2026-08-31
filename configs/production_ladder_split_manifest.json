@@ -1,0 +1,241 @@
+{
+  "schema": "attnres.production_ladder_split_manifest.v1",
+  "purpose": "Runtime-safe complete-training rank-ladder jobs for the active autotuned source candidate",
+  "source_gate_revision": "8ddb0bbaf184663703ded65b45839fddd1c429fc",
+  "source_gate_tree": "a91fb6d7662c36652bf648aa2e8170c90887bc1a",
+  "fla_checkout": {
+    "environment": "ATTNRES_FLA_DIR",
+    "layout": "clean checkout containing fla/",
+    "revision": "5e02dd3a7651f5f2797eb8b12bbec401826031e1",
+    "package_sha256": "2cd59a9a50f34ecc4d9535ad51c9668cd4d8b67f519b8eb78b45ce2156288781",
+    "required_clean": true
+  },
+  "evaluator": {
+    "entrypoint": "benchmarks.run.run_suite",
+    "task": "suite",
+    "scope": "primary",
+    "phases": [
+      "model"
+    ],
+    "model_timing": "cuda_graph"
+  },
+  "hardware_order": [
+    "H100!",
+    "B200"
+  ],
+  "rank_ladder": [
+    1,
+    2,
+    4,
+    8,
+    16,
+    32,
+    64,
+    128,
+    256,
+    512,
+    768,
+    1024
+  ],
+  "split_groups": [
+    {
+      "id": "s01",
+      "ranks": [
+        1,
+        2,
+        4
+      ],
+      "adjacent_edges": [
+        [
+          1,
+          2
+        ],
+        [
+          2,
+          4
+        ]
+      ],
+      "max_kernel_ranks": 3
+    },
+    {
+      "id": "s02",
+      "ranks": [
+        4,
+        8,
+        16
+      ],
+      "adjacent_edges": [
+        [
+          4,
+          8
+        ],
+        [
+          8,
+          16
+        ]
+      ],
+      "max_kernel_ranks": 3
+    },
+    {
+      "id": "s03",
+      "ranks": [
+        16,
+        32,
+        64
+      ],
+      "adjacent_edges": [
+        [
+          16,
+          32
+        ],
+        [
+          32,
+          64
+        ]
+      ],
+      "max_kernel_ranks": 3
+    },
+    {
+      "id": "s04",
+      "ranks": [
+        64,
+        128,
+        256
+      ],
+      "adjacent_edges": [
+        [
+          64,
+          128
+        ],
+        [
+          128,
+          256
+        ]
+      ],
+      "max_kernel_ranks": 3
+    },
+    {
+      "id": "s05",
+      "ranks": [
+        256,
+        512,
+        768
+      ],
+      "adjacent_edges": [
+        [
+          256,
+          512
+        ],
+        [
+          512,
+          768
+        ]
+      ],
+      "max_kernel_ranks": 3
+    },
+    {
+      "id": "s06",
+      "ranks": [
+        768,
+        1024
+      ],
+      "adjacent_edges": [
+        [
+          768,
+          1024
+        ]
+      ],
+      "max_kernel_ranks": 2
+    }
+  ],
+  "priority_first_gate": {
+    "id": "priority_first_gate",
+    "purpose": "Bounded first gate for the explicitly requested key ranks",
+    "ranks": [
+      16,
+      64,
+      128,
+      512,
+      1024
+    ],
+    "adjacent_rank_order_pairs": [
+      [
+        16,
+        64
+      ],
+      [
+        64,
+        128
+      ],
+      [
+        128,
+        512
+      ],
+      [
+        512,
+        1024
+      ]
+    ],
+    "base_configs": {
+      "full": "production_ladder_full.json",
+      "block": "production_ladder_block.json"
+    },
+    "mode_order": [
+      "full",
+      "block"
+    ],
+    "hardware_order": [
+      "H100!",
+      "B200"
+    ],
+    "job_count": 4,
+    "pairwise": false,
+    "shared_input_rule": "One changed input hash per sample across all five selected kernel ranks and the native FLA anchor in each mode/hardware job",
+    "edge_scope": "Adjacent in this priority rank order only; this gate does not replace the requested ladder edge split jobs"
+  },
+  "modes": {
+    "full": {
+      "base_config": "production_ladder_full.json",
+      "job_id_prefix": "resident_full"
+    },
+    "block": {
+      "base_config": "production_ladder_block.json",
+      "job_id_prefix": "resident_block"
+    }
+  },
+  "job_matrix": {
+    "definition": "Priority first gate followed by the Cartesian product of modes, hardware_order, and split_groups",
+    "job_count": 28,
+    "priority_first_gate_job_count": 4,
+    "ladder_split_job_count": 24,
+    "hardware_sequence": "Run priority first-gate Full then Block jobs on H100!, then the six ladder split groups in order; repeat the same sequence on B200",
+    "effective_config": "Load the mode base_config and replace only ranks with either priority_first_gate.ranks or the selected split group's ranks",
+    "required_rounds": 120,
+    "required_warmup": 10,
+    "timed_kernel_arms": "one kernel arm per selected rank",
+    "timed_fla_arm": "one native Triton checkpoint-1 standard R=D arm per job",
+    "shared_input_rule": "All kernel and FLA arms in one job receive one changed input hash per sample",
+    "cross_job_rule": "Do not join raw samples, ratios, bootstrap pools, or hardware arms across jobs"
+  },
+  "audit_requirements": {
+    "every_job": [
+      "status=complete",
+      "model_timings.status=complete",
+      "reference qualification passed for every kernel rank",
+      "compile and complete-step CUDA Graph capture passed for every timed arm",
+      "120 rows per timed arm with finite positive latency",
+      "changed inputs and one shared input hash per sample",
+      "zero timed graph breaks, recompiles, or new unique graphs"
+    ],
+    "priority_first_gate": "Require the same complete-training, qualification, capture, changed-input, and graph-stability checks for all four priority jobs; evaluate only the four adjacent pairs in priority_first_gate.adjacent_rank_order_pairs",
+    "edge_gate": "Evaluate each listed adjacent edge only within the split job containing both ranks; report cross-job familywise status as unavailable",
+    "hardware_gate": "H100! and B200 are independent replications, never paired observations"
+  },
+  "historical_source_gate": {
+    "status": "historical_pre_autotune",
+    "revision": "a927c8d9c3c802637a4d6cb2247378bfd6cee3bb",
+    "tree": "927921eb915b6eb82c43c321574c915dba9d3a2e",
+    "fixed_tail_sources_sha256": "20fa0206fcbf6cc6b28a2973ac280575b6e8e378b09e0903449bf423d9812196",
+    "fla_full_sources_sha256": "2cd7ac89b15faeb13640bff4a7948e437453b69446bfc8c7922511e341843e10"
+  }
+}

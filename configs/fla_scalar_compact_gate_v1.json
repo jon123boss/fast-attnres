@@ -1,0 +1,32 @@
+{
+  "schema": "attnres.fla_scalar_compact_gate.v1",
+  "status": "cuda_correctness_pending",
+  "candidate": {
+    "base_commit": "95811f9de6749186c11166f7ab37197084684d79",
+    "implementation_commit": "25a85a9b99985ac90d69ce636d6b42b5f636a129",
+    "implementation_tree": "74f0b86eac24c2ff85ad01d7a77039dcaf84044c",
+    "source_file": "src/attnres/_kernels/fla_full_sources.py",
+    "source_sha256": "2cd7ac89b15faeb13640bff4a7948e437453b69446bfc8c7922511e341843e10"
+  },
+  "protocol": {
+    "hardware_order": ["H100", "B200"],
+    "runtime": {"torch": "2.11.0+cu130", "triton": "3.6.0"},
+    "source_counts": [2, 9],
+    "ranks": [128, 512, 1024],
+    "width": 1024,
+    "rows": 31,
+    "forward_key": ["L2", "D", "R"],
+    "backward_key": ["L2", "D", "R"],
+    "backward_families": [0, 1, 2],
+    "family_2_change": "scalar per-source static unrolling inside BL=2/4/8 for the true compact-prefix path, retaining one backward launch and one-source-at-a-time BLOCK_PREFIX/R vector state",
+    "oracle": "validation.oracle.oracle",
+    "rtol": 0.05,
+    "atol": 0.05,
+    "timed": false
+  },
+  "claims": {
+    "purpose": "compile and numerical parity gate for the scalar source-tile compact-prefix backward family",
+    "performance": "none",
+    "promotion": "forbidden until fixed-config screening and current-evaluator model ladders pass H100 then B200"
+  }
+}
