@@ -159,6 +159,7 @@ def _launch_source_forward(sources: Sequence[torch.Tensor], query: torch.Tensor,
                                     dtype=torch.float32)
     saved_logit = torch.empty_like(saved_key_inv_rms)
     saved_lse = torch.empty((rows,), device=first.device, dtype=torch.float32)
+    source_tile, fuse_key = fixed_tail._launch_policy(width, rank, query.device)
     fixed_tail._packed_online_forward_kernel[(rows,)](
         source_arg,
         query,
@@ -175,7 +176,7 @@ def _launch_source_forward(sources: Sequence[torch.Tensor], query: torch.Tensor,
         R=rank,
         BLOCK_D=fixed_tail._next_power_of_two(width),
         BLOCK_R=fixed_tail._next_power_of_two(rank),
-        SOURCE_TILE=fixed_tail.SOURCE_TILE,
+        SOURCE_TILE=source_tile,
         QUERY_STRIDE=int(query.stride(0)),
         OUTPUT_ROW_STRIDE=int(output.stride(0)),
         OUTPUT_D_STRIDE=int(output.stride(1)),
@@ -188,7 +189,7 @@ def _launch_source_forward(sources: Sequence[torch.Tensor], query: torch.Tensor,
         SOURCE_STRIDES_UNIFORM=strides_uniform,
         SOURCE_ROW_STRIDE=row_stride,
         SOURCE_FEATURE_STRIDE=feature_stride,
-        FUSE_KEY_WITH_VALUE=fixed_tail._should_fuse_key_value(width, rank),
+        FUSE_KEY_WITH_VALUE=fuse_key,
         num_warps=fixed_tail.NUM_WARPS,
         num_stages=fixed_tail.NUM_STAGES,
     )
@@ -246,6 +247,7 @@ def _launch_source_backward(sources: Sequence[torch.Tensor], query: torch.Tensor
         (rows, rank), device=query.device, dtype=torch.float32
     )
     grad_query_fp32 = torch.empty((rank,), device=query.device, dtype=torch.float32)
+    source_tile, fuse_key = fixed_tail._launch_policy(width, rank, query.device)
     fixed_tail._packed_online_backward_kernel[(rows,)](
         source_arg,
         query,
@@ -263,7 +265,7 @@ def _launch_source_backward(sources: Sequence[torch.Tensor], query: torch.Tensor
         R=rank,
         BLOCK_D=fixed_tail._next_power_of_two(width),
         BLOCK_R=fixed_tail._next_power_of_two(rank),
-        SOURCE_TILE=fixed_tail.SOURCE_TILE,
+        SOURCE_TILE=source_tile,
         QUERY_STRIDE=int(query.stride(0)),
         GRAD_OUTPUT_ROW_STRIDE=int(grad_output.stride(0)),
         GRAD_OUTPUT_D_STRIDE=int(grad_output.stride(1)),
@@ -281,7 +283,7 @@ def _launch_source_backward(sources: Sequence[torch.Tensor], query: torch.Tensor
         GRAD_STRIDES_UNIFORM=grad_strides_uniform,
         GRAD_ROW_STRIDE=grad_row_stride,
         GRAD_FEATURE_STRIDE=grad_feature_stride,
-        FUSE_KEY_WITH_VALUE=fixed_tail._should_fuse_key_value(width, rank),
+        FUSE_KEY_WITH_VALUE=fuse_key,
     )
     fixed_tail._packed_query_reduce_kernel[(
         fixed_tail.triton.cdiv(rank, fixed_tail.QUERY_BLOCK_R),

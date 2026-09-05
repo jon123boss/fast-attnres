@@ -6,17 +6,16 @@
 [![Tested Triton 3.7.1](https://img.shields.io/badge/tested-Triton_3.7.1-654FF0.svg)](https://github.com/triton-lang/triton/releases/tag/v3.7.1)
 [![License: MIT](https://img.shields.io/badge/license-MIT-2E7D32.svg)](https://github.com/jon123boss/fast-attnres/blob/main/LICENSE)
 
-[![Historical v1.0.0 Full AttnRes training-step evidence](https://raw.githubusercontent.com/jon123boss/fast-attnres/v1.0.0/docs/assets/compiled_step_hero.png)](https://github.com/jon123boss/fast-attnres/blob/v1.0.0/docs/assets/compiled_step_hero.png)
-
 **Fast Attention Residuals** (`Fast-AttnRes`) provides a CUDA BF16 PyTorch
 operator for Attention Residuals. Pass ordered full-width residual values and
 one query; receive one full-width residual. The same
 `attnres(values, query)` call is used for standard Full reads and sequential
 Block reads.
 
-This checkout documents a candidate implementation. It contains no new GPU
-qualification or performance result. The measured artifacts retained in this
-README are explicitly historical v1.0.0 evidence.
+This branch is undergoing H100/B200 qualification. Both GPUs have passed the
+current BF16 output/gradient, alias, compilation, changed-input CUDA Graph,
+checkpoint, and save/resume checks. Complete-step comparisons and distributed
+qualification are still in progress; this is not yet a final performance claim.
 
 ## Runtime contract
 
@@ -45,27 +44,18 @@ model path.
 
 ## Install
 
-Install the CUDA extra for the pinned release environment:
+Install this draft from its checkout with the tested CUDA runtime:
 
 ```bash
-python -m pip install --index-url https://download.pytorch.org/whl/cu130 \
-  torch==2.13.0
-python -m pip install "fast-attnres[cuda]==1.0.0"
-```
-
-The extra pins the newest mutually compatible stable PyTorch/Triton pair used
-by this release: PyTorch 2.13.0 with `triton==3.7.1` on Linux x86-64.
-Triton 3.8.0 is not paired with this release. Triton is JIT-compiled for the selected
-CUDA device; the wheel contains Python and Triton source rather than a
-prebuilt CUDA extension.
-
-For a checkout, install the CUDA, development, and test extras:
-
-```bash
-git clone https://github.com/jon123boss/fast-attnres.git
+git clone --branch codex/h100-b200-optimization https://github.com/jon123boss/fast-attnres.git
 cd fast-attnres
-python -m pip install -e ".[cuda,dev,test]"
+python -m pip install --index-url https://download.pytorch.org/whl/cu130 torch==2.13.0
+python -m pip install -e ".[cuda,test,benchmark]"
 ```
+
+The campaign pins PyTorch 2.13.0, CUDA 13.0, Triton 3.7.1, and Python 3.11.
+Triton compiles kernels for the selected GPU. This branch has not been published
+as a package release.
 
 ## Quickstart: standard AttnRes
 

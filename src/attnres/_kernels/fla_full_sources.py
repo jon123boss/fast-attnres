@@ -10,7 +10,7 @@
 # specifically ``fla/ops/attnres/fused.py``.  The FLA attribution and MIT
 # notice above are retained; the kernels below are not the native FLA API.
 
-"""FLA-derived source-list Full kernels.
+"""Shared source-list kernels adapted from FLA.
 
 The pinned FLA implementation uses one pointer per residual source and a
 small source tile (``BL``) for its online softmax and value backward.  This
@@ -26,9 +26,8 @@ source-list ABI:
 * the sliced key derivative is folded into one full-width value gradient
   before the BF16 store.
 
-Only the bounded BF16 source-list route calls this module.  The public packed
-route and the source-list FP32/wide-BF16 fallbacks stay in
-``fixed_tail_sources.py``.
+This module handles source lists up to width 2048. Wider source lists share
+the packed mathematical kernels through ``fixed_tail_sources.py``.
 """
 
 from __future__ import annotations
@@ -96,7 +95,7 @@ def _next_power_of_two(value: int) -> int:
 def _source_query_reduce_tile(rank: int) -> int:
     """Choose a bounded rank tile for the deterministic source reduction.
 
-    The source backward writes one FP32 partial per flattened row.  A 64-lane
+    The source backward writes one FP32 partial per flattened row.  A 32-lane
     reduction tile cuts the number of reduction programs for the common
     medium and large LR ranks while keeping the accumulator small enough for
     the one-program-per-rank-block kernel.  Very small ranks retain their
@@ -220,7 +219,7 @@ def _is_row_affine(tensor: torch.Tensor) -> bool:
 def _source_pointer_table(
     tensors: Sequence[torch.Tensor],
 ) -> tuple[tuple[torch.Tensor, ...], tuple[int, ...], tuple[int, ...], int]:
-    """Build a padded pointer tuple without packing the source list.
+    """Build an exact-length pointer tuple without packing the source list.
 
     Tensor pointers remain tensor arguments to Triton.  Only a source with a
     non-affine batch layout is compacted, and that copy is independent for
@@ -240,12 +239,11 @@ def _source_pointer_table(
     # short lists and the 129-source envelope do not pay for masked selector
     # lanes that can never be addressed by a valid source id.
     length = len(prepared)
-    padded = prepared
     row_strides = tuple(
-        0 if tensor.ndim <= 1 else int(tensor.stride(-2)) for tensor in padded
+        0 if tensor.ndim <= 1 else int(tensor.stride(-2)) for tensor in prepared
     )
-    feature_strides = tuple(int(tensor.stride(-1)) for tensor in padded)
-    return padded, row_strides, feature_strides, length
+    feature_strides = tuple(int(tensor.stride(-1)) for tensor in prepared)
+    return prepared, row_strides, feature_strides, length
 
 
 def _row_layout(tensor: torch.Tensor) -> tuple[torch.Tensor, int, int]:

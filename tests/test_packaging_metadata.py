@@ -49,13 +49,11 @@ def test_cuda_extra_pins_the_supported_pytorch_triton_stack():
     assert "tomli>=2; python_version < '3.11'" in extras["test"]
 
 
-def test_readme_explains_the_latest_compatible_stable_runtime_pair():
+def test_readme_identifies_the_campaign_runtime_pair():
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
 
-    assert "newest mutually compatible stable PyTorch/Triton pair" in readme
     assert "PyTorch 2.13.0" in readme
-    assert "triton==3.7.1" in readme
-    assert "Triton 3.8.0" in readme
+    assert "Triton 3.7.1" in readme
 
 
 def test_project_provenance_and_citation_are_discoverable():

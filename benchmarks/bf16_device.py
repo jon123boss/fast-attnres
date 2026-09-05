@@ -34,8 +34,6 @@ def metadata():
 
 def bf16_torch(values, query, *, eps=2**-23, scale=1.0):
     """Validation/benchmark fixture only: BF16 storage with stable reductions."""
-    if isinstance(values, (tuple, list)):
-        values = torch.stack(values)
     return oracle(values, query, eps=eps, scale=scale)
 
 
@@ -47,6 +45,26 @@ def compare(actual, expected):
     return {"max_abs": float(difference.max()),
             "relative_l2": float(torch.linalg.vector_norm(difference) /
                                  torch.linalg.vector_norm(expected.detach().float()).clamp_min(1e-20))}
+
+
+def _profile_operator(op, values, query, params, upstream):
+    """Attribute CUDA work after timing; profiler samples never select a winner."""
+    with torch.profiler.profile(
+        activities=[torch.profiler.ProfilerActivity.CPU, torch.profiler.ProfilerActivity.CUDA],
+        profile_memory=True, record_shapes=True,
+    ) as profile:
+        for _ in range(5):
+            y = op(values, query)
+            torch.autograd.grad(y, params, upstream)
+        torch.cuda.synchronize()
+    return {"iterations": 5, "timing_eligible": False,
+            "events": [{"name": event.key, "count": event.count,
+                        "self_cpu_us": event.self_cpu_time_total,
+                        "self_cuda_us": event.self_device_time_total,
+                        "cuda_us": event.device_time_total,
+                        "self_cuda_memory_bytes": event.self_device_memory_usage}
+                       for event in profile.key_averages()
+                       if event.device_time_total or event.self_device_memory_usage]}
 
 
 def _inputs(case, seed):
@@ -162,6 +180,14 @@ def _operator_case(case, backends, *, seed, warmups, rounds, replays):
                               "errors": a["errors"], "compile_warmup_s": a["compile_warmup_s"]}
                        for name, a in arms.items()}}
     result["arms"].update(failures)
+    if case.get("profile", False):
+        for name in arms:
+            try:
+                result["arms"][name]["profile"] = _profile_operator(
+                    backends[name], values, query, params, upstream)
+            except Exception as exc:
+                result["arms"][name]["profile"] = {"error": f"{type(exc).__name__}: {exc}",
+                                                     "timing_eligible": False}
     return result
 
 

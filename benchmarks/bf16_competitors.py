@@ -30,16 +30,20 @@ def load_fla(root):
     if not Path(native.__file__).resolve().is_relative_to(Path(root).resolve()):
         raise RuntimeError("FLA import resolved outside the frozen checkout")
 
-    def table(values):
-        return native._build_ptr_table(values)
+    gluon = importlib.import_module("fla.ops.attnres.backends.gluon")
+    def engine(level):
+        if level >= 2:
+            return gluon._fused_attnres_fwd, gluon._fused_attnres_bwd, gluon._check_sources
+        return native.fused_attnres_fwd, native.fused_attnres_bwd, native._build_ptr_table
 
     @torch.library.custom_op("campaign_fla::forward", mutates_args=())
     def forward(values: List[Tensor], query: Tensor, eps: float,
                 scale: float, level: int) -> tuple[Tensor, Tensor, Tensor, Tensor, Tensor]:
         sources = [v.contiguous() for v in values]
         weight = torch.ones_like(query, dtype=torch.float32)
-        out, pre, rms, logits, lse = native.fused_attnres_fwd(
-            query.contiguous(), sources, table(sources), weight, None, eps, scale, level)
+        fwd, _, table = engine(level)
+        out, pre, rms, logits, lse = fwd(
+            query.contiguous(), sources, table(sources), weight, None, eps, scale, level % 2)
         if pre is None:
             pre = query.new_empty(0)
         return out, pre, rms, logits, lse
@@ -48,7 +52,7 @@ def load_fla(root):
     def fake_forward(values, query, eps, scale, level):
         x = values[0]
         stats = (len(values), *x.shape[:-1])
-        return (torch.empty_like(x), torch.empty_like(x) if level == 0 else query.new_empty(0),
+        return (torch.empty_like(x), torch.empty_like(x) if level % 2 == 0 else query.new_empty(0),
                 x.new_empty(stats, dtype=torch.float32), x.new_empty(stats, dtype=torch.float32),
                 x.new_empty(x.shape[:-1], dtype=torch.float32))
 
@@ -58,9 +62,10 @@ def load_fla(root):
                  eps: float, scale: float, level: int) -> tuple[List[Tensor], Tensor]:
         sources = [v.contiguous() for v in values]
         weight = torch.ones_like(query, dtype=torch.float32)
-        dvs, dq, _, _ = native.fused_attnres_bwd(
+        _, bwd, table = engine(level)
+        dvs, dq, _, _ = bwd(
             upstream.contiguous(), query.contiguous(), sources, table(sources), weight,
-            None, pre if level == 0 else None, rms, logits, lse, eps, scale, level)
+            None, pre if level % 2 == 0 else None, rms, logits, lse, eps, scale, level % 2)
         return dvs, dq
 
     @backward.register_fake
@@ -84,10 +89,13 @@ def load_fla(root):
         def call(values, query, *, eps=2**-23, scale=1.0):
             if query.numel() != values[0].shape[-1]:
                 raise Ineligible("FLA implements full-width keys only")
+            if level >= 2 and query.numel() < 64:
+                raise Ineligible("FLA Gluon requires BF16 width>=64")
             values = list(values.unbind(0)) if isinstance(values, Tensor) else list(values)
             return forward(values, query, float(eps), float(scale), level)[0]
         return call
-    return {"fla_checkpoint0": backend(0), "fla_checkpoint1": backend(1)}, compatibility
+    return {"fla_checkpoint0": backend(0), "fla_checkpoint1": backend(1),
+            "fla_gluon_checkpoint0": backend(2), "fla_gluon_checkpoint1": backend(3)}, compatibility
 
 
 def load_liger(root):
@@ -158,13 +166,25 @@ def load_legacy(root):
     def fake_backward(values, query, upstream, scale):
         return [torch.empty_like(v) for v in values], torch.empty_like(query)
 
+    @torch.library.custom_op("campaign_legacy::packed_backward", mutates_args=())
+    def packed_backward(values: List[Tensor], query: Tensor, upstream: Tensor) -> tuple[Tensor, Tensor]:
+        return native._attnres_read_backward_triton(torch.stack(values), query, upstream, True)
+
+    @packed_backward.register_fake
+    def fake_packed_backward(values, query, upstream):
+        return values[0].new_empty((len(values), *values[0].shape)), torch.empty_like(query)
+
     def setup(ctx, inputs, output):
         values, query, ctx.scale = inputs
         ctx.save_for_backward(query, *values)
 
     def autograd_backward(ctx, upstream):
         query, *values = ctx.saved_tensors
-        dvs, dq = backward(values, query, upstream, ctx.scale)
+        if query.numel() == values[0].shape[-1] and len(values) > 16:
+            packed, dq = packed_backward(values, query, upstream)
+            dvs = list(packed.unbind(0))
+        else:
+            dvs, dq = backward(values, query, upstream, ctx.scale)
         return dvs, dq, None
 
     forward.register_autograd(autograd_backward, setup_context=setup)
@@ -190,13 +210,62 @@ def load_legacy(root):
         "original_sha256": hashlib.sha256(source.encode()).hexdigest(),
         "adapted_sha256": hashlib.sha256(adapted.encode()).hexdigest()}
 
+
+def load_catswe(root):
+    """Call frozen native phase 1 afresh, with packing inside its boundary."""
+    from benchmarks import catswe
+    root = Path(root).resolve()
+    for relative, expected in catswe._VENDOR_SHA256.items():
+        if hashlib.sha256((root / relative).read_bytes()).hexdigest() != expected:
+            raise RuntimeError(f"Catswe source mismatch: {relative}")
+    sys.path.insert(0, str(root / "src"))
+    native = importlib.import_module("flash_attn_res.ops.phase_1")
+    if Path(native.__file__).resolve() != root / "src/flash_attn_res/ops/phase_1.py":
+        raise RuntimeError("Catswe import resolved outside the frozen checkout")
+    backend = catswe.CatsweBackend(native.phase_1_batched_attention_triton_op, root)
+    def call(values, query, *, eps=2**-23, scale=1.0):
+        if query.dtype != torch.bfloat16:
+            raise Ineligible("campaign queries use BF16 storage")
+        return backend(values, query, eps=eps, scale=scale)
+    return {"catswe_phase1": call}, {
+        "revision": catswe.PINNED_REVISION,
+        "adapter": "native single-query phase1 per read; source stack/copies and all gradients included"}
+
+
+def model_ineligibility(name, model):
+    """Static public-comparator limits for an entire uncached model schedule."""
+    width, rank = model.width, model.rank
+    sources = 2 * model.layers + 1 if model.mode == "full" else min(2 * model.layers, model.block_count) + 1
+    if name.startswith("fla_") and rank != width:
+        return "FLA implements full-width routing keys only"
+    if name.startswith("fla_gluon_") and width < 64:
+        return "FLA Gluon requires BF16 width>=64"
+    if name == "liger" and (rank != width or sources > 32 or model.attnres_scale != 1):
+        return "Liger requires full-width keys, sources<=32, scale=1"
+    if name == "legacy_uncached":
+        if model.attnres_eps != 2**-23 or width > 4096:
+            return "legacy bridge requires campaign epsilon and width<=4096"
+        if rank == width and model.attnres_scale != 1:
+            return "legacy standard requires scale=1"
+        if rank != width and (rank > 256 or sources > 16):
+            return "legacy uncached LR requires rank<=256 and sources<=16"
+    if name == "catswe_phase1":
+        if rank != width or width & (width - 1):
+            return "Catswe phase1 requires R=D and power-of-two D"
+        if model.attnres_eps != 2**-23 or model.attnres_scale != 1:
+            return "Catswe phase1 requires campaign epsilon and scale=1"
+        if width > 8192 or sources > 129 or (1 << (sources - 1).bit_length()) * width > 1048576:
+            return "Catswe phase1 exceeds its source/width envelope"
+    return None
+
 def load_all(roots):
     from benchmarks.bf16_device import source_digest
     backends, identities, failures = {}, {}, {}
     for name, root in roots.items():
         identities[name] = source_digest(root)
         try:
-            ops, adapter = {"fla": load_fla, "liger": load_liger, "legacy": load_legacy}[name](root)
+            ops, adapter = {"fla": load_fla, "liger": load_liger,
+                            "legacy": load_legacy, "catswe": load_catswe}[name](root)
             backends.update(ops)
             identities[name]["adapter"] = adapter
         except Exception as exc:

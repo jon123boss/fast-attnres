@@ -41,18 +41,48 @@ if SNAPSHOT.is_dir():
 
 
 def _remote(job):
-    faulthandler.dump_traceback_later(180, repeat=True)
+    faulthandler.enable()
+    os.environ["TRITON_CACHE_DIR"] = "/tmp/attnres-triton"
+    os.environ["TORCHINDUCTOR_CACHE_DIR"] = "/tmp/attnres-inductor"
     sys.path[:0] = ["/job/runner", "/job/runner/src"]
     from benchmarks.bf16_device import run_operator, source_digest
     root = Path("/evidence") / job["id"]
     root.mkdir(parents=True, exist_ok=True)
+    marker = root / "started.json"
+    if marker.exists():
+        previous = root / "report.json"
+        report = json.loads(previous.read_text()) if previous.exists() else {}
+        report.update(status="failed", error="Container restarted; automatic experiment rerun rejected")
+        (root / "restart-rejected.json").write_text(json.dumps(report, indent=2) + "\n")
+        volume.commit()
+        return report
+    marker.write_text(json.dumps({"started_utc": dt.datetime.now(dt.timezone.utc).isoformat()}) + "\n")
+    volume.commit()
     started = time.monotonic()
+    sequence = 0
+    cache_root = Path("/evidence/compiler-cache") / job["config"]["gpu"] / "torch2.13-triton3.7.1-cu130"
+    cache_enabled = job["config"].get("reuse_compiler_cache", False)
+    cache_loaded = False
+    cache_ignore = shutil.ignore_patterns("locks", "*.lock", "*.tmp", "tmp.*", "__pycache__")
+    if cache_enabled:
+        for name in ("triton", "inductor"):
+            source = cache_root / name
+            if source.exists():
+                shutil.copytree(source, Path("/tmp") / f"attnres-{name}",
+                                dirs_exist_ok=True, ignore=cache_ignore)
+                cache_loaded = True
     def checkpoint(report):
+        nonlocal sequence
+        sequence += 1
         report["elapsed_s"] = time.monotonic() - started
+        report["compiler_cache"] = {"reuse_enabled": cache_enabled, "loaded": cache_loaded}
         path = root / "report.json"
         temporary = path.with_suffix(".tmp")
         temporary.write_text(json.dumps(report, indent=2, default=str) + "\n")
         temporary.replace(path)
+        history = root / "history"
+        history.mkdir(exist_ok=True)
+        shutil.copy2(path, history / f"{sequence:06d}.json")
         volume.commit()
     try:
         for label, expected in job["hashes"].items():
@@ -62,17 +92,133 @@ def _remote(job):
         config = dict(job["config"])
         config["sources"] = {k: "/job/" + v for k, v in config["sources"].items()}
         config["competitors"] = {k: "/job/" + v for k, v in config.get("competitors", {}).items()}
+        from benchmarks.bf16_device import metadata
+        actual = metadata()
+        if actual["capability"] != {"H100": [9, 0], "B200": [10, 0]}[config["gpu"]]:
+            raise RuntimeError(f"GPU substitution: {actual}")
+        if actual["torch"] != "2.13.0+cu130" or actual["triton"] != "3.7.1":
+            raise RuntimeError(f"runtime substitution: {actual}")
+        if config.get("kind") in ("qualification", "distributed"):
+            runner_source = source_digest("/job/runner/src/attnres")
+            candidate_source = source_digest(config["sources"]["candidate"] + "/src/attnres")
+            if runner_source["sha256"] != candidate_source["sha256"]:
+                raise RuntimeError("qualification runner differs from the selected candidate")
+            if config["kind"] == "qualification":
+                from benchmarks.bf16_qualification import run_qualification
+                report = run_qualification(config, checkpoint)
+                report["identity"] = candidate_source
+                checkpoint(report)
+                return json.loads(json.dumps(report, default=str))
+            return _distributed(config, job, root, checkpoint)
         if config.get("kind", "operator") == "operator":
             return json.loads(json.dumps(run_operator(config, checkpoint), default=str))
+        if config.get("kind") == "alias_diagnostic":
+            from benchmarks.bf16_alias_diagnostic import run_diagnostic
+            return json.loads(json.dumps(run_diagnostic(config, checkpoint), default=str))
         if config.get("optimizer_source"):
             config["optimizer_source"] = "/job/optimizer"
-        from benchmarks.bf16_training import run_training
-        return json.loads(json.dumps(run_training(config, checkpoint), default=str))
+        return _training(config, root, checkpoint)
     except Exception as exc:
         failure = {"status": "failed", "job": job,
                    "error": f"{type(exc).__name__}: {exc}", "traceback": traceback.format_exc()}
         checkpoint(failure)
         return failure
+    finally:
+        # Compile locally. Copy completed artifacts only between jobs, with an
+        # architecture/version partition; no compilation runs on Volume I/O.
+        if cache_enabled:
+            try:
+                for name in ("triton", "inductor"):
+                    source = Path("/tmp") / f"attnres-{name}"
+                    if source.exists():
+                        shutil.copytree(source, cache_root / name,
+                                        dirs_exist_ok=True, ignore=cache_ignore)
+                volume.commit()
+            except Exception:
+                (root / "compiler-cache-error.txt").write_text(traceback.format_exc())
+                volume.commit()
+
+
+def _training(config, root, checkpoint):
+    """Isolate compiler state per cell while retaining paired arms together."""
+    import subprocess
+    report = {"kind": "training", "status": "running", "config": config,
+              "results": [], "import_failures": {}, "process_failures": []}
+    for case_index, case in enumerate(config["cases"]):
+        for seed in config["seeds"]:
+            cell = root / f"cell-{case_index}-{seed}"
+            cell.mkdir(exist_ok=True)
+            specification = {**config, "cases": [case], "seeds": [seed]}
+            config_file, output = cell / "config.json", cell / "report.json"
+            config_file.write_text(json.dumps(specification) + "\n")
+            report["in_progress"] = {"case": case, "seed": seed}
+            checkpoint(report)
+            command = [sys.executable, "-X", "faulthandler", "-m", "benchmarks.bf16_training",
+                       "--config", str(config_file), "--output", str(output)]
+            with (cell / "process.log").open("w") as log:
+                process = subprocess.Popen(command, stdout=log, stderr=subprocess.STDOUT)
+                modified = None
+                while process.poll() is None:
+                    if output.exists() and output.stat().st_mtime_ns != modified:
+                        modified = output.stat().st_mtime_ns
+                        partial = json.loads(output.read_text())
+                        report["in_progress"] = partial.get("in_progress", {"case": case, "seed": seed})
+                        checkpoint(report)
+                    volume.commit()
+                    time.sleep(10)
+            result = json.loads(output.read_text()) if output.exists() else {}
+            for field in ("identities", "runtime", "dynamo"):
+                if field in result:
+                    if field == "identities" and field in report and report[field] != result[field]:
+                        raise RuntimeError("source identities changed between isolated cells")
+                    report[field] = result[field]
+            report["import_failures"].update(result.get("import_failures", {}))
+            if process.returncode or result.get("status") != "complete":
+                failure = {"case": case, "seed": seed, "exit_code": process.returncode,
+                           "error": result.get("error", "isolated training process failed"),
+                           "log": str(cell.relative_to(root) / "process.log")}
+                report["process_failures"].append(failure)
+                report["results"].append({"case": case, "seed": seed, "arms": {},
+                                          "requested_backends": case.get("backends", []),
+                                          "error": failure})
+            else:
+                report["results"].extend(result["results"])
+            report.pop("in_progress", None)
+            checkpoint(report)
+    report["status"] = "complete"
+    checkpoint(report)
+    return report
+
+
+def _distributed(config, job, root, checkpoint):
+    import subprocess
+    import torch
+    if job["gpu_count"] != 8 or torch.cuda.device_count() != 8:
+        raise RuntimeError("distributed qualification requires exactly eight GPUs")
+    config = dict(config)
+    if config.get("optimizer_source"):
+        config["optimizer_source"] = "/job/optimizer"
+    config_file = root / "distributed-config.json"
+    config_file.write_text(json.dumps(config, indent=2) + "\n")
+    output = root / "distributed-report.json"
+    command = [sys.executable, "-m", "torch.distributed.run", "--standalone",
+               "--nproc-per-node=8", "-m", "benchmarks.bf16_qualification_distributed",
+               "--config", str(config_file), "--output", str(output)]
+    log = root / "distributed.log"
+    with log.open("w") as stream:
+        process = subprocess.Popen(command, stdout=stream, stderr=subprocess.STDOUT)
+        while process.poll() is None:
+            if output.exists():
+                checkpoint(json.loads(output.read_text()))
+            volume.commit()
+            time.sleep(15)
+    report = json.loads(output.read_text()) if output.exists() else {"status": "failed"}
+    report["exit_code"] = process.returncode
+    if process.returncode:
+        report["status"] = "failed"
+        report["log_tail"] = log.read_text()[-12000:]
+    checkpoint(report)
+    return report
 
 
 @app.function(image=image, gpu="H100!", cpu=(CPU_CORES, CPU_CORES),
@@ -121,6 +267,10 @@ def _copy_tree(source, destination):
 
 def prepare(args):
     config = json.loads(Path(args.config).read_text())
+    if args.gpus == 8 and config.get("kind") != "distributed":
+        raise ValueError("eight GPUs are reserved for exclusive distributed qualification")
+    if args.gpus != 8 and config.get("kind") == "distributed":
+        raise ValueError("distributed qualification requires --gpus 8")
     stamp = dt.datetime.now(dt.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     job_id = f"{stamp}-{args.gpu.lower()}-{args.name}"
     snapshot = WORK / "snapshots" / job_id
@@ -136,7 +286,7 @@ def prepare(args):
     competitors = {}
     for value in args.competitor:
         name, path = value.split("=", 1)
-        if name not in ("fla", "liger", "legacy"):
+        if name not in ("fla", "liger", "legacy", "catswe"):
             raise ValueError("unsupported competitor")
         _copy_tree(Path(path).resolve(), snapshot / "competitors" / name)
         competitors[name] = f"competitors/{name}"
@@ -227,6 +377,8 @@ def run(snapshot):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest="action", required=True)
+    p = sub.add_parser("init", help="create a fresh capped ledger without renting GPUs")
+    p.add_argument("--cap", type=float, default=500)
     p = sub.add_parser("prepare")
     p.add_argument("--config", required=True)
     p.add_argument("--source", action="append", required=True)
@@ -239,7 +391,15 @@ def main():
     p.add_argument("--stage", choices=["baseline", "experiments", "confirmation", "reserve"], required=True)
     p = sub.add_parser("run"); p.add_argument("snapshot")
     args = parser.parse_args()
-    if args.action == "prepare":
+    if args.action == "init":
+        if not 0 < args.cap <= 500:
+            raise ValueError("cap must be in (0, 500] USD")
+        WORK.mkdir(parents=True, exist_ok=True)
+        with (WORK / "ledger.json").open("x") as stream:
+            json.dump({"cap_usd": args.cap, "jobs": []}, stream, indent=2)
+            stream.write("\n")
+        print(WORK / "ledger.json")
+    elif args.action == "prepare":
         prepare(args)
     else:
         path = Path(args.snapshot).resolve()

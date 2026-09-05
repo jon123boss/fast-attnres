@@ -82,6 +82,16 @@ def _should_fuse_key_value(width: int, rank: int) -> bool:
     )
 
 
+
+def _launch_policy(width: int, rank: int, device: torch.device) -> tuple[int, bool]:
+    # Hopper's padded value tile costs more at medium ranks on irregular
+    # widths. Keep its scalar source traversal there; narrow ranks benefit
+    # from two-source traversal on both architectures.
+    hopper_padded = (torch.cuda.get_device_capability(device)[0] == 9
+                     and width != _next_power_of_two(width) and 4 * rank >= width)
+    tile = 1 if rank == width or hopper_padded else SOURCE_TILE
+    return tile, _should_fuse_key_value(width, rank) and not hopper_padded
+
 def _validate_inputs(values: torch.Tensor, query: torch.Tensor) -> tuple[int, int, int]:
     if not isinstance(values, torch.Tensor) or not isinstance(query, torch.Tensor):
         raise TypeError("values and query must be tensors")
@@ -901,6 +911,7 @@ if triton is not None and _triton_op is not None and _wrap_triton is not None:
         if values.ndim != 3 or not values.is_contiguous() or not query.is_contiguous():
             raise ValueError("fixed-tail CUDA op requires contiguous packed tensors")
         count = int(values.shape[1])
+        source_tile, fuse_key = _launch_policy(width, rank, values.device)
         output = torch.empty((count, width), device=values.device, dtype=values.dtype)
         saved_output_fp32 = torch.empty(
             (count, width), device=values.device, dtype=torch.float32
@@ -928,7 +939,7 @@ if triton is not None and _triton_op is not None and _wrap_triton is not None:
             R=rank,
             BLOCK_D=block_d,
             BLOCK_R=block_r,
-            SOURCE_TILE=SOURCE_TILE if rank < width else 1,
+            SOURCE_TILE=source_tile,
             QUERY_STRIDE=1,
             OUTPUT_ROW_STRIDE=width,
             OUTPUT_D_STRIDE=1,
@@ -941,7 +952,7 @@ if triton is not None and _triton_op is not None and _wrap_triton is not None:
             SOURCE_STRIDES_UNIFORM=True,
             SOURCE_ROW_STRIDE=0,
             SOURCE_FEATURE_STRIDE=1,
-            FUSE_KEY_WITH_VALUE=_should_fuse_key_value(width, rank),
+            FUSE_KEY_WITH_VALUE=fuse_key,
             num_warps=NUM_WARPS,
             num_stages=NUM_STAGES,
         )
@@ -964,6 +975,7 @@ if triton is not None and _triton_op is not None and _wrap_triton is not None:
         if not ONE_STORE_DV:  # The module intentionally exposes one path only.
             raise RuntimeError("fixed-tail dV folding must remain enabled")
         count = int(values.shape[1])
+        source_tile, fuse_key = _launch_policy(width, rank, values.device)
         grad_values = torch.empty_like(values)
         grad_query_token = torch.empty(
             (count, rank), device=values.device, dtype=torch.float32
@@ -988,7 +1000,7 @@ if triton is not None and _triton_op is not None and _wrap_triton is not None:
             R=rank,
             BLOCK_D=block_d,
             BLOCK_R=block_r,
-            SOURCE_TILE=SOURCE_TILE if rank < width else 1,
+            SOURCE_TILE=source_tile,
             QUERY_STRIDE=1,
             GRAD_OUTPUT_ROW_STRIDE=width,
             GRAD_OUTPUT_D_STRIDE=1,
@@ -1006,7 +1018,7 @@ if triton is not None and _triton_op is not None and _wrap_triton is not None:
             GRAD_STRIDES_UNIFORM=True,
             GRAD_ROW_STRIDE=0,
             GRAD_FEATURE_STRIDE=1,
-            FUSE_KEY_WITH_VALUE=_should_fuse_key_value(width, rank),
+            FUSE_KEY_WITH_VALUE=fuse_key,
         )
         _wrap_triton(_packed_query_reduce_kernel)[(triton.cdiv(rank, QUERY_BLOCK_R),)](
             grad_query_token,
