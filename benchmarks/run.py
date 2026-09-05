@@ -2781,7 +2781,7 @@ def _model_timings(
         return _model_failure_result(model_data, "", [], failures=[_failure(
             "model_setup",
             reason=(
-                "cached Block and the include_per_read ablation were removed; "
+                "unsupported residual execution setting; "
                 "Block always uses the shared per-read attnres primitive"
             ),
         )])
@@ -3238,10 +3238,8 @@ def _model_timings(
                         finally:
                             candidate = None
 
-            # The explicit model scope adapts only the public phase-1
-            # primitive.  No cached Block, prepare, merge, or phase-2 route is
-            # available here; stack/contiguous staging stays in the captured
-            # adapter call.
+            # The model adapter uses the public phase-1 primitive per read;
+            # source stacking stays inside its captured call.
             if (
                 include_catswe_model
                 and catswe_eligibility is not None

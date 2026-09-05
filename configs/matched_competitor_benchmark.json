@@ -248,8 +248,7 @@
       "mode": "full",
       "rank": 1024,
       "source_layout": "list",
-      "block_path": "public_attnres_per_read",
-      "cached_block": false
+      "block_path": "public_attnres_per_read"
     },
     "block_per_read": {
       "kind": "model",
@@ -257,8 +256,7 @@
       "mode": "block",
       "rank": 1024,
       "source_layout": "list",
-      "block_path": "public_attnres_per_read",
-      "cached_block": false
+      "block_path": "public_attnres_per_read"
     },
     "lr_ranks": {
       "kind": "model",

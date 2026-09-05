@@ -508,7 +508,6 @@ class HydraBackend:
     source_stack_owned_by_adapter = True
     supports_full = True
     supports_per_read_block = False
-    supports_cached_block = False
     timing_predicate = TIMING_PREDICATE
 
     def __init__(
@@ -713,9 +712,6 @@ def source_hash_metadata(
         "supports_per_read_block": False,
         "supports_external_block_panel": True,
         "block_scope": "external_block_panel",
-        "supports_cached_block": False,
-        "cached_block": False,
-        "cached_block_limit": "vendor exposes only the combined two-phase call; use the external Block panel",
         "full_schedule": "one query row over stacked source blocks",
         "block_schedule": "external Block panel over stacked source blocks",
         "accepts_source_list": True,
@@ -870,9 +866,6 @@ class Comparator:
             "supports_per_read_block": False,
             "supports_external_block_panel": True,
             "block_scope": "external_block_panel",
-            "supports_cached_block": False,
-            "cached_block": False,
-            "cached_block_limit": "vendor exposes only the combined two-phase call; use the external Block panel",
             "full_schedule": "one query row over stacked source blocks",
             "block_schedule": "external Block panel over stacked source blocks",
             "matched_rank_only": True,
@@ -1115,11 +1108,9 @@ def vendor_metadata(
             "timing_width_max": NATIVE_MAX_WIDTH,
             "cuda_required": True,
             "native_fallback": "none; auto and torch plans are rejected",
-            "supports_cached_block": False,
             "supports_per_read_block": False,
             "supports_external_block_panel": True,
             "block_scope": "external_block_panel",
-            "cached_block_limit": "vendor exposes only the combined two-phase call; use the external Block panel",
             "reason": "pinned attnres-kernel-lab checkout was not found",
         }
     reason, observed = _integrity(root)

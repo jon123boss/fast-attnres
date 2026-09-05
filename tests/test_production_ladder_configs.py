@@ -94,7 +94,6 @@ def _assert_common_config(config: dict, mode: str, protocol: dict, source_root: 
     assert config["standard_fla_comparison"] is True
     assert config["include_baseline"] is False
     assert config["include_packed_comparison"] is False
-    assert metadata["cached_block"] is False
     assert metadata["block_path"] == "per_read_public_attnres"
     assert metadata["base_revision"] == SOURCE_GATE_REVISION
     assert metadata["base_tree"] == SOURCE_GATE_TREE

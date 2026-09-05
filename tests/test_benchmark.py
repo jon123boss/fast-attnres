@@ -520,7 +520,7 @@ def test_architectural_fla_statistics_compare_candidate_to_standard():
 
 @pytest.mark.parametrize("obsolete", [
     {"include_per_read": True},
-    {"model_config": {"block_execution": "cached"}},
+    {"model_config": {"block_execution": "unsupported"}},
 ])
 def test_removed_block_settings_fail_before_allocating_model_inputs(monkeypatch, obsolete):
     from benchmarks import run

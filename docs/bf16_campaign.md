@@ -160,7 +160,7 @@ ATTNRES_CAMPAIGN_WORK="$CAMPAIGN" \
   python -m benchmarks.bf16_modal run "$SNAPSHOT"
 ```
 
-At most one single-GPU job per architecture is active at a time. Reservations
+At most one single-GPU job is active across both architectures. Reservations
 remain commitments after failures; they are not actual bills and are not
 automatically refunded. Reconcile an interrupted client by confirming that its app is stopped with zero
 running containers. Resume only missing cells in a new job; an admitted job ID
@@ -236,8 +236,10 @@ python -m benchmarks.bf16_archive create \
   "${CAMPAIGN%/*}/bf16-campaign.zip"
 ```
 
-`create` stores a content-addressed copy of snapshot and result files plus the
-ledger manifest. It refuses active `reserved` or `running` jobs. Restore one
+`create` stores a private, content-addressed copy of snapshot and result files
+plus the ledger manifest, including local billing records and external source
+checkouts. Public evidence is a separately reviewed subset. It refuses active
+`reserved` or `running` jobs. Restore one
 job into a directory that does not already exist:
 
 ```bash
@@ -277,15 +279,11 @@ outside timing. Allocated, reserved, and driver-free memory are recorded
 separately. A resource failure remains unresolved and cannot remove an eligible
 alternative from a strongest-alternative claim.
 
-The final comparison keeps only one model arm's parameters, gradients, and
-optimizer state on GPU. Inactive comparison state resides on CPU; no residual
-source state is reused. Transfers between comparison arms are bookkeeping
-outside the CUDA-event update and are reported as `residency_transfer_s`. Each
-timed update still includes its input copies and all training work listed above.
-Before model measurements, an eight-update check compares the transferred model
-and original Muon+AdamW state against an uninterrupted control, preserving
-Parameter identities and checking that transfers do not repeatedly recompile
-the model. These transfer costs are not production training latency.
+When the recorded memory check requires CPU parking, transfers between arms
+occur outside the CUDA-event update and are reported as `residency_transfer_s`.
+The eight-update transfer check preserves Parameter identities and verifies
+model and original Muon+AdamW state against an uninterrupted control. These
+bookkeeping transfers are not production training latency.
 
 ### Verified billing reconciliation
 
@@ -298,12 +296,6 @@ original reservation. Active, unmatched, changing, or incomplete metering keeps
 the full original bound. Admission verifies the retained evidence again; a
 client error or short elapsed time alone never releases budget. The report
 shows historical reservations and current accounting bounds separately.
-
-Distributed save/resume verifies the serialized checkpoint and restored model
-and optimizer state exactly before the next update. Same-input continuation
-uses the unchanged BF16 oracle for state and loss; bitwise continuation equality
-is retained as a diagnostic because floating-point collective reduction order
-can differ. Earlier exact-continuation failures remain in the raw records.
 
 ### Separate diagnostics
 

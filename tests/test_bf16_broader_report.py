@@ -40,7 +40,7 @@ def evidence(tmp_path):
 def test_completed_rows_survive_parent_timeout(evidence):
     work, name, contract, _, _ = evidence
     result = report.summarize(work, [name], contract)
-    assert len(result["cells"]) == 1 and len(result["missing"]) == 95
+    assert len(result["cells"]) == 1 and len(result["missing"]) == len(contract["cases"]) * 6 - 1
     assert not result["admission_failures"] and not result["monotonic_pass"]
     assert result["failures"][0]["execution"]["error"] == "retained timeout"
 
@@ -72,7 +72,7 @@ def test_incomplete_candidate_samples_remain_unresolved(evidence):
     data["results"][0]["arms"]["candidate"]["samples_ms"].pop()
     (work / "results" / name / "report.json").write_text(json.dumps(data))
     result = report.summarize(work, [name], contract)
-    assert result["admission_failures"] and len(result["missing"]) == 96
+    assert result["admission_failures"] and len(result["missing"]) == len(contract["cases"]) * 6
     assert any(row.get("backend") == "candidate" for row in result["failures"])
 
 

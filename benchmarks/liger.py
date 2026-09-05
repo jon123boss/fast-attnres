@@ -13,7 +13,7 @@ The adapter implements the common standard AttnRes contract:
 * BF16 or FP32 storage, at most 32 source blocks, and ``D<=8192``;
 * Full reads and per-read Block reads only.
 
-Sliced keys, projected keys, and the cached Block route, Gluon, and CPU
+Sliced keys, projected keys, Gluon, and CPU
 execution are explicitly unsupported.  Missing or mismatched vendor code is
 reported as ``status='missing'``; it is never replaced by the project
 reference implementation.
@@ -515,7 +515,6 @@ def make_model_backend(
     # residual read, making a compiled training-step comparison measure an
     # avoidable adapter artifact.
     backend.accepts_rms_weight = True  # type: ignore[attr-defined]
-    backend.supports_cached_block = False  # type: ignore[attr-defined]
 
     backend.source_hash_metadata = metadata  # type: ignore[attr-defined]
     backend.vendor_root = root_string  # type: ignore[attr-defined]
@@ -566,7 +565,6 @@ def source_hash_metadata(
         "graph_boundary": "torch.library.custom_op with registered autograd",
         "accepts_source_list": True,
         "native_model_source_list": False,
-        "supports_cached_block": False,
         "model_rms_weight_allocation": "nonpersistent_buffer",
         "model_rms_weight_name": "_backend_rms_weight",
         "model_rms_weight_reuse": "one_buffer_per_model",
@@ -589,7 +587,6 @@ def source_hash_metadata(
             "unsupported": [
                 "R<D sliced keys",
                 "projected keys",
-                "cached Block route",
                 "Gluon backend",
                 "CPU execution",
             ],
@@ -686,7 +683,6 @@ class Comparator:
                 "unsupported": [
                     "R<D sliced keys",
                     "projected keys",
-                    "cached Block route",
                     "Gluon backend",
                     "CPU execution",
                 ],

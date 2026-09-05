@@ -1,6 +1,6 @@
 {
   "config_path": "configs/compiled_step_campaign.json",
-  "config_sha256": "8109021e06f415ae08860ee6f18af83b953367e99f206b3133c7c35e3fb560ef",
+  "config_sha256": "b141bba105dd631fa05a8daf1c18e1e037fc51125658eb1a003c281760d7773f",
   "fla": {
     "origin": "https://github.com/fla-org/flash-linear-attention.git",
     "package_sha256": "2cd59a9a50f34ecc4d9535ad51c9668cd4d8b67f519b8eb78b45ce2156288781",

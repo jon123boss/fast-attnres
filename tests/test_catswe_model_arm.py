@@ -44,7 +44,6 @@ def test_model_backend_requires_verified_native_call_and_declares_public_abi():
     assert backend.native_model_source_list is False
     assert backend.supports_full is True
     assert backend.supports_per_read_block is True
-    assert backend.supports_cached_block is False
     metadata = backend.source_hash_metadata
     assert metadata["model_scope"] == "compiled_training_step"
     assert metadata["cache_api"] == "none"

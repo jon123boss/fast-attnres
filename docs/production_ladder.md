@@ -99,8 +99,7 @@ qualification for every selected rank.
 
 The Full recipe uses the complete public Full schedule. The Block recipe uses
 the same public `attnres` primitive for every residual read; its difference is
-the per-read Block schedule. There is no cached Block execution and no
-`block_execution` or `include_per_read` setting. `source_layout` is `list`,
+the per-read Block schedule. `source_layout` is `list`,
 `include_packed_comparison` is false, and no packed arm is scheduled. There is
 also no projected candidate.
 

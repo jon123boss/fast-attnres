@@ -33,9 +33,15 @@ def validate_contract(contract):
     primary = contract.get("scope") == "primary_operator_confirmation"
     expected = [{"shape": [s, 8192, 1536, r], "layout": "list", "query_scale": .05,
                  "backends": list(BACKENDS)} for s in (9, 49) for r in RANKS]
-    geometry = (cases == expected if primary else
-                len(cases) == 16 and len(groups) == 2 and
-                all(len(ranks) == 8 and group[2] in ranks for group, ranks in groups.items()))
+    if not primary:
+        expected = []
+        for sources, tokens, width, layout in ((17, 1024, 3072, "list"),
+                                               (9, 257, 5503, "strided")):
+            ranks = {width, *RANKS, *(2**power for power in range(4, 14))}
+            expected.extend({"shape": [sources, tokens, width, rank], "layout": layout,
+                             "backends": list(BACKENDS)}
+                            for rank in sorted(ranks, reverse=True) if rank <= width)
+    geometry = cases == expected
     if (contract.get("gpus") != ["H100", "B200"] or contract.get("seeds") != list(SEEDS)
         or not geometry
         or any(contract.get(k) != v for k, v in {"rounds": 120, "warmups": 10,
@@ -133,7 +139,10 @@ def summarize(work, jobs, contract):
         if others:
             best = min(others, key=lambda n: sum(others[n]["samples_ms"]))
             cells.append({"cell": label, "strongest_correct_alternative": best,
-                          "comparison": label + "/vs_" + best})
+                          "comparison": label + "/vs_" + best,
+                          **dict(zip(("gpu", "sources", "tokens", "width", "rank", "layout", "seed"), key)),
+                          "candidate_ms": sum(arms["candidate"]["samples_ms"]) / 120,
+                          "alternative_ms": sum(others[best]["samples_ms"]) / 120})
     for gpu in contract["gpus"]:
         for seed in SEEDS:
             groups = {}

@@ -25,7 +25,40 @@
         "release",
         "candidate",
         "torch_compile",
-        "legacy_uncached"
+        "legacy_uncached",
+        "liger",
+        "fla_checkpoint0",
+        "fla_checkpoint1",
+        "fla_gluon_checkpoint0",
+        "fla_gluon_checkpoint1",
+        "catswe_phase1",
+        "hydra_2p",
+        "hydra_2p8",
+        "hilda"
+      ]
+    },
+    {
+      "shape": [
+        17,
+        1024,
+        3072,
+        2048
+      ],
+      "layout": "list",
+      "backends": [
+        "release",
+        "candidate",
+        "torch_compile",
+        "legacy_uncached",
+        "liger",
+        "fla_checkpoint0",
+        "fla_checkpoint1",
+        "fla_gluon_checkpoint0",
+        "fla_gluon_checkpoint1",
+        "catswe_phase1",
+        "hydra_2p",
+        "hydra_2p8",
+        "hilda"
       ]
     },
     {
@@ -40,7 +73,40 @@
         "release",
         "candidate",
         "torch_compile",
-        "legacy_uncached"
+        "legacy_uncached",
+        "liger",
+        "fla_checkpoint0",
+        "fla_checkpoint1",
+        "fla_gluon_checkpoint0",
+        "fla_gluon_checkpoint1",
+        "catswe_phase1",
+        "hydra_2p",
+        "hydra_2p8",
+        "hilda"
+      ]
+    },
+    {
+      "shape": [
+        17,
+        1024,
+        3072,
+        1024
+      ],
+      "layout": "list",
+      "backends": [
+        "release",
+        "candidate",
+        "torch_compile",
+        "legacy_uncached",
+        "liger",
+        "fla_checkpoint0",
+        "fla_checkpoint1",
+        "fla_gluon_checkpoint0",
+        "fla_gluon_checkpoint1",
+        "catswe_phase1",
+        "hydra_2p",
+        "hydra_2p8",
+        "hilda"
       ]
     },
     {
@@ -55,7 +121,64 @@
         "release",
         "candidate",
         "torch_compile",
-        "legacy_uncached"
+        "legacy_uncached",
+        "liger",
+        "fla_checkpoint0",
+        "fla_checkpoint1",
+        "fla_gluon_checkpoint0",
+        "fla_gluon_checkpoint1",
+        "catswe_phase1",
+        "hydra_2p",
+        "hydra_2p8",
+        "hilda"
+      ]
+    },
+    {
+      "shape": [
+        17,
+        1024,
+        3072,
+        640
+      ],
+      "layout": "list",
+      "backends": [
+        "release",
+        "candidate",
+        "torch_compile",
+        "legacy_uncached",
+        "liger",
+        "fla_checkpoint0",
+        "fla_checkpoint1",
+        "fla_gluon_checkpoint0",
+        "fla_gluon_checkpoint1",
+        "catswe_phase1",
+        "hydra_2p",
+        "hydra_2p8",
+        "hilda"
+      ]
+    },
+    {
+      "shape": [
+        17,
+        1024,
+        3072,
+        512
+      ],
+      "layout": "list",
+      "backends": [
+        "release",
+        "candidate",
+        "torch_compile",
+        "legacy_uncached",
+        "liger",
+        "fla_checkpoint0",
+        "fla_checkpoint1",
+        "fla_gluon_checkpoint0",
+        "fla_gluon_checkpoint1",
+        "catswe_phase1",
+        "hydra_2p",
+        "hydra_2p8",
+        "hilda"
       ]
     },
     {
@@ -70,7 +193,16 @@
         "release",
         "candidate",
         "torch_compile",
-        "legacy_uncached"
+        "legacy_uncached",
+        "liger",
+        "fla_checkpoint0",
+        "fla_checkpoint1",
+        "fla_gluon_checkpoint0",
+        "fla_gluon_checkpoint1",
+        "catswe_phase1",
+        "hydra_2p",
+        "hydra_2p8",
+        "hilda"
       ]
     },
     {
@@ -78,14 +210,47 @@
         17,
         1024,
         3072,
-        192
+        256
       ],
       "layout": "list",
       "backends": [
         "release",
         "candidate",
         "torch_compile",
-        "legacy_uncached"
+        "legacy_uncached",
+        "liger",
+        "fla_checkpoint0",
+        "fla_checkpoint1",
+        "fla_gluon_checkpoint0",
+        "fla_gluon_checkpoint1",
+        "catswe_phase1",
+        "hydra_2p",
+        "hydra_2p8",
+        "hilda"
+      ]
+    },
+    {
+      "shape": [
+        17,
+        1024,
+        3072,
+        128
+      ],
+      "layout": "list",
+      "backends": [
+        "release",
+        "candidate",
+        "torch_compile",
+        "legacy_uncached",
+        "liger",
+        "fla_checkpoint0",
+        "fla_checkpoint1",
+        "fla_gluon_checkpoint0",
+        "fla_gluon_checkpoint1",
+        "catswe_phase1",
+        "hydra_2p",
+        "hydra_2p8",
+        "hilda"
       ]
     },
     {
@@ -100,7 +265,16 @@
         "release",
         "candidate",
         "torch_compile",
-        "legacy_uncached"
+        "legacy_uncached",
+        "liger",
+        "fla_checkpoint0",
+        "fla_checkpoint1",
+        "fla_gluon_checkpoint0",
+        "fla_gluon_checkpoint1",
+        "catswe_phase1",
+        "hydra_2p",
+        "hydra_2p8",
+        "hilda"
       ]
     },
     {
@@ -115,7 +289,16 @@
         "release",
         "candidate",
         "torch_compile",
-        "legacy_uncached"
+        "legacy_uncached",
+        "liger",
+        "fla_checkpoint0",
+        "fla_checkpoint1",
+        "fla_gluon_checkpoint0",
+        "fla_gluon_checkpoint1",
+        "catswe_phase1",
+        "hydra_2p",
+        "hydra_2p8",
+        "hilda"
       ]
     },
     {
@@ -130,7 +313,16 @@
         "release",
         "candidate",
         "torch_compile",
-        "legacy_uncached"
+        "legacy_uncached",
+        "liger",
+        "fla_checkpoint0",
+        "fla_checkpoint1",
+        "fla_gluon_checkpoint0",
+        "fla_gluon_checkpoint1",
+        "catswe_phase1",
+        "hydra_2p",
+        "hydra_2p8",
+        "hilda"
       ]
     },
     {
@@ -145,7 +337,16 @@
         "release",
         "candidate",
         "torch_compile",
-        "legacy_uncached"
+        "legacy_uncached",
+        "liger",
+        "fla_checkpoint0",
+        "fla_checkpoint1",
+        "fla_gluon_checkpoint0",
+        "fla_gluon_checkpoint1",
+        "catswe_phase1",
+        "hydra_2p",
+        "hydra_2p8",
+        "hilda"
       ]
     },
     {
@@ -153,14 +354,23 @@
         9,
         257,
         5503,
-        2752
+        4096
       ],
       "layout": "strided",
       "backends": [
         "release",
         "candidate",
         "torch_compile",
-        "legacy_uncached"
+        "legacy_uncached",
+        "liger",
+        "fla_checkpoint0",
+        "fla_checkpoint1",
+        "fla_gluon_checkpoint0",
+        "fla_gluon_checkpoint1",
+        "catswe_phase1",
+        "hydra_2p",
+        "hydra_2p8",
+        "hilda"
       ]
     },
     {
@@ -168,14 +378,23 @@
         9,
         257,
         5503,
-        1376
+        2048
       ],
       "layout": "strided",
       "backends": [
         "release",
         "candidate",
         "torch_compile",
-        "legacy_uncached"
+        "legacy_uncached",
+        "liger",
+        "fla_checkpoint0",
+        "fla_checkpoint1",
+        "fla_gluon_checkpoint0",
+        "fla_gluon_checkpoint1",
+        "catswe_phase1",
+        "hydra_2p",
+        "hydra_2p8",
+        "hilda"
       ]
     },
     {
@@ -183,14 +402,23 @@
         9,
         257,
         5503,
-        688
+        1536
       ],
       "layout": "strided",
       "backends": [
         "release",
         "candidate",
         "torch_compile",
-        "legacy_uncached"
+        "legacy_uncached",
+        "liger",
+        "fla_checkpoint0",
+        "fla_checkpoint1",
+        "fla_gluon_checkpoint0",
+        "fla_gluon_checkpoint1",
+        "catswe_phase1",
+        "hydra_2p",
+        "hydra_2p8",
+        "hilda"
       ]
     },
     {
@@ -198,14 +426,167 @@
         9,
         257,
         5503,
-        344
+        1024
       ],
       "layout": "strided",
       "backends": [
         "release",
         "candidate",
         "torch_compile",
-        "legacy_uncached"
+        "legacy_uncached",
+        "liger",
+        "fla_checkpoint0",
+        "fla_checkpoint1",
+        "fla_gluon_checkpoint0",
+        "fla_gluon_checkpoint1",
+        "catswe_phase1",
+        "hydra_2p",
+        "hydra_2p8",
+        "hilda"
+      ]
+    },
+    {
+      "shape": [
+        9,
+        257,
+        5503,
+        768
+      ],
+      "layout": "strided",
+      "backends": [
+        "release",
+        "candidate",
+        "torch_compile",
+        "legacy_uncached",
+        "liger",
+        "fla_checkpoint0",
+        "fla_checkpoint1",
+        "fla_gluon_checkpoint0",
+        "fla_gluon_checkpoint1",
+        "catswe_phase1",
+        "hydra_2p",
+        "hydra_2p8",
+        "hilda"
+      ]
+    },
+    {
+      "shape": [
+        9,
+        257,
+        5503,
+        640
+      ],
+      "layout": "strided",
+      "backends": [
+        "release",
+        "candidate",
+        "torch_compile",
+        "legacy_uncached",
+        "liger",
+        "fla_checkpoint0",
+        "fla_checkpoint1",
+        "fla_gluon_checkpoint0",
+        "fla_gluon_checkpoint1",
+        "catswe_phase1",
+        "hydra_2p",
+        "hydra_2p8",
+        "hilda"
+      ]
+    },
+    {
+      "shape": [
+        9,
+        257,
+        5503,
+        512
+      ],
+      "layout": "strided",
+      "backends": [
+        "release",
+        "candidate",
+        "torch_compile",
+        "legacy_uncached",
+        "liger",
+        "fla_checkpoint0",
+        "fla_checkpoint1",
+        "fla_gluon_checkpoint0",
+        "fla_gluon_checkpoint1",
+        "catswe_phase1",
+        "hydra_2p",
+        "hydra_2p8",
+        "hilda"
+      ]
+    },
+    {
+      "shape": [
+        9,
+        257,
+        5503,
+        384
+      ],
+      "layout": "strided",
+      "backends": [
+        "release",
+        "candidate",
+        "torch_compile",
+        "legacy_uncached",
+        "liger",
+        "fla_checkpoint0",
+        "fla_checkpoint1",
+        "fla_gluon_checkpoint0",
+        "fla_gluon_checkpoint1",
+        "catswe_phase1",
+        "hydra_2p",
+        "hydra_2p8",
+        "hilda"
+      ]
+    },
+    {
+      "shape": [
+        9,
+        257,
+        5503,
+        256
+      ],
+      "layout": "strided",
+      "backends": [
+        "release",
+        "candidate",
+        "torch_compile",
+        "legacy_uncached",
+        "liger",
+        "fla_checkpoint0",
+        "fla_checkpoint1",
+        "fla_gluon_checkpoint0",
+        "fla_gluon_checkpoint1",
+        "catswe_phase1",
+        "hydra_2p",
+        "hydra_2p8",
+        "hilda"
+      ]
+    },
+    {
+      "shape": [
+        9,
+        257,
+        5503,
+        128
+      ],
+      "layout": "strided",
+      "backends": [
+        "release",
+        "candidate",
+        "torch_compile",
+        "legacy_uncached",
+        "liger",
+        "fla_checkpoint0",
+        "fla_checkpoint1",
+        "fla_gluon_checkpoint0",
+        "fla_gluon_checkpoint1",
+        "catswe_phase1",
+        "hydra_2p",
+        "hydra_2p8",
+        "hilda"
       ]
     },
     {
@@ -220,7 +601,16 @@
         "release",
         "candidate",
         "torch_compile",
-        "legacy_uncached"
+        "legacy_uncached",
+        "liger",
+        "fla_checkpoint0",
+        "fla_checkpoint1",
+        "fla_gluon_checkpoint0",
+        "fla_gluon_checkpoint1",
+        "catswe_phase1",
+        "hydra_2p",
+        "hydra_2p8",
+        "hilda"
       ]
     },
     {
@@ -235,7 +625,16 @@
         "release",
         "candidate",
         "torch_compile",
-        "legacy_uncached"
+        "legacy_uncached",
+        "liger",
+        "fla_checkpoint0",
+        "fla_checkpoint1",
+        "fla_gluon_checkpoint0",
+        "fla_gluon_checkpoint1",
+        "catswe_phase1",
+        "hydra_2p",
+        "hydra_2p8",
+        "hilda"
       ]
     },
     {
@@ -250,11 +649,20 @@
         "release",
         "candidate",
         "torch_compile",
-        "legacy_uncached"
+        "legacy_uncached",
+        "liger",
+        "fla_checkpoint0",
+        "fla_checkpoint1",
+        "fla_gluon_checkpoint0",
+        "fla_gluon_checkpoint1",
+        "catswe_phase1",
+        "hydra_2p",
+        "hydra_2p8",
+        "hilda"
       ]
     }
   ],
-  "note": "Independent wider and irregular-stride operator confirmation, not complete-step evidence. Frozen before candidate selection; no tuning from these results.",
+  "note": "The continuation targets common ranks at the original held-out source counts, token counts, widths and layouts. Its common-rank ladder replaces the earlier unusual-rank ladder at the user request. The source was selected before these confirmation measurements. Earlier contracts, failures and timings retain their original archived identities.",
   "cache_autotuning": true,
   "gpus": [
     "H100",
@@ -275,7 +683,12 @@
   "identities": {
     "candidate": "a6724b051a4bf921b8fe7386fc90652408aa1e91c40a3cafa09840cec036f68c",
     "release": "9315347d6f1fd3ab36d50665a24504d4eb4e38270634f72a1fbd41d80ae17b61",
-    "legacy": "b1fa574804dde58747b3f2d86ea21a134d76ea55aad56bceaf362fe1b3211e4f"
+    "fla": "aa3a4a4b4b14629d42971791fe993148e4429859c1d0c0c60125e7c09c92fc1b",
+    "liger": "99ada5a6ca8ec83832c7fbfa6f4a435a5206a9d05fed2571f9e35c752102876a",
+    "legacy": "b1fa574804dde58747b3f2d86ea21a134d76ea55aad56bceaf362fe1b3211e4f",
+    "catswe": "39cc4ae133888f015323cef0e499bf2ee712c091ba45418862482adbf0938831",
+    "hydra": "128859bb5c81d082f5df036c54d947cab2feff7976a56da9d7a904143b8e10c3",
+    "hilda": "1bfc85d6460035d24c565f5fa3d8273de5de708111ff6fb41634353a475685a4"
   },
   "evidence_policy": "Completed rows from interrupted jobs are reusable only with verified immutable evaluator files, source identities, runtime, and sample counts. Operator rounds alternate backend order and its reversal; all arms use the same inputs and every pair has 60/60 exposure. The eight changed-input correctness replays precede timing. No historical sample is relabeled or omitted."
 }
