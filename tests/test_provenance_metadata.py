@@ -29,7 +29,7 @@ def test_citation_file_has_verified_public_identity():
     assert "orcid:" not in citation
 
 
-def test_provenance_covers_kernel_and_license_identities():
+def test_provenance_covers_kernel_and_license_identities(historical_release_root):
     provenance = (ROOT / "PROVENANCE.md").read_text(encoding="utf-8")
     campaign = json.loads(
         (ROOT / "results/compiled_step/campaign_manifest.json").read_text(encoding="utf-8")
@@ -64,7 +64,7 @@ def test_provenance_covers_kernel_and_license_identities():
     assert "2cd59a9a50f34ecc4d9535ad51c9668cd4d8b67f519b8eb78b45ce2156288781" in found_hashes
 
     for path, digest in current_runtime_hashes.items():
-        assert _sha256(ROOT / path) == digest
+        assert _sha256(historical_release_root / path) == digest
     assert "Historical compiled-step campaign" in provenance
     assert "not relabelled as measurements of the current kernel" in provenance
     assert _sha256(ROOT / "LICENSE") == (

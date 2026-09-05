@@ -4,7 +4,7 @@ from pathlib import Path
 import pytest
 import torch
 
-from attnres import attnres, reference_attnres
+from attnres import attnres
 from attnres._kernels.fixed_tail_sources import _source_rows_view
 
 
@@ -43,17 +43,6 @@ def _check_launch_arguments(tree, launch_tree=None):
         assert not keywords - parameters - launch_options, (target.id, "unknown", keywords)
         checked.add(target.id)
     assert checked == kernels, "every Full kernel must have a checked launch"
-
-
-@pytest.mark.parametrize("values_dtype", [torch.float32, torch.bfloat16])
-@pytest.mark.parametrize("query_dtype", [torch.float32, torch.bfloat16])
-def test_cpu_public_api_still_uses_equation_reference(values_dtype, query_dtype):
-    torch.manual_seed(17)
-    values = torch.randn(3, 2, 7, dtype=values_dtype)
-    query = torch.randn(3, dtype=query_dtype)
-    actual = attnres(values, query)
-    expected = reference_attnres(values, query)
-    torch.testing.assert_close(actual, expected)
 
 
 def test_affine_source_view_preserves_storage_and_strides():
@@ -112,25 +101,6 @@ def test_fixed_tail_backward_flattens_output_not_source_dimensions():
     torch.testing.assert_close(prepared, upstream, rtol=0, atol=0)
 
 
-@pytest.mark.parametrize("value_dtype", [torch.float32, torch.bfloat16])
-@pytest.mark.parametrize("query_dtype", [torch.float32, torch.bfloat16])
-def test_fixed_tail_cpu_reference_and_strided_gradients(value_dtype, query_dtype):
-    from attnres._kernels.fixed_tail import fused_attnres as fixed_tail
-    from validation.oracle import oracle
-
-    torch.manual_seed(20260827)
-    producer = torch.randn(3, 2, 3, 34, dtype=value_dtype, requires_grad=True)
-    query = (torch.randn(10, dtype=query_dtype) * .25).requires_grad_()
-    values, q = producer[..., ::2], query[::2]
-    actual, expected = fixed_tail(values, q), oracle(values, q)
-    upstream = torch.randn(17, 3, 2, dtype=value_dtype).permute(2, 1, 0)
-    ga = torch.autograd.grad(actual, (producer, query), upstream)
-    ge = torch.autograd.grad(expected, (producer, query), upstream)
-    tol = dict(rtol=.05, atol=.05) if torch.bfloat16 in (value_dtype, query_dtype) else dict(rtol=.001, atol=.0001)
-    for a, e in zip((actual, *ga), (expected, *ge)):
-        torch.testing.assert_close(a, e, **tol)
-
-
 @pytest.mark.cuda
 @pytest.mark.parametrize("source_layout", ["packed", "list"])
 @pytest.mark.parametrize("shape", [
@@ -152,7 +122,7 @@ def test_fixed_tail_bf16_envelope(shape, source_layout):
     torch.manual_seed(20260827)
     s, n, d, r = shape
     source = torch.randn(s, n, d + 7, device="cuda", dtype=torch.bfloat16, requires_grad=True)
-    query = (torch.randn(2 * r, device="cuda") * .25).requires_grad_()
+    query = (torch.randn(2 * r, device="cuda", dtype=torch.bfloat16) * .25).requires_grad_()
     values, q = source[..., :d], query[::2]
     upstream = torch.randn(d, n, device="cuda", dtype=source.dtype).t()
     actual = (fused_attnres(values, q) if source_layout == "packed"
@@ -166,10 +136,8 @@ def test_fixed_tail_bf16_envelope(shape, source_layout):
 
 @pytest.mark.cuda
 @pytest.mark.parametrize("source_layout", ["packed", "list", "list_nonaffine"])
-@pytest.mark.parametrize("dtype", [torch.float32, torch.bfloat16])
-@pytest.mark.parametrize("query_dtype", [torch.float32, torch.bfloat16])
 @pytest.mark.parametrize("width,rank", [(17, 5), (63, 33)])
-def test_fixed_tail_compiled_changed_inputs_and_graph(dtype, query_dtype, source_layout, width, rank):
+def test_fixed_tail_compiled_changed_inputs_and_graph(source_layout, width, rank):
     if not torch.cuda.is_available():
         pytest.skip("CUDA is not available")
     pytest.importorskip("triton")
@@ -179,13 +147,17 @@ def test_fixed_tail_compiled_changed_inputs_and_graph(dtype, query_dtype, source
     from validation.oracle import oracle
 
     torch.manual_seed(20260827)
-    source = torch.randn(3, 2, 5, 2 * width, device="cuda", dtype=dtype, requires_grad=True)
-    query = (torch.randn(2 * rank, device="cuda", dtype=query_dtype) * .25).requires_grad_()
-    upstream = torch.randn(width, 5, 2, device="cuda", dtype=dtype).permute(2, 1, 0)
+    source = torch.randn(3, 2, 5, 2 * width, device="cuda", dtype=torch.bfloat16,
+                         requires_grad=True)
+    query = (torch.randn(2 * rank, device="cuda", dtype=torch.bfloat16) * .25).requires_grad_()
+    upstream = torch.randn(width, 5, 2, device="cuda", dtype=torch.bfloat16).permute(2, 1, 0)
     if source_layout == "list_nonaffine":
         upstream = upstream.transpose(0, 1)
-    replay_source, replay_query = torch.randn_like(source), torch.randn_like(query) * .25
-    replay_upstream = torch.randn_like(upstream)
+    replay_inputs = [
+        (torch.randn_like(source), torch.randn_like(query) * .25,
+         torch.randn_like(upstream))
+        for _ in range(8)
+    ]
     def views(v):
         return (v.transpose(1, 2) if source_layout == "list_nonaffine" else v)[..., ::2]
 
@@ -210,9 +182,9 @@ def test_fixed_tail_compiled_changed_inputs_and_graph(dtype, query_dtype, source
     check(step())
     counters = dict(torch._dynamo.utils.counters["stats"])
     with torch.no_grad():
-        source.copy_(replay_source)
-        query.copy_(replay_query)
-        upstream.copy_(replay_upstream)
+        source.copy_(replay_inputs[0][0])
+        query.copy_(replay_inputs[0][1])
+        upstream.copy_(replay_inputs[0][2])
     check(step())
     assert dict(torch._dynamo.utils.counters["stats"]) == counters
     stream = torch.cuda.Stream()
@@ -224,31 +196,12 @@ def test_fixed_tail_compiled_changed_inputs_and_graph(dtype, query_dtype, source
     graph = torch.cuda.CUDAGraph()
     with torch.cuda.graph(graph, stream=stream):
         captured = step()
-    with torch.no_grad():
-        source.copy_(replay_source + .1)
-        query.copy_(replay_query + .01)
-        upstream.copy_(replay_upstream * .75)
-    graph.replay()
-    torch.cuda.synchronize()
-    check(captured)
+    for replay_source, replay_query, replay_upstream in replay_inputs:
+        with torch.no_grad():
+            source.copy_(replay_source)
+            query.copy_(replay_query)
+            upstream.copy_(replay_upstream)
+        graph.replay()
+        torch.cuda.synchronize()
+        check(captured)
     assert dict(torch._dynamo.utils.counters["stats"]) == counters
-
-
-@pytest.mark.parametrize("device", ["cpu", pytest.param("cuda", marks=pytest.mark.cuda)])
-@pytest.mark.parametrize("dtype", [torch.float32, torch.bfloat16])
-@pytest.mark.parametrize("rank", [5, 17])
-def test_fixed_tail_source_views_aliases_and_graph(monkeypatch, device, dtype, rank):
-    if device == "cuda" and not torch.cuda.is_available():
-        pytest.skip("CUDA is not available")
-    import attnres
-    from attnres._kernels.fixed_tail import fused_attnres
-    from attnres._kernels.fixed_tail_sources import source_attnres
-    from validation.source_checks import source_case
-
-    def fixed_tail(values, query, *, eps=2**-23, scale=1.0):
-        function = fused_attnres if isinstance(values, torch.Tensor) else source_attnres
-        return function(values, query, eps=eps, scale=scale)
-
-    monkeypatch.setattr(attnres, "attnres", fixed_tail)
-    source_case((5, 7, 17, rank), "full", dtype, graph=device == "cuda",
-                shared=True, device=device)

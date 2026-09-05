@@ -1,4 +1,4 @@
-"""Run standard Full Attention Residuals from an installed Fast-AttnRes package."""
+"""Run a CUDA BF16 standard Full Attention Residuals call."""
 
 from __future__ import annotations
 
@@ -10,27 +10,25 @@ from attnres import attnres
 
 
 def run(device: str | torch.device | None = None) -> torch.Tensor:
-    """Compare packed and source-list standard AttnRes calls."""
+    """Compare packed and source-list standard AttnRes calls on CUDA BF16."""
 
     torch.manual_seed(0)
-    if device is None:
-        device = "cuda" if torch.cuda.is_available() else "cpu"
-    device = torch.device(device)
-    dtype = torch.bfloat16 if device.type == "cuda" else torch.float32
+    device = torch.device("cuda" if device is None else device)
+    if device.type != "cuda" or not torch.cuda.is_available():
+        raise RuntimeError("this example requires an available CUDA device")
+    dtype = torch.bfloat16
     source_count, batch, width = 4, 2, 32
     values = torch.randn(source_count, batch, width, device=device, dtype=dtype)
-    query = torch.randn(width, device=device, dtype=torch.float32)
+    query = torch.randn(width, device=device, dtype=dtype)
 
     packed_output = attnres(values, query)
     source_output = attnres(tuple(values.unbind(0)), query)
-    tolerance = {"rtol": 0.05, "atol": 0.05} if dtype == torch.bfloat16 else {
-        "rtol": 0.001,
-        "atol": 0.0001,
-    }
-    torch.testing.assert_close(source_output, packed_output, **tolerance)
+    torch.testing.assert_close(source_output, packed_output, rtol=0.05, atol=0.05)
     expected_shape = (batch, width)
     if packed_output.shape != expected_shape:
         raise AssertionError(f"unexpected output shape: {tuple(packed_output.shape)}")
+    if packed_output.dtype != dtype or source_output.dtype != dtype:
+        raise AssertionError("AttnRes must return BF16 output")
     return packed_output
 
 

@@ -21,7 +21,7 @@ from torch.nn import functional as F
 from attnres import attnres
 
 
-Backend = Literal["kernel", "reference"] | Callable[..., Tensor]
+Backend = Literal["kernel"] | Callable[..., Tensor]
 Variant = Literal["standard", "sliced"]
 Mode = Literal["full", "block"]
 SourceLayout = Literal["packed", "list"]
@@ -121,8 +121,11 @@ def _block_ends(source_events: int, block_count: int) -> tuple[int, ...]:
     return tuple(math.ceil(source_events * i / count) for i in range(1, count + 1))
 
 
-def _reference_read(values: Tensor, query: Tensor) -> Tensor:
-    """Independent, readable FP32 residual equation used by block reference reads."""
+def _reference_read(values: Tensor | Sequence[Tensor], query: Tensor) -> Tensor:
+    """Independent test oracle with FP32 accumulation and BF16-compatible output."""
+
+    if not isinstance(values, Tensor):
+        values = torch.stack(tuple(values), dim=0)
 
     # Keep this equation local to the training fixture.  In particular, the
     # reference block path must not consume a prepared kernel cache.
@@ -243,9 +246,7 @@ class CausalAttnResLM(nn.Module):
             return self.backend
         if isinstance(self.backend, str) and self.backend == "kernel":
             return attnres
-        if isinstance(self.backend, str) and self.backend == "reference":
-            return _reference_read
-        raise ValueError("backend must be 'kernel', 'reference', or a callable")
+        raise ValueError("backend must be 'kernel' or a callable")
 
     def _operator_inputs(
         self,
@@ -266,9 +267,7 @@ class CausalAttnResLM(nn.Module):
             and self.variant in {"standard", "sliced"}
             and self.rank == self.config.width
         )
-        configured_source_list = self.config.source_layout == "list" and not (
-            isinstance(self.backend, str) and self.backend == "reference"
-        )
+        configured_source_list = self.config.source_layout == "list"
         if accepts_source_list or configured_source_list:
             return tuple(values)
 
@@ -354,10 +353,10 @@ def make_model(config: TrainingConfig, backend: Backend = "kernel") -> CausalAtt
 
     if not isinstance(config, TrainingConfig):
         raise TypeError("config must be a TrainingConfig")
-    if isinstance(backend, str) and backend not in {"kernel", "reference"}:
-        raise ValueError("backend must be 'kernel', 'reference', or a callable")
+    if isinstance(backend, str) and backend != "kernel":
+        raise ValueError("backend must be 'kernel' or a callable")
     if not isinstance(backend, str) and not callable(backend):
-        raise ValueError("backend must be 'kernel', 'reference', or a callable")
+        raise ValueError("backend must be 'kernel' or a callable")
     return CausalAttnResLM(config, backend)
 
 
@@ -375,7 +374,7 @@ def canonical_max_rank_state(config: TrainingConfig, seed: int) -> dict[str, Ten
         raise TypeError("config must be a TrainingConfig")
     canonical_config = replace(config, variant="standard", rank=config.width)
     with _temporary_cpu_seed(seed), torch.device("cpu"):
-        source = make_model(canonical_config, backend="reference")
+        source = make_model(canonical_config, backend=_reference_read)
     try:
         return {
             name: value.detach().cpu().clone()

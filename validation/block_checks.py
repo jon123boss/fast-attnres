@@ -14,13 +14,13 @@ CASES = [(1, 2, 128, 1), (9, 65, 768, 127), (33, 8, 3000, 257),
          (128, 8, 7168, 1024), (128, 8, 8192, 8192)]
 
 
-def _forward(source, partial, queries, upstream, width, reference):
+def _forward(source, partial, queries, upstream, width, use_oracle):
     from attnres import attnres
     from .oracle import oracle
 
     values = source[..., :width]
     combined = torch.cat((values, partial[..., :width].unsqueeze(0)), dim=0)
-    function = oracle if reference else attnres
+    function = oracle if use_oracle else attnres
     outputs = []
     for index in (0, 1, 1, 2):
         outputs.append(function(combined, queries[index]))
@@ -39,19 +39,24 @@ def _input_hash(args):
 
 
 def _case(shape, dtype, graph, metadata=None):
+    if dtype != torch.bfloat16:
+        raise ValueError("CUDA correctness validation supports BF16 storage only")
     s, n, d, r = shape
     width = d
     source = torch.randn(s, n, width, device="cuda", dtype=dtype, requires_grad=True)
     partial = torch.randn(n, width, device="cuda", dtype=dtype, requires_grad=True)
-    query = (torch.randn(3, r, device="cuda") * 0.25).requires_grad_()
+    query = (torch.randn(3, r, device="cuda", dtype=dtype) * 0.25).requires_grad_()
     upstream = torch.randn(5, d, n, device="cuda", dtype=dtype).transpose(1, 2)
     args = (source, partial, query, upstream)
     # Consume the fixed replay draws even if this candidate fails before replay.
     # Otherwise a failure changes the random inputs of every following case.
-    replay_args = tuple(torch.randn_like(x) * 0.25 for x in args) if graph else ()
+    replay_args = [
+        tuple(torch.randn_like(x) * 0.25 for x in args) for _ in range(8)
+    ] if graph else []
     if metadata is not None:
         metadata["inputs"] = {"initial_sha256": _input_hash(args),
-                              "replay_sha256": _input_hash(replay_args) if graph else None}
+                              "replay_sha256": [_input_hash(item) for item in replay_args]
+                              if graph else None}
 
     def forward(a, b, q, u):
         return _forward(a, b, q, u, d, False)
@@ -83,19 +88,25 @@ def _case(shape, dtype, graph, metadata=None):
         with torch.cuda.graph(capture, stream=stream):
             actual, loss = forward(*args)
             grads = torch.autograd.grad(loss, args[:3])
-        with torch.no_grad():
-            for x, value in zip(args, replay_args):
-                x.copy_(value)
-        capture.replay()
-        torch.cuda.synchronize()
-        result["changed_input_replay"] = check(actual, grads)
+        for replay in replay_args:
+            with torch.no_grad():
+                for x, value in zip(args, replay):
+                    x.copy_(value)
+            capture.replay()
+            torch.cuda.synchronize()
+            result.setdefault("changed_input_replays", 0)
+            result["changed_input_replays"] += 1
+            result["changed_input_replay"] = check(actual, grads)
         result["compiled_fullgraph"] = True
     return result
 
 
 def run_block_checks(config):
     torch.manual_seed(config.get("seed", PROTOCOL["seeds"][0]))
-    dtype = torch.bfloat16 if config.get("dtype", "bf16") == "bf16" else torch.float32
+    requested_dtype = config.get("dtype", "bf16")
+    if requested_dtype not in ("bf16", "bfloat16", torch.bfloat16):
+        raise ValueError("CUDA correctness validation supports BF16 only")
+    dtype = torch.bfloat16
     result = {"passed": 0, "failed": 0, "cases": [], "config": config}
     for shape in config.get("cases", CASES):
         name = f"block_{shape}"

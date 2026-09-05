@@ -230,3 +230,5 @@ helper and the public `attnres` primitive; Block differs only in its source
 schedule and sequential partial sums. Direct per-read Block validation retains
 standard and sliced equations, all gradients, aliases, compilation, and
 changed-input CUDA Graph replay. Historical cache results above remain intact.
+
+2026-09-05: Begin the separately qualified BF16-only H100/B200 campaign from public release ce0881d. Remove public CPU/FP32/reference execution; retain BF16 test-oracle tolerances (rtol=.05, atol=.05), with FP32 internal accumulation. Full and uncached Block share the same operator. BF16 queries are explicit in validation; graph replay coverage increases to eight. Current-file hashes are refreshed to identify changed code, not to reuse historical performance qualification. All v1.0.0 raw results and their measured source archive remain historical; new immutable job snapshots carry independent runner/source identities.

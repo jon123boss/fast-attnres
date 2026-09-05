@@ -1,10 +1,10 @@
 """Packed online fixed tail Attention Residuals.
 
-This is the small CUDA core extracted from the archived one store dV probe.
-Values are packed as ``[S, ..., D]`` and the implicit key is the final ``R``
-coordinates of each value.  The CUDA envelope is generalized to the package
-limits, but that envelope is intentionally unverified until the root GPU
-checks run.  CPU calls use the equation reference and do not require Triton.
+This is the small BF16 CUDA core extracted from the archived one store dV
+probe.  Values are packed as ``[S, ..., D]`` and the implicit key is the final
+``R`` coordinates of each value.  The CUDA envelope is generalized to the
+package limits, but that envelope is intentionally unverified until the root
+GPU checks run.
 
 When ``R < D`` and the physical rank and value blocks have equal width, the
 online kernels use one resident D-wide value load for both mixing and the
@@ -42,7 +42,16 @@ except (ImportError, AttributeError):  # pragma: no cover - local torch 2.5.
 
 
 _EPS = 2**-23
-SOURCE_TILE = 1
+
+# Compile-time tuning knobs.  They do not add a public runtime mode: the
+# source-list and packed adapters both pass the same values to the same
+# operator.  The parent GPU pass can change these constants before compiling
+# a benchmark matrix.
+SOURCE_TILE = 2
+FUSE_KEY_VALUE = True
+FUSE_KEY_VALUE_MAX_WIDTH = 2048
+FUSE_KEY_VALUE_MIN_FRACTION_NUM = 1
+FUSE_KEY_VALUE_MIN_FRACTION_DEN = 4
 ONE_STORE_DV = True
 NUM_WARPS = 4
 NUM_STAGES = 2
@@ -54,6 +63,23 @@ def _next_power_of_two(value: int) -> int:
     if value < 1:
         raise ValueError("value must be positive")
     return 1 << (int(value) - 1).bit_length()
+
+
+def _should_fuse_key_value(width: int, rank: int) -> bool:
+    """Choose the bounded D-wide routing tile for a BF16 CUDA launch.
+
+    A fused tile reuses the D-wide value load for the tail key.  Keeping it
+    behind a small-width and rank-fraction gate avoids turning very low-rank,
+    very wide fallback calls into D-wide key reductions.  This is a launch
+    policy knob rather than a new public API mode.
+    """
+
+    return bool(
+        FUSE_KEY_VALUE
+        and width <= FUSE_KEY_VALUE_MAX_WIDTH
+        and rank * FUSE_KEY_VALUE_MIN_FRACTION_DEN
+        >= width * FUSE_KEY_VALUE_MIN_FRACTION_NUM
+    )
 
 
 def _validate_inputs(values: torch.Tensor, query: torch.Tensor) -> tuple[int, int, int]:
@@ -76,10 +102,10 @@ def _validate_inputs(values: torch.Tensor, query: torch.Tensor) -> tuple[int, in
         raise ValueError("values dimensions must be positive")
     if values.device != query.device:
         raise ValueError("values and query must be on the same device")
-    if values.dtype not in (torch.bfloat16, torch.float32):
-        raise TypeError("values must use BF16 or FP32 storage")
-    if query.dtype not in (torch.bfloat16, torch.float32):
-        raise TypeError("query must use BF16 or FP32 storage")
+    if values.dtype != torch.bfloat16:
+        raise TypeError("values must use BF16 storage")
+    if query.dtype != torch.bfloat16:
+        raise TypeError("query must use BF16 storage")
     return sources, width, rank
 
 
@@ -109,6 +135,7 @@ if triton is not None:
         "BLOCK_R",
         "L2",
         "SOURCE_TILE",
+        "FUSE_KEY_WITH_VALUE",
         "LIST_SOURCES",
         "SOURCE_RECORDS",
         "SOURCE_STRIDES_UNIFORM",
@@ -234,6 +261,7 @@ if triton is not None:
         SOURCE_STRIDES_UNIFORM: tl.constexpr,
         SOURCE_ROW_STRIDE: tl.constexpr,
         SOURCE_FEATURE_STRIDE: tl.constexpr,
+        FUSE_KEY_WITH_VALUE: tl.constexpr,
     ):
         token = tl.program_id(0).to(tl.int64)
         d_offsets = tl.arange(0, BLOCK_D)
@@ -244,16 +272,30 @@ if triton is not None:
             r_offsets = tl.arange(0, BLOCK_R)
             r_mask = r_offsets < R
         d_mask = d_offsets < D
+        tail_d_mask = d_mask & (d_offsets >= (D - R))
         eps_f32 = tl.cast(eps, tl.float32)
         scale_f32 = tl.cast(scale, tl.float32)
-        if LIST_SOURCES:
-            q = tl.load(
-                query + r_offsets * tl.cast(QUERY_STRIDE, tl.int64),
-                mask=r_mask,
-                other=0.0,
-            ).to(tl.float32)
+        if FUSE_KEY_WITH_VALUE and R < D and BLOCK_R != BLOCK_D:
+            tail_d_offsets = (d_offsets - (D - R)).to(tl.int64)
+            if LIST_SOURCES:
+                q_key = tl.load(
+                    query + tail_d_offsets * tl.cast(QUERY_STRIDE, tl.int64),
+                    mask=tail_d_mask,
+                    other=0.0,
+                ).to(tl.float32)
+            else:
+                q_key = tl.load(
+                    query + tail_d_offsets, mask=tail_d_mask, other=0.0
+                ).to(tl.float32)
         else:
-            q = tl.load(query + r_offsets, mask=r_mask, other=0.0).to(tl.float32)
+            if LIST_SOURCES:
+                q = tl.load(
+                    query + r_offsets * tl.cast(QUERY_STRIDE, tl.int64),
+                    mask=r_mask,
+                    other=0.0,
+                ).to(tl.float32)
+            else:
+                q = tl.load(query + r_offsets, mask=r_mask, other=0.0).to(tl.float32)
 
         running_max = tl.full([], -float("inf"), tl.float32)
         running_denom = tl.zeros([], tl.float32)
@@ -302,7 +344,23 @@ if triton is not None:
                 )
             else:
                 value_ptr = value_base + d_offsets[None, :]
-            if R == D:
+            if FUSE_KEY_WITH_VALUE and R < D and BLOCK_R != BLOCK_D:
+                # The D-wide value tile is already needed for the mixture.
+                # Reuse it for the tail key when the rank is large enough to
+                # make a D-wide routing reduction a bounded trade-off.
+                value = tl.load(
+                    value_ptr,
+                    mask=source_mask[:, None] & d_mask[None, :],
+                    other=0.0,
+                    eviction_policy="evict_first",
+                ).to(tl.float32)
+                tail_d = tl.where(tail_d_mask[None, :], value, 0.0)
+                key_inv_rms = tl.rsqrt(
+                    tl.sum(tail_d * tail_d, axis=1) / R + eps_f32
+                )
+                key_d = tail_d * key_inv_rms[:, None]
+                logit = tl.sum(key_d * q_key[None, :], axis=1) * scale_f32
+            elif R == D:
                 value = tl.load(
                     value_ptr,
                     mask=source_mask[:, None] & d_mask[None, :],
@@ -334,12 +392,13 @@ if triton is not None:
                     eviction_policy="evict_first",
                 ).to(tl.float32)
 
-            key_inv_rms = tl.rsqrt(tl.sum(tail * tail, axis=1) / R + eps_f32)
-            key = tail * key_inv_rms[:, None]
-            logit = tl.sum(key * q[None, :], axis=1) * scale_f32
+            if not (FUSE_KEY_WITH_VALUE and R < D and BLOCK_R != BLOCK_D):
+                key_inv_rms = tl.rsqrt(tl.sum(tail * tail, axis=1) / R + eps_f32)
+                key = tail * key_inv_rms[:, None]
+                logit = tl.sum(key * q[None, :], axis=1) * scale_f32
             score = tl.where(source_mask, logit, -float("inf"))
 
-            if R < D and BLOCK_R != BLOCK_D:
+            if R < D and BLOCK_R != BLOCK_D and not FUSE_KEY_WITH_VALUE:
                 value = tl.load(
                     value_ptr,
                     mask=source_mask[:, None] & d_mask[None, :],
@@ -347,7 +406,7 @@ if triton is not None:
                     eviction_policy="evict_first",
                 ).to(tl.float32)
 
-            if LIST_SOURCES and SOURCE_TILE == 2:
+            if SOURCE_TILE == 2:
                 # Keep the source-serial order exactly: lane zero updates the
                 # online state before lane one, including the padded odd lane.
                 value_0, value_1 = tl.split(value.permute(1, 0))
@@ -454,6 +513,7 @@ if triton is not None:
         GRAD_STRIDES_UNIFORM: tl.constexpr,
         GRAD_ROW_STRIDE: tl.constexpr,
         GRAD_FEATURE_STRIDE: tl.constexpr,
+        FUSE_KEY_WITH_VALUE: tl.constexpr,
         STORE_FAMILY: tl.constexpr = 0,
     ):
         token = tl.program_id(0).to(tl.int64)
@@ -466,14 +526,34 @@ if triton is not None:
             r_mask = r_offsets < R
         d_mask = d_offsets < D
         tail_d_mask = d_mask & (d_offsets >= (D - R))
+        tail_d_offsets = (d_offsets - (D - R)).to(tl.int64)
         scale_f32 = tl.cast(scale, tl.float32)
 
+        if FUSE_KEY_WITH_VALUE and R < D and BLOCK_R != BLOCK_D:
+            if LIST_SOURCES:
+                q_key = tl.load(
+                    query + tail_d_offsets * tl.cast(QUERY_STRIDE, tl.int64),
+                    mask=tail_d_mask,
+                    other=0.0,
+                ).to(tl.float32)
+            else:
+                q_key = tl.load(
+                    query + tail_d_offsets, mask=tail_d_mask, other=0.0
+                ).to(tl.float32)
+        else:
+            if LIST_SOURCES:
+                q = tl.load(
+                    query + r_offsets * tl.cast(QUERY_STRIDE, tl.int64),
+                    mask=r_mask,
+                    other=0.0,
+                ).to(tl.float32)
+            else:
+                q = tl.load(query + r_offsets, mask=r_mask, other=0.0).to(tl.float32)
+        if FUSE_KEY_WITH_VALUE and R < D and BLOCK_R != BLOCK_D:
+            grad_query_d = tl.zeros((BLOCK_D,), tl.float32)
+        else:
+            grad_query = tl.zeros((BLOCK_R,), tl.float32)
         if LIST_SOURCES:
-            q = tl.load(
-                query + r_offsets * tl.cast(QUERY_STRIDE, tl.int64),
-                mask=r_mask,
-                other=0.0,
-            ).to(tl.float32)
             grad = tl.load(
                 grad_output
                 + token * tl.cast(GRAD_OUTPUT_ROW_STRIDE, tl.int64)
@@ -482,7 +562,6 @@ if triton is not None:
                 other=0.0,
             ).to(tl.float32)
         else:
-            q = tl.load(query + r_offsets, mask=r_mask, other=0.0).to(tl.float32)
             grad = tl.load(
                 grad_output + token * D + d_offsets, mask=d_mask, other=0.0
             ).to(tl.float32)
@@ -494,6 +573,7 @@ if triton is not None:
             and QUERY_STRIDE == 1
             and SOURCE_FEATURE_STRIDE == 1
             and GRAD_FEATURE_STRIDE == 1
+            and not FUSE_KEY_WITH_VALUE
             and STORE_FAMILY == 1
         ):
             tail_offsets = (D - R + r_offsets).to(tl.int64)
@@ -517,7 +597,6 @@ if triton is not None:
         ).to(tl.float32)
         delta = tl.sum(tl.where(d_mask, grad * mixed, 0.0), axis=0)
         lse = tl.load(saved_lse + token).to(tl.float32)
-        grad_query = tl.zeros((BLOCK_R,), tl.float32)
 
         for source_block in range(tl.cdiv(n_sources, SOURCE_TILE)):
             if LIST_SOURCES:
@@ -594,7 +673,15 @@ if triton is not None:
                 eviction_policy="evict_first",
             ).to(tl.float32)
             dweight = tl.sum(value * grad[None, :], axis=1)
-            if R == D:
+            if FUSE_KEY_WITH_VALUE and R < D and BLOCK_R != BLOCK_D:
+                tail_d = tl.where(tail_d_mask[None, :], value, 0.0)
+                key_inv_rms = tl.load(
+                    saved_key_inv_rms + source_offsets * n_tokens + token,
+                    mask=source_mask,
+                    other=1.0,
+                ).to(tl.float32)
+                key_d = tail_d * key_inv_rms[:, None]
+            elif R == D:
                 tail = value
             elif R < D and BLOCK_R == BLOCK_D:
                 tail = tl.where(r_mask[None, :], value, 0.0)
@@ -612,20 +699,32 @@ if triton is not None:
                     eviction_policy="evict_first",
                 ).to(tl.float32)
 
-            key_inv_rms = tl.load(
-                saved_key_inv_rms + source_offsets * n_tokens + token,
-                mask=source_mask,
-                other=1.0,
-            ).to(tl.float32)
-            key = tail * key_inv_rms[:, None]
             logit = tl.load(
                 saved_logit + source_offsets * n_tokens + token,
                 mask=source_mask,
                 other=0.0,
             ).to(tl.float32)
+            if not (FUSE_KEY_WITH_VALUE and R < D and BLOCK_R != BLOCK_D):
+                key_inv_rms = tl.load(
+                    saved_key_inv_rms + source_offsets * n_tokens + token,
+                    mask=source_mask,
+                    other=1.0,
+                ).to(tl.float32)
+                key = tail * key_inv_rms[:, None]
             probability = tl.where(source_mask, tl.exp(logit - lse), 0.0)
             dlogit = probability * (dweight - delta)
-            if LIST_SOURCES and SOURCE_TILE == 2:
+            if FUSE_KEY_WITH_VALUE and R < D and BLOCK_R != BLOCK_D:
+                scaled_dlogit = dlogit * scale_f32
+                if SOURCE_TILE == 2:
+                    scaled_dlogit_0, scaled_dlogit_1 = tl.split(scaled_dlogit)
+                    key_d_0, key_d_1 = tl.split(key_d.permute(1, 0))
+                    grad_query_d += scaled_dlogit_0 * key_d_0
+                    grad_query_d += scaled_dlogit_1 * key_d_1
+                else:
+                    grad_query_d += tl.sum(
+                        scaled_dlogit[:, None] * key_d, axis=0
+                    )
+            elif SOURCE_TILE == 2:
                 # Match the serial dQ accumulation order with supported
                 # permute+split operations; no tensor integer indexing.
                 scaled_dlogit = dlogit * scale_f32
@@ -636,7 +735,28 @@ if triton is not None:
             else:
                 grad_query += tl.sum((dlogit * scale_f32)[:, None] * key, axis=0)
 
-            if (
+            if FUSE_KEY_WITH_VALUE and R < D and BLOCK_R != BLOCK_D:
+                # Reuse the D-wide key tile and fold its derivative into the
+                # same full-width BF16 gradient store.
+                direct = probability[:, None] * grad[None, :]
+                scaled_dlogit = dlogit * scale_f32
+                grad_key_d = key_inv_rms[:, None] * (
+                    scaled_dlogit[:, None] * q_key[None, :]
+                    - key_d * (dlogit * logit / R)[:, None]
+                )
+                if LIST_SOURCES:
+                    grad_value_ptr = (
+                        grad_value_base[:, None]
+                        + d_offsets[None, :] * grad_value_stride[:, None]
+                    )
+                else:
+                    grad_value_ptr = grad_value_base + d_offsets[None, :]
+                tl.store(
+                    grad_value_ptr,
+                    direct + tl.where(tail_d_mask[None, :], grad_key_d, 0.0),
+                    mask=source_mask[:, None] & d_mask[None, :],
+                )
+            elif (
                 R < D
                 and BLOCK_R < BLOCK_D
                 and SOURCE_STRIDES_UNIFORM
@@ -644,6 +764,7 @@ if triton is not None:
                 and QUERY_STRIDE == 1
                 and SOURCE_FEATURE_STRIDE == 1
                 and GRAD_FEATURE_STRIDE == 1
+                and not FUSE_KEY_WITH_VALUE
                 and STORE_FAMILY == 1
             ):
                 # The compact family keeps the key derivative in R lanes and
@@ -680,18 +801,18 @@ if triton is not None:
                 # ONE_STORE_DV is fixed true: map the folded key derivative
                 # into the final R lanes of the existing D wide store.
                 direct = probability[:, None] * grad[None, :]
-                tail_d_offsets = tl.maximum(d_offsets - (D - R), 0).to(tl.int32)
+                grad_tail_d_offsets = tl.maximum(d_offsets - (D - R), 0).to(tl.int32)
                 if R < D and BLOCK_R == BLOCK_D:
                     q_d = q
                 elif LIST_SOURCES:
                     q_d = tl.load(
-                        query + tail_d_offsets * tl.cast(QUERY_STRIDE, tl.int64),
+                        query + grad_tail_d_offsets * tl.cast(QUERY_STRIDE, tl.int64),
                         mask=tail_d_mask,
                         other=0.0,
                     ).to(tl.float32)
                 else:
                     q_d = tl.load(
-                        query + tail_d_offsets, mask=tail_d_mask, other=0.0
+                        query + grad_tail_d_offsets, mask=tail_d_mask, other=0.0
                     ).to(tl.float32)
                 key_d = tl.where(
                     tail_d_mask[None, :], value * key_inv_rms[:, None], 0.0
@@ -731,7 +852,14 @@ if triton is not None:
                     mask=source_mask[:, None] & d_mask[None, :],
                 )
 
-        tl.store(grad_query_token + token * R + r_offsets, grad_query, mask=r_mask)
+        if FUSE_KEY_WITH_VALUE and R < D and BLOCK_R != BLOCK_D:
+            tl.store(
+                grad_query_token + token * R + tail_d_offsets,
+                grad_query_d,
+                mask=tail_d_mask,
+            )
+        else:
+            tl.store(grad_query_token + token * R + r_offsets, grad_query, mask=r_mask)
 
     @triton.jit
     def _packed_query_reduce_kernel(
@@ -800,7 +928,7 @@ if triton is not None and _triton_op is not None and _wrap_triton is not None:
             R=rank,
             BLOCK_D=block_d,
             BLOCK_R=block_r,
-            SOURCE_TILE=SOURCE_TILE,
+            SOURCE_TILE=SOURCE_TILE if rank < width else 1,
             QUERY_STRIDE=1,
             OUTPUT_ROW_STRIDE=width,
             OUTPUT_D_STRIDE=1,
@@ -809,10 +937,11 @@ if triton is not None and _triton_op is not None and _wrap_triton is not None:
             FEATURE_STRIDES=(1,),
             LIST_SOURCES=False,
             SOURCE_RECORDS=False,
-            VALUE_DTYPE=(tl.bfloat16 if values.dtype == torch.bfloat16 else tl.float32),
+            VALUE_DTYPE=tl.bfloat16,
             SOURCE_STRIDES_UNIFORM=True,
             SOURCE_ROW_STRIDE=0,
             SOURCE_FEATURE_STRIDE=1,
+            FUSE_KEY_WITH_VALUE=_should_fuse_key_value(width, rank),
             num_warps=NUM_WARPS,
             num_stages=NUM_STAGES,
         )
@@ -859,7 +988,7 @@ if triton is not None and _triton_op is not None and _wrap_triton is not None:
             R=rank,
             BLOCK_D=block_d,
             BLOCK_R=block_r,
-            SOURCE_TILE=SOURCE_TILE,
+            SOURCE_TILE=SOURCE_TILE if rank < width else 1,
             QUERY_STRIDE=1,
             GRAD_OUTPUT_ROW_STRIDE=width,
             GRAD_OUTPUT_D_STRIDE=1,
@@ -870,13 +999,14 @@ if triton is not None and _triton_op is not None and _wrap_triton is not None:
             GRAD_FEATURE_STRIDES=(1,),
             LIST_SOURCES=False,
             SOURCE_RECORDS=False,
-            VALUE_DTYPE=(tl.bfloat16 if values.dtype == torch.bfloat16 else tl.float32),
+            VALUE_DTYPE=tl.bfloat16,
             SOURCE_STRIDES_UNIFORM=True,
             SOURCE_ROW_STRIDE=0,
             SOURCE_FEATURE_STRIDE=1,
             GRAD_STRIDES_UNIFORM=True,
             GRAD_ROW_STRIDE=0,
             GRAD_FEATURE_STRIDE=1,
+            FUSE_KEY_WITH_VALUE=_should_fuse_key_value(width, rank),
         )
         _wrap_triton(_packed_query_reduce_kernel)[(triton.cdiv(rank, QUERY_BLOCK_R),)](
             grad_query_token,
@@ -958,19 +1088,17 @@ def fused_attnres(
 ) -> torch.Tensor:
     """Mix packed ``values [S,...,D]`` using the implicit final ``R`` tail.
 
-    Values and queries may independently use BF16 or FP32 storage.  On CUDA,
-    the adapter makes only the packed tensor and one dimensional query
-    contiguous before crossing the Triton autograd boundary.  This module
-    accepts packed tensors only; other container APIs stay outside.
+    Values and queries use BF16 storage.  On CUDA, the adapter makes only the
+    packed tensor and one dimensional query contiguous before crossing the
+    Triton autograd boundary.  This module accepts packed tensors only; other
+    container APIs stay outside.
     """
     sources, width, _rank = _validate_inputs(values, query)
     _validate_scalar(eps, "eps", positive=True)
     _validate_scalar(scale, "scale")
     eps_value, scale_value = float(eps), float(scale)
     if not values.is_cuda:
-        from ..reference import reference_attnres
-
-        return reference_attnres(values, query, eps=eps_value, scale=scale_value)
+        raise RuntimeError("fused_attnres requires CUDA BF16 tensors")
     if triton is None or _fixed_tail_forward_with_aux_triton_op is None:
         raise RuntimeError("fused_attnres requires Triton on CUDA")
 

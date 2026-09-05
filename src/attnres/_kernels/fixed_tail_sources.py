@@ -4,16 +4,29 @@ from __future__ import annotations
 
 import inspect
 import math
-from typing import Any, List, Sequence
+from collections.abc import Sequence
+from typing import Any
 
 import torch
 
 from .._sources import validate_sources
-from ..reference import reference_attnres
 from . import fixed_tail
 
-
 _EPS = fixed_tail._EPS
+
+
+def _validate_bf16_cuda_sources(
+    sources: Sequence[torch.Tensor], query: torch.Tensor
+) -> None:
+    """Enforce the narrow production boundary before entering Triton."""
+
+    if query.dtype != torch.bfloat16:
+        raise TypeError("query must use BF16 storage")
+    if not sources or any(source.dtype != torch.bfloat16 for source in sources):
+        raise TypeError("sources must use BF16 storage")
+    if any(not source.is_cuda for source in sources):
+        raise RuntimeError("source_attnres requires CUDA BF16 tensors")
+
 
 try:
     from torch.library import custom_op as _custom_op
@@ -120,9 +133,10 @@ def _setup_source_records(
 
 def _launch_source_forward(sources: Sequence[torch.Tensor], query: torch.Tensor,
                            eps: float, scale: float):
+    source_tuple = tuple(sources)
+    _validate_bf16_cuda_sources(source_tuple, query)
     if fixed_tail.triton is None:
         raise RuntimeError("fixed-tail source kernels require Triton on CUDA")
-    source_tuple = tuple(sources)
     from . import fla_full_sources
 
     if fla_full_sources.supports(source_tuple):
@@ -136,7 +150,7 @@ def _launch_source_forward(sources: Sequence[torch.Tensor], query: torch.Tensor,
     feature_stride_uniform, feature_stride = _uniform_stride(feature_strides)
     strides_uniform = row_stride_uniform and feature_stride_uniform
     first = source_tuple[0]
-    source_arg = pointers if first.dtype != torch.bfloat16 else _setup_source_records(
+    source_arg = _setup_source_records(
         pointers, row_strides, feature_strides, l2
     )[0]
     output = torch.empty((rows, width), device=first.device, dtype=first.dtype)
@@ -161,7 +175,7 @@ def _launch_source_forward(sources: Sequence[torch.Tensor], query: torch.Tensor,
         R=rank,
         BLOCK_D=fixed_tail._next_power_of_two(width),
         BLOCK_R=fixed_tail._next_power_of_two(rank),
-        SOURCE_TILE=2,
+        SOURCE_TILE=fixed_tail.SOURCE_TILE,
         QUERY_STRIDE=int(query.stride(0)),
         OUTPUT_ROW_STRIDE=int(output.stride(0)),
         OUTPUT_D_STRIDE=int(output.stride(1)),
@@ -169,15 +183,12 @@ def _launch_source_forward(sources: Sequence[torch.Tensor], query: torch.Tensor,
         ROW_STRIDES=row_strides,
         FEATURE_STRIDES=feature_strides,
         LIST_SOURCES=True,
-        SOURCE_RECORDS=first.dtype == torch.bfloat16,
-        VALUE_DTYPE=(
-            fixed_tail.tl.bfloat16
-            if first.dtype == torch.bfloat16
-            else fixed_tail.tl.float32
-        ),
+        SOURCE_RECORDS=True,
+        VALUE_DTYPE=fixed_tail.tl.bfloat16,
         SOURCE_STRIDES_UNIFORM=strides_uniform,
         SOURCE_ROW_STRIDE=row_stride,
         SOURCE_FEATURE_STRIDE=feature_stride,
+        FUSE_KEY_WITH_VALUE=fixed_tail._should_fuse_key_value(width, rank),
         num_warps=fixed_tail.NUM_WARPS,
         num_stages=fixed_tail.NUM_STAGES,
     )
@@ -187,10 +198,11 @@ def _launch_source_forward(sources: Sequence[torch.Tensor], query: torch.Tensor,
 def _launch_source_backward(sources: Sequence[torch.Tensor], query: torch.Tensor,
                             saved_output_fp32: torch.Tensor, grad_output: torch.Tensor,
                             saved_key_inv_rms: torch.Tensor, saved_logit: torch.Tensor,
-                            saved_lse: torch.Tensor, scale: float) -> List[torch.Tensor]:
+                            saved_lse: torch.Tensor, scale: float) -> list[torch.Tensor]:
+    source_tuple = tuple(sources)
+    _validate_bf16_cuda_sources(source_tuple, query)
     if fixed_tail.triton is None:
         raise RuntimeError("fixed-tail source kernels require Triton on CUDA")
-    source_tuple = tuple(sources)
     from . import fla_full_sources
 
     if fla_full_sources.supports(source_tuple):
@@ -221,12 +233,14 @@ def _launch_source_backward(sources: Sequence[torch.Tensor], query: torch.Tensor
     grad_row_stride_uniform, grad_row_stride = _uniform_stride(grad_row_strides)
     grad_feature_stride_uniform, grad_feature_stride = _uniform_stride(grad_feature_strides)
     grad_strides_uniform = grad_row_stride_uniform and grad_feature_stride_uniform
-    source_arg, grad_arg = (
-        _setup_source_records(pointers, row_strides, feature_strides, l2,
-                              grad_pointers=grad_pointers,
-                              grad_row_strides=grad_row_strides,
-                              grad_feature_strides=grad_feature_strides)
-        if source_tuple[0].dtype == torch.bfloat16 else (pointers, grad_pointers)
+    source_arg, grad_arg = _setup_source_records(
+        pointers,
+        row_strides,
+        feature_strides,
+        l2,
+        grad_pointers=grad_pointers,
+        grad_row_strides=grad_row_strides,
+        grad_feature_strides=grad_feature_strides,
     )
     grad_query_token = torch.empty(
         (rows, rank), device=query.device, dtype=torch.float32
@@ -249,7 +263,7 @@ def _launch_source_backward(sources: Sequence[torch.Tensor], query: torch.Tensor
         R=rank,
         BLOCK_D=fixed_tail._next_power_of_two(width),
         BLOCK_R=fixed_tail._next_power_of_two(rank),
-        SOURCE_TILE=2,
+        SOURCE_TILE=fixed_tail.SOURCE_TILE,
         QUERY_STRIDE=int(query.stride(0)),
         GRAD_OUTPUT_ROW_STRIDE=int(grad_output.stride(0)),
         GRAD_OUTPUT_D_STRIDE=int(grad_output.stride(1)),
@@ -259,18 +273,15 @@ def _launch_source_backward(sources: Sequence[torch.Tensor], query: torch.Tensor
         GRAD_ROW_STRIDES=grad_row_strides,
         GRAD_FEATURE_STRIDES=grad_feature_strides,
         LIST_SOURCES=True,
-        SOURCE_RECORDS=source_tuple[0].dtype == torch.bfloat16,
-        VALUE_DTYPE=(
-            fixed_tail.tl.bfloat16
-            if source_tuple[0].dtype == torch.bfloat16
-            else fixed_tail.tl.float32
-        ),
+        SOURCE_RECORDS=True,
+        VALUE_DTYPE=fixed_tail.tl.bfloat16,
         SOURCE_STRIDES_UNIFORM=strides_uniform,
         SOURCE_ROW_STRIDE=row_stride,
         SOURCE_FEATURE_STRIDE=feature_stride,
         GRAD_STRIDES_UNIFORM=grad_strides_uniform,
         GRAD_ROW_STRIDE=grad_row_stride,
         GRAD_FEATURE_STRIDE=grad_feature_stride,
+        FUSE_KEY_WITH_VALUE=fixed_tail._should_fuse_key_value(width, rank),
     )
     fixed_tail._packed_query_reduce_kernel[(
         fixed_tail.triton.cdiv(rank, fixed_tail.QUERY_BLOCK_R),
@@ -292,18 +303,18 @@ if _custom_op is not None:
     @_custom_op("attnres::_fixed_tail_sources_forward_with_aux", mutates_args=(),
                 device_types="cuda", **_SOURCE_CUSTOM_OP_KWARGS)
     def _fixed_tail_sources_forward_with_aux_custom_op(
-        sources: List[torch.Tensor], query: torch.Tensor, eps: float, scale: float
+        sources: list[torch.Tensor], query: torch.Tensor, eps: float, scale: float
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         return _launch_source_forward(sources, query, eps, scale)
 
     @_custom_op("attnres::_fixed_tail_sources_backward", mutates_args=(),
                 device_types="cuda", **_SOURCE_CUSTOM_OP_KWARGS)
     def _fixed_tail_sources_backward_custom_op(
-        sources: List[torch.Tensor], query: torch.Tensor,
+        sources: list[torch.Tensor], query: torch.Tensor,
         saved_output_fp32: torch.Tensor, grad_output: torch.Tensor,
         saved_key_inv_rms: torch.Tensor, saved_logit: torch.Tensor,
         saved_lse: torch.Tensor, scale: float,
-    ) -> List[torch.Tensor]:
+    ) -> list[torch.Tensor]:
         return _launch_source_backward(
             sources,
             query,
@@ -316,17 +327,12 @@ if _custom_op is not None:
         )
 
     def _source_forward_fake(
-        sources: List[torch.Tensor], query: torch.Tensor, eps: float, scale: float
+        sources: list[torch.Tensor], query: torch.Tensor, eps: float, scale: float
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         del eps, scale
         first = sources[0]
         rows = math.prod(first.shape[:-1]) or 1
         width = first.shape[-1]
-        # The contiguous full-rank FLA specialization can choose to
-        # recompute the mixed value in backward.  Keep the fake tensor shape
-        # aligned with the real auxiliary output for that structural policy;
-        # all generic and sliced routes retain the historical [rows, width]
-        # saved buffer.
         from . import fla_full_sources
 
         standard = (
@@ -352,11 +358,11 @@ if _custom_op is not None:
         )
 
     def _source_backward_fake(
-        sources: List[torch.Tensor], query: torch.Tensor,
+        sources: list[torch.Tensor], query: torch.Tensor,
         saved_output_fp32: torch.Tensor, grad_output: torch.Tensor,
         saved_key_inv_rms: torch.Tensor, saved_logit: torch.Tensor,
         saved_lse: torch.Tensor, scale: float
-    ) -> List[torch.Tensor]:
+    ) -> list[torch.Tensor]:
         del saved_output_fp32, grad_output, saved_key_inv_rms, saved_logit
         del saved_lse, scale
         return [source.new_empty(source.shape) for source in sources] + [
@@ -410,14 +416,12 @@ else:
 
 def source_attnres(sources, query: torch.Tensor, *, eps: float = _EPS,
                    scale: float = 1.0) -> torch.Tensor:
-    """Mix a source sequence through the native fixed-tail CUDA route."""
+    """Mix a BF16 source sequence through the fixed-tail CUDA route."""
     source_tuple = validate_sources(sources, query, eps, scale)
+    _validate_bf16_cuda_sources(source_tuple, query)
     first = source_tuple[0]
     width = int(first.shape[-1])
     rows = first.numel() // width
-    if not first.is_cuda:
-        return reference_attnres(torch.stack(source_tuple, dim=0), query,
-                                 eps=float(eps), scale=float(scale))
     if _fixed_tail_sources_forward_with_aux_custom_op is None:
         raise RuntimeError("source_attnres requires Triton on CUDA")
     from . import fla_full_sources

@@ -419,29 +419,29 @@ def test_liger_discovery_records_missing_vendor_without_reference_fallback(tmp_p
 
 
 def test_liger_capabilities_reject_sliced_and_cpu_inputs():
-    values = torch.randn(2, 3, 8, dtype=torch.float32)
-    query = torch.randn(4, dtype=torch.float32)
+    values = torch.randn(2, 3, 8, dtype=torch.bfloat16)
+    query = torch.randn(4, dtype=torch.bfloat16)
     comparator = liger.Comparator(lambda *_args: None, status="available")
     okay, reason = comparator.applicable(values, query)
     assert not okay
     assert "standard R=D" in (reason or "")
 
-    full_query = torch.randn(8, dtype=torch.float32)
+    full_query = torch.randn(8, dtype=torch.bfloat16)
     okay, reason = comparator.applicable(values, full_query)
     assert not okay
     assert "CUDA" in (reason or "")
 
 
 def test_fla_capabilities_reject_reduced_rank_and_overflow_sources():
-    reduced_values = torch.randn(2, 3, 8, dtype=torch.float32)
-    reduced_query = torch.randn(4, dtype=torch.float32)
+    reduced_values = torch.randn(2, 3, 8, dtype=torch.bfloat16)
+    reduced_query = torch.randn(4, dtype=torch.bfloat16)
     comparator = competitors.Comparator("fake", lambda **_kwargs: None, status="available")
     okay, reason = comparator.applicable(reduced_values, reduced_query)
     assert not okay
     assert "standard R=D" in (reason or "")
 
-    overflow = torch.randn(competitors.FLA_MAX_SOURCES + 1, 1, 8, dtype=torch.float32)
-    full_query = torch.randn(8, dtype=torch.float32)
+    overflow = torch.randn(competitors.FLA_MAX_SOURCES + 1, 1, 8, dtype=torch.bfloat16)
+    full_query = torch.randn(8, dtype=torch.bfloat16)
     okay, reason = comparator.applicable(overflow, full_query)
     assert not okay
     assert "129" in (reason or "")

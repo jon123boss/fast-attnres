@@ -10,6 +10,15 @@ from torch.nn import functional as F
 
 from benchmarks.model import TrainingConfig, make_model
 from benchmarks.training_graph import capture_training_step
+from validation.oracle import oracle
+
+
+def _oracle_backend(values, query, *, eps=2**-23, scale=1.0):
+    """Use the frozen BF16 oracle as the independent model fixture."""
+
+    if isinstance(values, (list, tuple)):
+        values = torch.stack(tuple(values), dim=0)
+    return oracle(values, query, eps=eps, scale=scale)
 
 
 def _ordinary_step(model, optimizer, compiled_loss, tokens, targets, accumulation=1):
@@ -35,7 +44,7 @@ def test_training_graph_module_imports_without_cuda():
     if torch.cuda.is_available():
         pytest.skip("CPU import guard is only exercised without CUDA")
     config = TrainingConfig(layers=1, width=8, heads=2, ffn=16, batch=1, sequence=3, vocab=17)
-    model = make_model(config, backend="reference")
+    model = make_model(config, backend=_oracle_backend)
     optimizer = torch.optim.AdamW(model.parameters(), lr=1e-3)
     tokens = torch.randint(config.vocab, (config.batch, config.sequence))
     with pytest.raises(RuntimeError, match="CUDA"):
@@ -76,7 +85,7 @@ def _assert_close_state(graph_model, ordinary_model, graph_optimizer, ordinary_o
 
 @pytest.mark.cuda
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="requires a CUDA device")
-def test_changed_input_two_step_graph_replay_matches_compiled_training():
+def test_changed_input_eight_step_graph_replay_matches_compiled_training():
     config = TrainingConfig(
         layers=1,
         width=16,
@@ -110,6 +119,17 @@ def _check_complete_graph(config, graph_backend="kernel", ordinary_backend="kern
     ordinary_loss = torch.compile(lambda x, y: F.cross_entropy(x, y), fullgraph=True, dynamic=False)
     initial_tokens = torch.randint(config.vocab, (config.batch, config.sequence), device="cuda")
     initial_targets = torch.randint_like(initial_tokens, config.vocab)
+    # Populate both AdamW states before capture so restoration covers the
+    # complete model and optimizer checkpoint topology.
+    graph_compiled = torch.compile(graph_model, fullgraph=True, dynamic=False)
+    _ordinary_step(graph_compiled, graph_optimizer, ordinary_loss,
+                   initial_tokens, initial_targets, accumulation=2)
+    _ordinary_step(ordinary_compiled, ordinary_optimizer, ordinary_loss,
+                   initial_tokens, initial_targets, accumulation=2)
+    torch.cuda.synchronize()
+    _assert_close_state(graph_model, ordinary_model, graph_optimizer, ordinary_optimizer)
+    before_capture_model = copy.deepcopy(graph_model.state_dict())
+    before_capture_optimizer = copy.deepcopy(graph_optimizer.state_dict())
     graph_step = capture_training_step(
         graph_model,
         graph_optimizer,
@@ -117,7 +137,11 @@ def _check_complete_graph(config, graph_backend="kernel", ordinary_backend="kern
         initial_targets,
         accumulation=2,
     )
-    for shift in (0, 1):
+    torch.testing.assert_close(graph_model.state_dict(), before_capture_model,
+                               rtol=0, atol=0)
+    torch.testing.assert_close(graph_optimizer.state_dict(), before_capture_optimizer,
+                               rtol=0, atol=0)
+    for shift in range(8):
         tokens = initial_tokens.roll(shift, dims=1)
         targets = initial_targets.roll(shift, dims=1)
         expected = _ordinary_step(
@@ -155,33 +179,33 @@ def test_source_list_complete_graph_matches_packed_training(variant, mode):
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="requires a CUDA device")
 @pytest.mark.parametrize("variant", ["standard", "sliced"])
 @pytest.mark.parametrize("block_count", [1, 3])
-def test_per_read_block_complete_graph_matches_reference_training(variant, block_count):
+def test_per_read_block_complete_graph_matches_oracle_training(variant, block_count):
     config = TrainingConfig(layers=2, width=128, heads=4, ffn=256, batch=2,
                             sequence=8, vocab=37, block_count=block_count, variant=variant,
                             mode="block", rank=128 if variant == "standard" else 16,
                             source_layout="list")
-    _check_complete_graph(config, ordinary_backend="reference")
+    _check_complete_graph(config, ordinary_backend=_oracle_backend)
 
 
 @pytest.mark.cuda
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="requires a CUDA device")
 @pytest.mark.parametrize("variant,rank", [("standard", 64), ("sliced", 16), ("sliced", 48)])
 @pytest.mark.parametrize("mode", ["full", "block"])
-def test_fixed_tail_source_complete_graph_matches_reference(variant, rank, mode):
+def test_fixed_tail_source_complete_graph_matches_oracle(variant, rank, mode):
     from attnres._kernels.fixed_tail_sources import source_attnres
 
     config = TrainingConfig(layers=2, width=64, heads=4, ffn=128, batch=2,
                             sequence=8, vocab=37, block_count=2, variant=variant,
                             mode=mode, rank=rank, source_layout="list")
     _check_complete_graph(config, graph_backend=source_attnres,
-                          ordinary_backend="reference")
+                          ordinary_backend=_oracle_backend)
 
 
 @pytest.mark.cuda
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="requires a CUDA device")
 @pytest.mark.parametrize("implementation", ["triton", "gluon"])
 @pytest.mark.parametrize("mode", ["full", "block"])
-def test_native_fla_complete_graph_matches_reference_training(implementation, mode):
+def test_native_fla_complete_graph_matches_oracle_training(implementation, mode):
     from benchmarks.fla_compile import make_model_backend, resolve_vendor_root, _native_functions
 
     try:
@@ -196,4 +220,4 @@ def test_native_fla_complete_graph_matches_reference_training(implementation, mo
     config = TrainingConfig(layers=1, width=64, heads=4, ffn=128, batch=2,
                             sequence=8, vocab=37, block_count=1,
                             variant="standard", mode=mode, source_layout="list")
-    _check_complete_graph(config, graph_backend=backend, ordinary_backend="reference")
+    _check_complete_graph(config, graph_backend=backend, ordinary_backend=_oracle_backend)

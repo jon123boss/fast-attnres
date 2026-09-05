@@ -117,7 +117,7 @@ def test_gate_identity_and_structural_keys_are_frozen():
 )
 @pytest.mark.parametrize("backward_family", (0, 1, 2))
 @pytest.mark.parametrize("case_index,case", tuple(enumerate(CASES)))
-def test_public_source_route_matches_fp32_oracle(
+def test_public_source_route_matches_bf16_oracle(
     case_index: int, case: tuple[int, int], backward_family: int
 ):
     source_count, rank = case
@@ -135,7 +135,7 @@ def test_public_source_route_matches_fp32_oracle(
     reference_values = tuple(
         value.detach().clone().requires_grad_(True) for value in values
     )
-    query = torch.randn(rank, device="cuda", dtype=torch.float32, requires_grad=True)
+    query = torch.randn(rank, device="cuda", dtype=torch.bfloat16, requires_grad=True)
     reference_query = query.detach().clone().requires_grad_(True)
 
     block = (

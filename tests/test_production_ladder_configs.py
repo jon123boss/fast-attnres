@@ -65,7 +65,7 @@ def _sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def _assert_common_config(config: dict, mode: str, protocol: dict) -> None:
+def _assert_common_config(config: dict, mode: str, protocol: dict, source_root: Path) -> None:
     model = config["model_config"]
     metadata = config["production_ladder"]
 
@@ -117,7 +117,7 @@ def _assert_common_config(config: dict, mode: str, protocol: dict) -> None:
     )
     for path, digest in SOURCE_HASHES.items():
         assert metadata["resident_candidate"][Path(path).name.replace(".py", "_sha256")] == digest
-        assert _sha256(ROOT / path) == digest
+        assert _sha256(source_root / path) == digest
 
     keys = {key.lower() for key in _mapping_keys(config)}
     assert "block_execution" not in keys
@@ -132,9 +132,9 @@ def _assert_common_config(config: dict, mode: str, protocol: dict) -> None:
 
 
 @pytest.mark.parametrize("mode", MODES)
-def test_mode_configs_match_the_resident_current_evaluator_contract(mode):
+def test_mode_configs_match_the_resident_current_evaluator_contract(mode, historical_release_root):
     protocol, _ = load_protocol(ROOT)
-    _assert_common_config(_load(f"production_ladder_{mode}.json"), mode, protocol)
+    _assert_common_config(_load(f"production_ladder_{mode}.json"), mode, protocol, historical_release_root)
 
 
 @pytest.mark.parametrize("mode", MODES)

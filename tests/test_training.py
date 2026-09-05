@@ -6,6 +6,15 @@ import pytest
 import torch
 
 from benchmarks.model import TrainingConfig, make_model, training_step
+from validation.oracle import oracle
+
+
+def _oracle_backend(values, query, *, eps=2**-23, scale=1.0):
+    """Use the frozen test oracle for CPU model fixtures."""
+
+    if isinstance(values, (list, tuple)):
+        values = torch.stack(tuple(values), dim=0)
+    return oracle(values, query, eps=eps, scale=scale)
 
 
 def _tiny_config(**kwargs) -> TrainingConfig:
@@ -49,7 +58,8 @@ def test_standard_variant_requires_full_rank():
 def test_model_shape_and_nonzero_queries(variant, mode):
     torch.manual_seed(5)
     rank = 16 if variant == "standard" else 4
-    model = make_model(_tiny_config(variant=variant, mode=mode, rank=rank), backend="reference")
+    model = make_model(_tiny_config(variant=variant, mode=mode, rank=rank),
+                       backend=_oracle_backend)
     tokens = torch.randint(31, (2, 5))
     logits = model(tokens)
     assert logits.shape == (2, 5, 31)
@@ -59,38 +69,24 @@ def test_model_shape_and_nonzero_queries(variant, mode):
 @pytest.mark.parametrize("source_layout", ["packed", "list"])
 @pytest.mark.parametrize("variant", ["standard", "sliced"])
 @pytest.mark.parametrize("mode", ["full", "block"])
-def test_reference_and_kernel_state_and_gradient_parity_on_cpu(variant, mode, source_layout):
+def test_cpu_model_fixture_preserves_state_topology(variant, mode, source_layout):
     config = _tiny_config(variant=variant, mode=mode, rank=16 if variant == "standard" else 4,
                           source_layout=source_layout)
     torch.manual_seed(7)
-    reference = make_model(config, backend="reference")
-    kernel = make_model(config, backend="kernel")
-    kernel.load_state_dict(copy.deepcopy(reference.state_dict()))
-    tokens = torch.randint(config.vocab, (config.batch, config.sequence))
-    targets = torch.randint(config.vocab, (config.batch, config.sequence))
-    logits_reference = reference(tokens)
-    logits_kernel = kernel(tokens)
-    torch.testing.assert_close(logits_reference, logits_kernel, rtol=1e-5, atol=1e-6)
-    loss_reference = logits_reference.float().mean()
-    loss_kernel = logits_kernel.float().mean()
-    loss_reference.backward()
-    loss_kernel.backward()
-    reference_parameters = dict(reference.named_parameters())
-    kernel_parameters = dict(kernel.named_parameters())
-    assert reference_parameters.keys() == kernel_parameters.keys()
-    for name in reference_parameters:
-        torch.testing.assert_close(
-            reference_parameters[name].grad,
-            kernel_parameters[name].grad,
-            rtol=1e-5,
-            atol=1e-6,
-            msg=name,
-        )
+    first = make_model(config, backend=_oracle_backend)
+    second = make_model(config, backend=_oracle_backend)
+    assert first.state_dict().keys() == second.state_dict().keys()
+    assert [(name, tuple(value.shape), value.dtype)
+            for name, value in first.state_dict().items()] == [
+                (name, tuple(value.shape), value.dtype)
+                for name, value in second.state_dict().items()
+            ]
+    assert first.config.source_layout == source_layout
 
 
 def test_training_step_updates_weights_and_supports_accumulation():
     config = _tiny_config(layers=1, block_count=1, variant="sliced", mode="full", rank=3)
-    model = make_model(config, backend="reference")
+    model = make_model(config, backend=_oracle_backend)
     optimizer = torch.optim.AdamW(model.parameters(), lr=1e-2)
     tokens = torch.randint(config.vocab, (2, config.batch, config.sequence))
     targets = torch.randint(config.vocab, (2, config.batch, config.sequence))
@@ -112,7 +108,7 @@ def test_block_callable_keeps_source_schedule_and_all_gradients(variant):
 
     config = _tiny_config(variant=variant, mode="block", rank=16 if variant == "standard" else 4)
     torch.manual_seed(13)
-    reference = make_model(config, backend="reference")
+    reference = make_model(config, backend=_oracle_backend)
     candidate = make_model(config, backend=backend)
     candidate.load_state_dict(reference.state_dict())
     tokens = torch.randint(config.vocab, (config.batch, config.sequence))
@@ -179,12 +175,12 @@ def test_native_source_list_preserves_order_and_all_gradients(mode, variant, ran
 def test_checkpoint_restores_model_and_optimizer_state():
     config = _tiny_config(layers=1, block_count=1, variant="sliced", mode="block", rank=3)
     torch.manual_seed(9)
-    model = make_model(config, backend="reference")
+    model = make_model(config, backend=_oracle_backend)
     optimizer = torch.optim.AdamW(model.parameters(), lr=1e-3)
     tokens = torch.randint(config.vocab, (config.batch, config.sequence))
     targets = torch.randint(config.vocab, (config.batch, config.sequence))
     training_step(model, optimizer, tokens, targets)
-    model_copy = make_model(config, backend="reference")
+    model_copy = make_model(config, backend=_oracle_backend)
     optimizer_copy = torch.optim.AdamW(model_copy.parameters(), lr=1e-3)
     model_copy.load_state_dict(copy.deepcopy(model.state_dict()))
     optimizer_copy.load_state_dict(copy.deepcopy(optimizer.state_dict()))
@@ -200,7 +196,7 @@ def test_canonical_rank_states_preserve_common_parameters_and_coordinate_mapping
     before = torch.random.get_rng_state()
     try:
         torch.random.set_rng_state(torch.Generator().manual_seed(seed).get_state())
-        independent = make_model(config, backend="reference").state_dict()
+        independent = make_model(config, backend=_oracle_backend).state_dict()
     finally:
         torch.random.set_rng_state(before)
     canonical = canonical_max_rank_state(config, seed)
@@ -212,7 +208,7 @@ def test_canonical_rank_states_preserve_common_parameters_and_coordinate_mapping
     for variant, rank in [("standard", 16), ("sliced", 1), ("sliced", 7),
                           ("sliced", 16)]:
         target_config = _tiny_config(variant=variant, mode=mode, rank=rank)
-        target = make_model_with_canonical_state(target_config, "reference", canonical, seed + 1)
+        target = make_model_with_canonical_state(target_config, _oracle_backend, canonical, seed + 1)
         torch.testing.assert_close(before, torch.random.get_rng_state(), rtol=0, atol=0)
         for name, actual in target.state_dict().items():
             expected = independent[name]

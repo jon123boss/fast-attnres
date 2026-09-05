@@ -50,7 +50,7 @@ def source_case(shape, mode, dtype, *, graph=False, shared=False, device="cuda")
         physical = ((n, 2 * width), (width, n), (n, width + 7))[i % 3]
         leaves.append(torch.randn(*physical, device=device, dtype=dtype, requires_grad=True))
     qshape = (3, 2 * r) if mode == "block" else (2 * r,)
-    query = torch.randn(*qshape, device=device, requires_grad=True)
+    query = torch.randn(*qshape, device=device, dtype=dtype, requires_grad=True)
     partial = torch.randn(n, width, device=device, dtype=dtype, requires_grad=True)
     params = (*leaves, query, partial) if mode == "block" else (*leaves, query)
     output_count = 5 if mode == "block" else 1
@@ -158,11 +158,13 @@ def source_case(shape, mode, dtype, *, graph=False, shared=False, device="cuda")
         with no_stack():
             outputs, loss = compiled(static, weights)
             gradients = torch.autograd.grad(loss, static)
-    with torch.no_grad():
-        for x, value in zip(static, replay):
-            x.copy_(value * .5)
-        weights.copy_(replay_upstream * .5)
-    capture.replay()
-    torch.cuda.synchronize()
-    result["graph_changed_input"] = compare(outputs, gradients, static, weights)
+    result["graph_changed_input"] = []
+    for index in range(8):
+        with torch.no_grad():
+            for x, value in zip(static, replay):
+                x.copy_(value * ((index + 1) / 8))
+            weights.copy_(replay_upstream * ((index + 1) / 8))
+        capture.replay()
+        torch.cuda.synchronize()
+        result["graph_changed_input"].append(compare(outputs, gradients, static, weights))
     return result

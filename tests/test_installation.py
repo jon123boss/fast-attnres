@@ -1,20 +1,19 @@
 import os
-from pathlib import Path
 import shutil
 import subprocess
 import sys
 import tarfile
 import zipfile
+from pathlib import Path
 
 import pytest
-
 
 _INSTALLED_SMOKE = r"""
 import os
 from pathlib import Path
 import torch
 import attnres
-from attnres import attnres as call, reference_attnres
+from attnres import attnres as call
 assert attnres.__version__ == "1.0.0"
 assert Path(attnres.__file__).resolve().is_relative_to(Path(os.environ["ATTNRES_INSTALL_DIR"]).resolve())
 package_dir = Path(attnres.__file__).resolve().parent
@@ -24,25 +23,45 @@ assert not hasattr(attnres, "BlockCache")
 assert not (package_dir / "block.py").exists()
 assert not (package_dir / "_types.py").exists()
 assert not (package_dir / "_kernels" / "block.py").exists()
+assert not (package_dir / "reference.py").exists()
 device = os.environ["ATTNRES_TEST_DEVICE"]
 torch.set_default_device(device)
 torch.manual_seed(42019)
 options = dict(eps=2**-20, scale=0.75)
+
+def oracle(values, query, *, eps, scale):
+    values_fp32 = values.float()
+    keys_fp32 = values[..., -query.numel():].float()
+    query_fp32 = query.float()
+    scores = (keys_fp32 * torch.rsqrt(
+        keys_fp32.square().mean(-1, keepdim=True) + eps
+    ) * query_fp32).sum(-1)
+    weights = torch.softmax(scores * scale, dim=0)
+    return (weights.unsqueeze(-1) * values_fp32).sum(0).to(values.dtype)
+
 def check(values, query, function=call):
     leaves = (values,) if isinstance(values, torch.Tensor) else tuple(values)
+    if device == "cpu":
+        try:
+            function(values, query, **options)
+        except RuntimeError as error:
+            assert "CUDA" in str(error)
+        else:
+            raise AssertionError("CPU execution unexpectedly succeeded")
+        return
     output = function(values, query, **options)
-    expected = reference_attnres(values if isinstance(values, torch.Tensor) else torch.stack(leaves), query, **options)
-    tol = (0.05, 0.05) if output.dtype == torch.bfloat16 else (0.001, 0.0001)
-    torch.testing.assert_close(output, expected, rtol=tol[0], atol=tol[1])
+    expected = oracle(values if isinstance(values, torch.Tensor) else torch.stack(leaves), query, **options)
+    torch.testing.assert_close(output, expected, rtol=0.05, atol=0.05)
     gradients = torch.autograd.grad(output.float().square().mean(), (*leaves, query))
-    reference_gradients = torch.autograd.grad(expected.float().square().mean(), (*leaves, query))
-    for actual, reference in zip(gradients, reference_gradients, strict=True):
-        torch.testing.assert_close(actual, reference, rtol=tol[0], atol=tol[1])
+    expected_gradients = torch.autograd.grad(expected.float().square().mean(), (*leaves, query))
+    for actual, expected_gradient in zip(gradients, expected_gradients, strict=True):
+        torch.testing.assert_close(actual, expected_gradient, rtol=0.05, atol=0.05)
+        assert actual.dtype == torch.bfloat16
     assert all(torch.isfinite(gradient).all() for gradient in gradients)
-packed = torch.randn(3, 2, 8, requires_grad=True)
-check(packed, torch.randn(4, requires_grad=True))
+packed = torch.randn(3, 2, 8, dtype=torch.bfloat16, requires_grad=True)
+check(packed, torch.randn(4, dtype=torch.bfloat16, requires_grad=True))
 sources = [torch.randn(2, 8, dtype=torch.bfloat16, requires_grad=True) for _ in range(3)]
-check(sources, torch.randn(3, requires_grad=True))
+check(sources, torch.randn(3, dtype=torch.bfloat16, requires_grad=True))
 if device == "cuda":
     compiled = torch.compile(call, fullgraph=True, dynamic=False)
     for shift in (0.0, 0.2):
@@ -65,11 +84,11 @@ if device == "cuda":
             value.add_(0.125)
         query.add_(0.125)
     graph.replay()
-    expected = reference_attnres(torch.stack(sources), query, **options)
-    reference_gradients = torch.autograd.grad(expected.sum(), (*sources, query))
+    expected = oracle(torch.stack(sources), query, **options)
+    expected_gradients = torch.autograd.grad(expected.sum(), (*sources, query))
     torch.testing.assert_close(output, expected, rtol=0.05, atol=0.05)
-    for actual, reference in zip(gradients, reference_gradients, strict=True):
-        torch.testing.assert_close(actual, reference, rtol=0.05, atol=0.05)
+    for actual, expected_gradient in zip(gradients, expected_gradients, strict=True):
+        torch.testing.assert_close(actual, expected_gradient, rtol=0.05, atol=0.05)
 """
 
 

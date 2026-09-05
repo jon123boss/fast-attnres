@@ -152,15 +152,19 @@ def _hardware_hash(device: Mapping[str, Any]) -> str:
 
 
 def _dtype(value: Any, default: torch.dtype = torch.bfloat16) -> torch.dtype:
-    if isinstance(value, torch.dtype): return value
+    if isinstance(value, torch.dtype):
+        if value == torch.bfloat16:
+            return value
+        raise ValueError(f"benchmark dtype must be BF16; got {value!r}")
     name = str(default if value is None else value).lower().replace("torch.", "")
     if name in {"bf16", "bfloat16"}: return torch.bfloat16
-    if name in {"fp32", "float32", "float"}: return torch.float32
-    raise ValueError(f"unsupported benchmark dtype {value!r}")
+    raise ValueError(f"benchmark dtype must be BF16; got {value!r}")
 
 
 def _tolerance(protocol: Mapping[str, Any], dtype: torch.dtype) -> dict[str, float]:
-    values = protocol["bf16" if dtype == torch.bfloat16 else "fp32"]
+    if dtype != torch.bfloat16:
+        raise ValueError("benchmark tolerance is defined for BF16 only")
+    values = protocol["bf16"]
     return {"rtol": float(values["rtol"]), "atol": float(values["atol"])}
 
 
@@ -225,7 +229,8 @@ def _project_ops() -> tuple[Callable[..., Any], Callable[..., Any]]:
     source = str(PROJECT_ROOT / "src")
     if source not in sys.path: sys.path.insert(0, source)
     module = importlib.import_module("attnres")
-    return module.attnres, module.reference_attnres
+    from benchmarks.bf16_device import bf16_torch
+    return module.attnres, bf16_torch
 
 
 def _project_call(arm: str, values: torch.Tensor, query: torch.Tensor) -> torch.Tensor:
@@ -266,6 +271,8 @@ def _qualify_operator(function: Callable[..., Any], values: torch.Tensor, query:
 
 
 def _make_operator_inputs(case: Mapping[str, int], dtype: torch.dtype, device: torch.device, seed: int, *, requires_grad: bool = False) -> tuple[torch.Tensor, torch.Tensor]:
+    if dtype != torch.bfloat16:
+        raise ValueError("operator inputs require BF16 storage")
     values = _seeded_randn(
         (case["S"], case["N"], case["D"]),
         dtype=dtype,
@@ -286,24 +293,24 @@ def _make_operator_inputs(case: Mapping[str, int], dtype: torch.dtype, device: t
 def _operator_correctness(protocol: Mapping[str, Any], cases: Sequence[Mapping[str, Any]], device: torch.device, seed: int, comparators: Mapping[str, Any]) -> dict[str, Any]:
     rows, failures = [], []
     for case_index, case in enumerate(cases):
-        for dtype_index, dtype in enumerate((_dtype("fp32"), _dtype("bf16"))):
-            case_seed = seed + case_index * 1000 + dtype_index * 100
-            values, query = _make_operator_inputs(case, dtype, device, case_seed)
-            applicable = case["R"] == case["D"]
-            for name in ["kernel", "reference"] + (list(comparators) if applicable else []):
-                row = {"case": dict(case), "dtype": str(dtype), "arm": name}
-                try:
-                    comparator = comparators.get(name)
-                    if name not in {"kernel", "reference"} and not comparator.available:
-                        row.update(status=comparator.status, reason=comparator.reason)
-                    else: row.update(_qualify_operator(_operator_function(name, comparator), values, query, protocol))
-                except Exception as exc:
-                    row.update(status="failed", error=_exception(exc))
-                    failures.append(_failure("operator_correctness", **row))
-                rows.append(row)
-            if not applicable:
-                rows.extend({"case": dict(case), "dtype": str(dtype), "arm": name,
-                             "status": "not_applicable", "reason": "FLA comparator requires implicit standard R=D inputs"} for name in comparators)
+        dtype = torch.bfloat16
+        case_seed = seed + case_index * 1000
+        values, query = _make_operator_inputs(case, dtype, device, case_seed)
+        applicable = case["R"] == case["D"]
+        for name in ["kernel", "reference"] + (list(comparators) if applicable else []):
+            row = {"case": dict(case), "dtype": str(dtype), "arm": name}
+            try:
+                comparator = comparators.get(name)
+                if name not in {"kernel", "reference"} and not comparator.available:
+                    row.update(status=comparator.status, reason=comparator.reason)
+                else: row.update(_qualify_operator(_operator_function(name, comparator), values, query, protocol))
+            except Exception as exc:
+                row.update(status="failed", error=_exception(exc))
+                failures.append(_failure("operator_correctness", **row))
+            rows.append(row)
+        if not applicable:
+            rows.extend({"case": dict(case), "dtype": str(dtype), "arm": name,
+                         "status": "not_applicable", "reason": "FLA comparator requires implicit standard R=D inputs"} for name in comparators)
     return {"status": "failed" if failures else ("complete" if rows else "incomplete"), "cases": rows, "failures": failures, "requested_cases": len(cases)}
 
 
@@ -438,7 +445,7 @@ def _check_operator_graph_parity(function: Callable[..., Any], graph: Mapping[st
     return {"status": "qualified", "input_hashes": hashes, "output_max_abs": max(output_errors), "gradient_max_abs": gradient_errors, "tolerance": tolerance}
 
 
-def _op_setup(dtype: torch.dtype, rounds: int, requested_warmup: int, method: str, replays: int | None, message: str) -> dict[str, Any]:
+def _op_setup(dtype: Any, rounds: int, requested_warmup: int, method: str, replays: int | None, message: str) -> dict[str, Any]:
     return {"status": "failed", "dtype": str(dtype), "rounds": rounds, "warmup": max(1, requested_warmup), "requested_warmup": requested_warmup,
             "timing_method": method, "graph_replays": replays, "cases": [], "failures": [_failure("operator_setup", error={"message": message})]}
 
@@ -479,11 +486,18 @@ def _operator_timings(protocol: Mapping[str, Any], cases: Sequence[Mapping[str, 
     default_rounds = protocol["rounds"] if scope in {"primary", "heldout"} else protocol["smoke_rounds"]
     rounds = int(config.get("operator_rounds", config.get("rounds", default_rounds)))
     requested_warmup = int(config.get("operator_warmup", config.get("warmup", protocol["warmup"])))
-    warmup, dtype = max(1, requested_warmup), _dtype(config.get("operator_dtype", "bf16"))
+    warmup = max(1, requested_warmup)
     modes = tuple(config.get("operator_modes", ("forward", "forward_backward")))
     method = str(config.get("operator_timing", "eager")).lower()
     try: replays = int(config.get("graph_replays", 10))
     except (TypeError, ValueError): replays = 0
+    requested_dtype = config.get("operator_dtype", "bf16")
+    try:
+        dtype = _dtype(requested_dtype)
+    except (TypeError, ValueError) as exc:
+        return _op_setup(str(requested_dtype), rounds, requested_warmup, method,
+                         replays if method == "cuda_graph" else None,
+                         str(exc))
     if rounds < 1 or requested_warmup < 0: return _op_setup(dtype, rounds, requested_warmup, method, replays if method == "cuda_graph" else None, "rounds must be positive and warmup must be non-negative")
     if method not in {"eager", "cuda_graph"}: return _op_setup(dtype, rounds, requested_warmup, method, None, f"unsupported operator timing method: {method!r}")
     if method == "cuda_graph" and replays < 1: return _op_setup(dtype, rounds, requested_warmup, method, replays, "graph_replays must be positive for CUDA graph timing")
@@ -1206,8 +1220,7 @@ def _model_qualification(reference: Any, candidate: Any, tokens: torch.Tensor, t
         if tokens.device.type == "cuda":
             torch.cuda.empty_cache()
         candidate_logits, candidate_loss, candidate_grads = forward_backward(candidate)
-        dtype = candidate_logits.dtype if candidate_logits.dtype in {torch.bfloat16, torch.float32} else torch.float32
-        tolerance = _tolerance(protocol, dtype)
+        tolerance = _tolerance(protocol, torch.bfloat16)
         candidate_logits_cpu = candidate_logits.cpu()
         candidate_loss_cpu = candidate_loss.cpu()
         torch.testing.assert_close(candidate_logits_cpu, reference_logits, **tolerance)
@@ -2756,6 +2769,7 @@ def _model_timings(
             make_model_with_canonical_state,
             training_step,
         )
+        from .bf16_device import bf16_torch
         if not callable(training_step): raise TypeError("benchmarks.model.training_step must be callable")
     except Exception as exc: return {"status": "incomplete", "reason": "benchmarks.model unavailable", "failures": [_failure("model_import", error=_exception(exc))]}
     model_data = _model_config(protocol, config, scope)
@@ -3011,7 +3025,7 @@ def _model_timings(
         packed_staged_models = []
         try:
             rank_config = TrainingConfig(**rank_data)
-            reference = _make_model(rank_config, "reference")
+            reference = _make_model(rank_config, bf16_torch)
             _record_model(f"reference_rank_{rank}", reference, rank, variant)
             kernel = _make_model(rank_config, "kernel")
             _copy_model_state(reference, kernel)
@@ -3045,7 +3059,7 @@ def _model_timings(
                             error=_exception(cleanup_exc),
                         ))
                     packed_config = TrainingConfig(**packed_data)
-                    packed_reference = _make_model(packed_config, "reference")
+                    packed_reference = _make_model(packed_config, bf16_torch)
                     _copy_model_state(reference, packed_reference)
                     _record_model(
                         f"packed_reference_rank_{rank}",
@@ -3350,7 +3364,7 @@ def _model_timings(
                     error=_exception(cleanup_exc),
                 ))
             standard_config = TrainingConfig(**standard_data)
-            standard_reference = _make_model(standard_config, "reference")
+            standard_reference = _make_model(standard_config, bf16_torch)
             _record_model(
                 f"standard_reference_rank_{standard_data['rank']}",
                 standard_reference,
@@ -3484,7 +3498,7 @@ def _model_timings(
         def _reference_factory(candidate_config: Any, _device: torch.device) -> Any:
             if candidate_config is None:
                 raise RuntimeError("candidate model does not expose its TrainingConfig")
-            return _make_model(candidate_config, "reference", target_device=_device)
+            return _make_model(candidate_config, bf16_torch, target_device=_device)
 
         for name in active:
             if name in failed_arms:

@@ -1,3 +1,4 @@
+import ast
 from pathlib import Path
 
 try:
@@ -27,7 +28,15 @@ def test_typing_stub_explicitly_exports_the_root_api():
     stub = (ROOT / "src" / "attnres" / "__init__.pyi").read_text(encoding="utf-8")
 
     assert "from .modules import LearnedQuery as LearnedQuery" in stub
-    assert '__all__ = ["attnres", "reference_attnres", "LearnedQuery", "__version__"]' in stub
+    assert "reference_attnres" not in stub
+    tree = ast.parse(stub)
+    exports = next(
+        ast.literal_eval(node.value)
+        for node in tree.body
+        if isinstance(node, ast.Assign)
+        and any(isinstance(target, ast.Name) and target.id == "__all__" for target in node.targets)
+    )
+    assert set(exports) == {"attnres", "LearnedQuery", "__version__"}
 
 
 def test_cuda_extra_pins_the_supported_pytorch_triton_stack():
