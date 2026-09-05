@@ -189,9 +189,11 @@ def _training(config, root, checkpoint):
             config_file.write_text(json.dumps(specification) + "\n")
             report["in_progress"] = {"case": case, "seed": seed}
             checkpoint(report)
-            if config.get("gc_diagnostic") and "activation_memory_budget" in config:
-                raise ValueError("run compiler and GC diagnostics separately")
-            entry = ("benchmarks.bf16_timing_diagnostic" if config.get("gc_diagnostic") else
+            if sum((bool(config.get("gc_diagnostic")), bool(config.get("resident_diagnostic")),
+                    "activation_memory_budget" in config)) > 1:
+                raise ValueError("run compiler, GC and residency diagnostics separately")
+            entry = ("benchmarks.bf16_resident_diagnostic" if config.get("resident_diagnostic") else
+                     "benchmarks.bf16_timing_diagnostic" if config.get("gc_diagnostic") else
                      "benchmarks.bf16_memory_check" if "activation_memory_budget" in config else
                      "benchmarks.bf16_training")
             command = [sys.executable, "-X", "faulthandler", "-m", entry,
@@ -434,10 +436,12 @@ def run(snapshot):
     if (job.get("cpu_cores"), job.get("memory_mib")) != (CPU_CORES, MEMORY_MIB):
         raise RuntimeError("snapshot resources differ from the bounded launcher; prepare a new job")
     verify_primary(snapshot, job["config"])
-    reserve(job)
     result_dir = WORK / "results" / job["id"]
+    if result_dir.exists() and any(result_dir.iterdir()):
+        raise RuntimeError("retained result directory is not empty; prepare a new job")
+    reserve(job)
     try:
-        result_dir.mkdir(parents=True)
+        result_dir.mkdir(parents=True, exist_ok=True)
         shutil.copy2(snapshot / "job.json", result_dir / "job.json")
         with app.run(detach=True):
             fn = {("H100", 1): h100, ("B200", 1): b200,

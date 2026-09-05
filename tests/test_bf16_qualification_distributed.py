@@ -104,3 +104,28 @@ def test_continuation_still_rejects_out_of_oracle_loss():
     state = {"weight": torch.ones(1, dtype=torch.bfloat16)}
     with pytest.raises(AssertionError):
         distributed._same_input_metrics(state, state, torch.tensor(2.), torch.tensor(1.))
+
+
+def test_exact_fast_path_keeps_finite_and_dtype_checks():
+    finite = torch.tensor([1., 2.], dtype=torch.bfloat16)
+    assert distributed._compare_tree({"x": finite}, {"x": finite.clone()}, "same") == {
+        "tensor_count": 1, "max_abs": 0.0}
+    assert not distributed._tree_equal(finite, finite.float())
+    for value in (float("inf"), float("nan")):
+        invalid = torch.tensor([value], dtype=torch.bfloat16)
+        assert not distributed._tree_equal(invalid, invalid.clone())
+        with pytest.raises(AssertionError, match="non-finite"):
+            distributed._compare_tree(invalid, invalid.clone(), "invalid")
+
+
+def test_exact_restore_does_not_repeat_approximate_scan(monkeypatch):
+    model, optimizer = _optimizer_state()
+    wrapped = SimpleNamespace(module=model)
+    expected = distributed._state_snapshot(wrapped, [optimizer])
+    monkeypatch.setattr(distributed.dist, "all_reduce", lambda flag, op=None: None)
+    def unused(*args, **kwargs):
+        raise AssertionError("redundant approximate scan")
+    monkeypatch.setattr(distributed, "_compare_tree", unused)
+    result = distributed._restore_serialized_state(
+        wrapped, [optimizer], expected, distributed._clone_cpu(expected), torch.device("cpu"))
+    assert result["state"]["max_abs"] == 0.0 and result["state"]["tensor_count"] == 8

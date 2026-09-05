@@ -16,6 +16,7 @@ import json
 import os
 import platform
 import sys
+import time
 import traceback
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import asdict, fields
@@ -173,7 +174,8 @@ def _tree_equal(actual: Any, expected: Any) -> bool:
             _tree_equal(left, right) for left, right in zip(actual, expected)
         )
     if isinstance(actual, Tensor) and isinstance(expected, Tensor):
-        return torch.equal(actual, expected)
+        return (actual.dtype == expected.dtype and actual.layout == expected.layout
+                and torch.equal(actual, expected) and bool(torch.isfinite(actual).all()))
     return actual == expected
 
 
@@ -196,6 +198,9 @@ def _compare_tree(actual: Any, expected: Any, name: str) -> dict[str, Any]:
                 visit(left_item, right_item, f"{path}[{index}]")
             return
         if isinstance(left, Tensor) and isinstance(right, Tensor):
+            if _tree_equal(left, right):
+                tensor_count += 1
+                return
             if not torch.isfinite(left).all().item() or not torch.isfinite(right).all().item():
                 raise AssertionError(f"non-finite {name}:{path}")
             torch.testing.assert_close(left, right, **TOLERANCE, msg=f"{name}:{path}")
@@ -235,11 +240,14 @@ def _restore_serialized_state(
     restored_exact = _tree_equal(restored, expected)
     if not _collective_exact(restored_exact, device):
         raise AssertionError("serialized model+optimizer restoration diverged before next update")
+    from benchmarks.bf16_training import _state_tensors
     return {
         "serialized_exact": serialized_exact,
         "restored_exact": restored_exact,
         "exact": True,
-        "state": _compare_tree(restored, expected, "restore"),
+        # Exact finite equality already proves zero difference. Avoid another
+        # full checkpoint scan and large FP32 temporary allocations on CPU.
+        "state": {"tensor_count": sum(1 for _ in _state_tensors(restored)), "max_abs": 0.0},
     }
 
 
@@ -371,6 +379,12 @@ def _case(config: Mapping[str, Any], name: str, seed: int,
     if not config.get("optimizer_source"):
         raise ValueError("distributed qualification requires the original Muon+AdamW source")
 
+    def progress(phase):
+        print(json.dumps({"case": name, "rank": dist.get_rank(),
+                          "routing_rank": model_config.rank, "phase": phase,
+                          "monotonic_s": time.monotonic()}), flush=True)
+
+    progress("construct_model")
     torch.manual_seed(seed)
     model = Model(model_config, op=attnres).to(device).train()
     compiled = torch.compile(model, fullgraph=True, dynamic=False,
@@ -400,29 +414,38 @@ def _case(config: Mapping[str, Any], name: str, seed: int,
         device=device,
     )
 
+    progress("first_update")
     first_loss, first_collective = _step(
         ddp, optimizers, step_tokens[0], step_targets[0], accumulation, device
     )
+    progress("first_snapshot")
     saved = _state_snapshot(ddp, optimizers)
+    progress("second_update")
     uninterrupted_loss, uninterrupted_collective = _step(
         ddp, optimizers, step_tokens[1], step_targets[1], accumulation, device
     )
+    progress("second_snapshot")
     uninterrupted = _state_snapshot(ddp, optimizers)
 
+    progress("serialize")
     encoded = io.BytesIO()
     torch.save(saved, encoded)
     encoded.seek(0)
     serialized = torch.load(encoded, map_location="cpu", weights_only=True)
     del encoded
+    progress("restore")
     restoration_metrics = _restore_serialized_state(
         ddp, optimizers, saved, serialized, device
     )
     del saved, serialized
     dist.barrier()
+    progress("resumed_update")
     resumed_loss, resumed_collective = _step(
         ddp, optimizers, step_tokens[1], step_targets[1], accumulation, device
     )
+    progress("resumed_snapshot")
     resumed = _state_snapshot(ddp, optimizers)
+    progress("compare_continuation")
     resume_metrics = _same_input_metrics(
         resumed, uninterrupted, resumed_loss, uninterrupted_loss
     )
@@ -448,6 +471,7 @@ def _case(config: Mapping[str, Any], name: str, seed: int,
     del ddp, model, compiled, optimizers
     gc.collect()
     torch.cuda.empty_cache()
+    progress("complete")
     return result
 
 
