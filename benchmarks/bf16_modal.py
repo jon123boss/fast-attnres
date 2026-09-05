@@ -263,22 +263,6 @@ def b200(job):
     return _remote(job)
 
 
-@app.function(image=image, gpu="H100!:8", cpu=(CPU_CORES, CPU_CORES),
-              memory=(MEMORY_MIB, MEMORY_MIB), timeout=TIMEOUT_S,
-              max_containers=1, min_containers=0, buffer_containers=0, retries=0,
-              volumes={"/evidence": volume})
-def h100_distributed(job):
-    return _remote(job)
-
-
-@app.function(image=image, gpu="B200:8", cpu=(CPU_CORES, CPU_CORES),
-              memory=(MEMORY_MIB, MEMORY_MIB), timeout=TIMEOUT_S,
-              max_containers=1, min_containers=0, buffer_containers=0, retries=0,
-              volumes={"/evidence": volume})
-def b200_distributed(job):
-    return _remote(job)
-
-
 def _digest(root):
     paths = sorted(Path(root).rglob("*.py"))
     hashes = {str(p.relative_to(root)): hashlib.sha256(p.read_bytes()).hexdigest()
@@ -426,8 +410,7 @@ def run(snapshot):
         result_dir.mkdir(parents=True, exist_ok=True)
         shutil.copy2(snapshot / "job.json", result_dir / "job.json")
         with app.run(detach=True):
-            fn = {("H100", 1): h100, ("B200", 1): b200,
-                  ("H100", 8): h100_distributed, ("B200", 8): b200_distributed}[(job["config"]["gpu"], job["gpu_count"])]
+            fn = {"H100": h100, "B200": b200}[job["config"]["gpu"]]
             call = fn.spawn(job)
             update_job(job["id"], status="running", call_id=call.object_id, app_id=app.app_id)
             (result_dir / "call.json").write_text(json.dumps({"call_id": call.object_id,

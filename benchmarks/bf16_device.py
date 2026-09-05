@@ -233,6 +233,12 @@ def run_operator(config, checkpoint):
                 warmups=config.get("warmups", 5), rounds=config.get("rounds", 40),
                 replays=config.get("replays", 8)))
             report.pop("in_progress", None)
+            if config.get("stop_on_failure", False) and any(
+                arm["status"] != "passed" for arm in report["results"][-1]["arms"].values()
+            ):
+                report.update(status="failed", stopped_after={"case": case, "seed": seed})
+                checkpoint(report)
+                return report
             checkpoint(report)
             gc.collect()
             torch.cuda.empty_cache()

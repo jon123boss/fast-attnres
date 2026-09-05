@@ -55,6 +55,10 @@ cell with its strongest correct eligible alternative and uses simultaneous 95%
 confidence intervals. Adjacent lower/higher-rank gates use the recorded ratio
 upper bound; missing or inconclusive coverage is an unmet target.
 
+Development screens can set `stop_on_failure: true` to retain the first failed
+cell and stop before testing later cases. Confirmation runs collect every
+declared arm and leave this option unset.
+
 The package contract is the CUDA BF16 call
 `attnres(values, query, *, eps=2**-23, scale=1.0)`. Full and sequential Block
 reads use the same call. Block sums are ordinary caller-owned source tensors;

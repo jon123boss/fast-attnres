@@ -675,7 +675,7 @@
     "cache_autotuning": true
   },
   "evaluator_files": {
-    "benchmarks/bf16_device.py": "02920a9351a917e9a77728e9c66dc276fb39598e1ceadcc55454fd23064bb628",
+    "benchmarks/bf16_device.py": "9a932391d6cc86568a726726cab2a2f824c5229f1224473fb863d861b7238d6c",
     "benchmarks/baseline.py": "9eee754c487925080bc3fca35b10efd0fe63683dbfe3834909b07fec53fe3d16",
     "benchmarks/bf16_competitors.py": "493392928ae2bda260a46e0c4b934f33ea1f1ea30bdb020865c6d9f486c146cc",
     "validation/oracle.py": "dd1f975a0654c8d224636893a56ae350a9d5c59fa93336c89cc44b7df26ea0df"
