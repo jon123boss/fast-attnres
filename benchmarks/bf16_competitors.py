@@ -309,6 +309,68 @@ def load_hydra(root):
         'block_d': 'nextpow2(D)', 'num_warps': {'hydra_2p': 4, 'hydra_2p8': 8}}
 
 
+def load_hilda(root):
+    """Use the pinned native stacked kernel with a constant FP32 unit norm scale."""
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("campaign_hilda_native", Path(root) / "attn_res.py")
+    native = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(native)
+    unit_scale = torch.ones(8192, device="cuda", dtype=torch.float32)
+
+    @torch.library.custom_op("campaign_hilda::forward", mutates_args=())
+    def forward(packed: Tensor, query: Tensor, eps: float) -> tuple[Tensor, Tensor, Tensor]:
+        output, _, alpha, rstd = native.attn_res_forward(
+            packed, query, unit_scale[:query.numel()], eps)
+        return output, alpha, rstd
+
+    @forward.register_fake
+    def fake_forward(packed, query, eps):
+        sources, rows, width = packed.shape
+        return (packed.new_empty((rows, width)),
+                packed.new_empty((sources, rows), dtype=torch.float32),
+                packed.new_empty((sources, rows), dtype=torch.float32))
+
+    @torch.library.custom_op("campaign_hilda::backward", mutates_args=())
+    def backward(packed: Tensor, query: Tensor, alpha: Tensor, rstd: Tensor,
+                 upstream: Tensor, eps: float) -> tuple[Tensor, Tensor]:
+        dv, dq, _ = native.attn_res_backward(
+            upstream, packed, query, unit_scale[:query.numel()], alpha, rstd, eps)
+        return dv, dq
+
+    @backward.register_fake
+    def fake_backward(packed, query, alpha, rstd, upstream, eps):
+        return torch.empty_like(packed), torch.empty_like(query)
+
+    def setup(ctx, inputs, output):
+        packed, query, ctx.eps = inputs
+        ctx.save_for_backward(packed, query, *output[1:])
+        ctx.mark_non_differentiable(*output[1:])
+
+    def autograd_backward(ctx, upstream, *_):
+        dv, dq = backward(*ctx.saved_tensors, upstream, ctx.eps)
+        return dv, dq, None
+
+    forward.register_autograd(autograd_backward, setup_context=setup)
+
+    def call(values, query, *, eps=2**-23, scale=1.0):
+        shape = values[0].shape
+        width = shape[-1]
+        # The native wrapper silently caps its loop at 32; reject larger lists.
+        if query.numel() != width or len(values) > 32 or width > 8192 or scale != 1:
+            raise Ineligible("Hilda requires R=D, sources<=32, width<=8192 and scale=1")
+        packed = values if isinstance(values, Tensor) else torch.stack(tuple(values))
+        packed = packed.reshape(len(values), -1, width).contiguous()
+        return forward(packed, query.contiguous(), float(eps))[0].reshape(shape)
+
+    return {"hilda": call}, {
+        "revision": "c0b4d8a587c5fd06e85d7c057c7224d68ddc35cf",
+        "adapter": "native per-read stacked kernel; source packing and native norm-weight gradient included",
+        "norm_weight": "constant FP32 ones", "maximum_sources": 32,
+        "source_distribution": "external checkout; not bundled with Fast-AttnRes",
+    }
+
+
 def model_ineligibility(name, model):
     """Static public-comparator limits for an entire uncached model schedule."""
     width, rank = model.width, model.rank
@@ -319,6 +381,8 @@ def model_ineligibility(name, model):
         return "FLA Gluon requires BF16 width>=64"
     if name == "liger" and (rank != width or sources > 32 or model.attnres_scale != 1):
         return "Liger requires full-width keys, sources<=32, scale=1"
+    if name == "hilda" and (rank != width or sources > 32 or width > 8192 or model.attnres_scale != 1):
+        return "Hilda requires R=D, sources<=32, width<=8192 and scale=1"
     if name == "legacy_uncached":
         if model.attnres_eps != 2**-23 or width > 4096:
             return "legacy bridge requires campaign epsilon and width<=4096"
@@ -344,7 +408,8 @@ def load_all(roots):
         identities[name] = source_digest(root)
         try:
             ops, adapter = {"fla": load_fla, "liger": load_liger,
-                            "legacy": load_legacy, "catswe": load_catswe, "hydra": load_hydra}[name](root)
+                            "legacy": load_legacy, "catswe": load_catswe, "hydra": load_hydra,
+                            "hilda": load_hilda}[name](root)
             backends.update(ops)
             identities[name]["adapter"] = adapter
         except Exception as exc:

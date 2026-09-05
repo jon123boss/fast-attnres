@@ -1,14 +1,32 @@
 # Fast Attention Residuals
 
+[![CI](https://github.com/jon123boss/fast-attnres/actions/workflows/ci.yml/badge.svg)](https://github.com/jon123boss/fast-attnres/actions/workflows/ci.yml)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-3776AB.svg)](https://www.python.org/)
 [![PyTorch 2.13](https://img.shields.io/badge/tested-PyTorch_2.13-EE4C2C.svg)](https://pytorch.org/)
-[![Triton 3.7.1](https://img.shields.io/badge/tested-Triton_3.7.1-654FF0.svg)](https://github.com/jon123boss/fast-attnres)
+[![Triton 3.7.1](https://img.shields.io/badge/tested-Triton_3.7.1-654FF0.svg)](https://github.com/triton-lang/triton/releases/tag/v3.7.1)
 [![License: MIT](https://img.shields.io/badge/license-MIT-2E7D32.svg)](LICENSE)
 
-Fast-AttnRes provides a CUDA BF16 PyTorch operator for standard and sliced
-low-rank Attention Residuals. Give it ordered full-width residual values and
-one query; it returns one full-width residual. Full and sequential Block reads
-use the same public call.
+**Fast Attention Residuals** (`Fast-AttnRes`) makes
+[Attention Residuals](https://arxiv.org/abs/2603.15031) a small, ordinary PyTorch
+operation: pass ordered full-width residual sources and one learned query, get
+one full-width residual back. The same `attnres(values, query)` call handles
+standard and sliced low-rank AttnRes in Full and Block schedules, with packed
+tensors or ordered source lists.
+
+Start with the [standard quickstart](#quickstart-standard-attnres), choose a
+[Full or Block schedule](#full-and-block-schedules), and try
+[sliced LR-AttnRes](#sliced-lr-attnres) for a smaller routing query.
+
+## Why use Fast-AttnRes
+
+- **One PyTorch call:** full-width output and ordinary first-order autograd,
+  including gradients through routing keys and shared residual sources.
+- **One schedule primitive:** Full and Block use the same operator; the caller
+  controls source order, block sums, and learned queries.
+- **BF16 training:** CUDA BF16 values and queries, FP32 internal reductions,
+  `torch.compile`, and CUDA Graph replay on H100 and B200.
+
+## Training performance
 
 The H100/B200 BF16 campaign is still pending. This README makes no final timing
 claim. The reproducible campaign commands and reporting layer are in
@@ -27,7 +45,7 @@ python -m pip install -e ".[cuda,test,benchmark]"
 The campaign uses Python 3.11, PyTorch 2.13.0 with CUDA 13.0, and Triton 3.7.1.
 This branch has not been published as a package release.
 
-## One call
+## Quickstart: standard AttnRes
 
 ```python
 import torch
@@ -46,7 +64,6 @@ The public signature is `attnres(values, query, *, eps=2**-23, scale=1.0)`.
 tensors. The query is `[R]`, with `1 <= R <= D`; the output retains width `D`.
 Values, query, output, and first-order operator gradients are CUDA BF16. Internal
 FP32 accumulators may be used for normalization, logits, softmax, and reductions.
-There is no shipped CPU, FP32, or reference execution product.
 
 ## Equation
 
@@ -65,7 +82,7 @@ Normalization and softmax run independently at each carried batch or token
 position. The output is not normalized, source-count weighted, or source averaged.
 See [`docs/equation.md`](docs/equation.md) for the complete contract.
 
-## Full and Block
+## Full and Block schedules
 
 Full supplies the embedding and every preceding writer output. Block supplies
 the embedding, completed block sums, and an optional current partial sum. The
@@ -80,9 +97,8 @@ block_sources = completed if partial is None else completed + (partial,)
 block_output = attnres(block_sources, query)
 ```
 
-There is no stateful prepared Block object, phase cache, cross-read reuse, or
-second public model path. Both schedules use the same source ordering, query,
-`eps`, `scale`, and operator.
+Every read evaluates its routing weights and mixture from the supplied sources.
+Both schedules use the same query, `eps`, `scale`, and operator contract.
 
 ## Sliced LR-AttnRes
 
@@ -106,6 +122,9 @@ output = attnres(source_list, learned_query())
 Standard AttnRes is the `R == D` case; sliced routing uses `R < D` and the final
 `R` value coordinates. Projected keys, routing priors, and architectural changes
 are outside this package contract.
+
+Optimization targets common ranks: powers of two from 16 upward, plus widths
+such as 384 and 640. Other ranks retain the same mathematical support.
 
 ## Validation scope
 

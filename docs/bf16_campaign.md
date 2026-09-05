@@ -9,7 +9,9 @@ recompute timing statistics.
 ## Frozen scope
 
 The primary matrix covers H100 and B200, both `full` and `block` modes, ranks
-`1536 768 384 192 96 64 32 16`, and seeds `20260827 20260903 20260911`.
+`1536 1024 768 640 512 384 256 128 64 32 16`, and seeds
+`20260827 20260903 20260911`. This targets powers of two and common intermediate
+widths; earlier development sweeps of unusual ranks remain historical evidence.
 The original model geometry and controls are:
 
 | Field | Primary value |
@@ -56,8 +58,8 @@ upper bound; missing or inconclusive coverage is an unmet target.
 The package contract is the CUDA BF16 call
 `attnres(values, query, *, eps=2**-23, scale=1.0)`. Full and sequential Block
 reads use the same call. Block sums are ordinary caller-owned source tensors;
-prepared Block state, phase caches, cross-read reuse, projected keys, priors,
-and architectural changes are outside this campaign.
+each read evaluates its current inputs. Projected keys, priors, and
+architectural changes are outside this campaign.
 
 ## Configuration
 
@@ -107,6 +109,7 @@ LIGER=/absolute/path/to/liger-checkout
 LEGACY=/absolute/path/to/legacy-checkout
 CATSWE=/absolute/path/to/catswe-checkout
 HYDRA=/absolute/path/to/hydra-checkout
+HILDA=/absolute/path/to/hilda-kernel-directory
 OPTIMIZER=/absolute/path/to/original-optimizer-root
 
 ATTNRES_CAMPAIGN_WORK="$CAMPAIGN" \
@@ -119,6 +122,7 @@ ATTNRES_CAMPAIGN_WORK="$CAMPAIGN" \
     --competitor "legacy=$LEGACY" \
     --competitor "catswe=$CATSWE" \
     --competitor "hydra=$HYDRA" \
+    --competitor "hilda=$HILDA" \
     --optimizer-source "$OPTIMIZER" \
     --gpus 1 \
     --timeout 2400 \
@@ -127,9 +131,10 @@ ATTNRES_CAMPAIGN_WORK="$CAMPAIGN" \
     --stage baseline
 ```
 
-Use `--gpu B200` and a distinct `--name` for the B200 job. Use `--gpus 8` only
-with a configuration whose `kind` is `distributed`; the launcher reserves
-eight-GPU qualification exclusively. `--timeout` accepts 600 through 10,800
+Use `--gpu B200` and a distinct `--name` for the B200 job. This continuation
+permits one GPU at a time, including across architectures. Intermediate work
+uses B200; final H100 and B200 qualification runs sequentially. The launcher
+rejects distributed jobs and overlapping reservations. `--timeout` accepts 600 through 10,800
 seconds. `prepare` prints the snapshot path; set it explicitly for the next
 command:
 

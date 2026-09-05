@@ -294,7 +294,7 @@ def test_rank_monotonicity_gate_rejects_slower_lower_rank(tmp_path, exact_interv
     comparison = next(
         item
         for item in result["adjacent_ranks"]
-        if item["comparison"] == "H100/full/seed20260827/r768_over_r1536"
+        if item["comparison"] == "H100/full/seed20260827/r768_over_r1024"
     )
     assert comparison["ratio"] == pytest.approx(1.02)
     assert comparison["pass"] is False
@@ -377,7 +377,7 @@ def _primary_report(gpu, mode, rank, seed):
                             optimizer_source="/frozen/optimizer", cache_autotuning=True)
     report["identities"].update({
         name: {"sha256": name + "-v1"}
-        for name in ("release", "torch_compile", "fla", "liger", "legacy", "catswe", "hydra")})
+        for name in ("release", "torch_compile", "fla", "liger", "legacy", "catswe", "hydra", "hilda")})
     report["identities"]["optimizer"] = {
         "sha256": "optimizer-v1", "implementation": "Muon+AdamW(configured)"}
     report["residency_qualification"] = {"status": "passed", "updates": 8, "exact": True,
@@ -423,8 +423,21 @@ def test_complete_frozen_campaign_passes_with_resumed_seed_subsets(tmp_path, exa
                                for name, row in example["identities"].items()}}
     summary = bf16_report.summarize(paths, contract=contract)
     assert summary["primary_pass"]
-    assert len(summary["cells"]) == 96
+    assert summary["fastest_pass"]
+    assert len(summary["cells"]) == 2 * 2 * len(bf16_report.RANKS) * 3
     assert not summary["admission_failures"]
+
+
+def test_nonregression_does_not_establish_a_speedup(tmp_path, exact_intervals):
+    report = _primary_report("B200", "block", 64, bf16_report.SEEDS[0])
+    for arm in report["results"][0]["arms"].values():
+        arm["samples_ms"] = [1.0] * 120
+    contract = {"identities": report["config"]["expected_identities"]}
+    path = _write_report(tmp_path, "plateau.json", report)
+    summary = bf16_report.summarize([path], contract=contract)
+    assert summary["cells"][0]["nonregression_pass"]
+    assert not summary["cells"][0]["faster_pass"]
+    assert not summary["fastest_pass"]
 
 
 def test_resident_policy_requires_live_capacity_and_all_independent_arms():

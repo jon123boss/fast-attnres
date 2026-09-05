@@ -7,7 +7,7 @@ import json
 import math
 from pathlib import Path
 
-from benchmarks.bf16_report import SEEDS, simultaneous_intervals
+from benchmarks.bf16_report import BACKENDS, RANKS, SEEDS, simultaneous_intervals
 
 
 def read(path):
@@ -30,12 +30,17 @@ def validate_contract(contract):
     for case in cases:
         s, n, d, r = case["shape"]
         groups.setdefault((s, n, d, case["layout"]), set()).add(r)
+    primary = contract.get("scope") == "primary_operator_confirmation"
+    expected = [{"shape": [s, 8192, 1536, r], "layout": "list", "query_scale": .05,
+                 "backends": list(BACKENDS)} for s in (9, 49) for r in RANKS]
+    geometry = (cases == expected if primary else
+                len(cases) == 16 and len(groups) == 2 and
+                all(len(ranks) == 8 and group[2] in ranks for group, ranks in groups.items()))
     if (contract.get("gpus") != ["H100", "B200"] or contract.get("seeds") != list(SEEDS)
-        or len(cases) != 16 or len(groups) != 2
-        or any(len(ranks) != 8 or group[2] not in ranks for group, ranks in groups.items())
+        or not geometry
         or any(contract.get(k) != v for k, v in {"rounds": 120, "warmups": 10,
-                "replays": 8, "monotonic_ratio_upper_bound": 1.01}.items())):
-        raise ValueError("summary requires the complete frozen two-GPU broader contract")
+                "replays": 8, "monotonic_ratio_upper_bound": 1.005 if primary else 1.01}.items())):
+        raise ValueError("summary requires the complete frozen two-GPU operator contract")
 
 
 def admission_errors(report, job, snapshot, contract):
@@ -150,12 +155,14 @@ def summarize(work, jobs, contract):
     intervals = simultaneous_intervals(contrasts)
     for cell in cells:
         cell.update(intervals[cell.pop("comparison")])
-    monotonic = [{"comparison": n, **intervals[n], "pass": intervals[n]["ci95_simultaneous"][1] <= 1.01}
+        cell["faster_pass"] = cell["ci95_simultaneous"][1] < 1.0
+    monotonic = [{"comparison": n, **intervals[n], "pass": intervals[n]["ci95_simultaneous"][1] <= contract["monotonic_ratio_upper_bound"]}
                  for n in adjacent]
-    return {"scope": "broader_operator_confirmation", "contract": contract, "inputs": inputs,
+    return {"scope": contract["scope"], "contract": contract, "inputs": inputs,
             "candidate_identity": contract["identities"]["candidate"], "cells": cells,
             "intervals": intervals, "adjacent_ranks": monotonic, "missing": missing,
             "failures": failures, "admission_failures": admissions,
+            "fastest_pass": not missing and not admissions and bool(cells) and all(x["faster_pass"] for x in cells),
             "monotonic_pass": not missing and not admissions and all(x["pass"] for x in monotonic),
             "note": "Operator latency only; training-step requirements are evaluated separately. "
                     "Pairing follows the hash-verified evaluator's alternating order and shared inputs. "

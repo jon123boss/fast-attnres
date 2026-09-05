@@ -142,7 +142,7 @@ def test_failure_classification_keeps_compiler_errors_unresolved():
     assert compile_failure["classification"] == "unresolved"
 
 
-@pytest.mark.parametrize("count", range(2, 13))
+@pytest.mark.parametrize("count", range(2, 14))
 def test_round_schedule_balances_every_backend_pair(count):
     from itertools import combinations
     names = list(range(count))

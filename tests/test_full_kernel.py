@@ -5,12 +5,15 @@ import pytest
 import torch
 
 from attnres import attnres
-from attnres._kernels.fixed_tail_sources import _source_rows_view
+from attnres._kernels.fla_full_sources import _source_pointer_table
 
 
 def _check_launch_arguments(tree, launch_tree=None):
     definitions = {node.name: node for node in ast.walk(tree)
                    if isinstance(node, ast.FunctionDef)}
+    assignments = {target.id: node.value for node in ast.walk(tree)
+                   if isinstance(node, ast.Assign) for target in node.targets
+                   if isinstance(target, ast.Name)}
     kernels = {name for name in definitions if name.endswith("_kernel")}
     launch_options = {"num_warps", "num_stages", "maxnreg", "enable_fp_fusion"}
     checked = set()
@@ -39,6 +42,17 @@ def _check_launch_arguments(tree, launch_tree=None):
         assert None not in keywords, f"cannot statically check {target.id} keyword expansion"
         assert len(call.args) <= len(positional), target.id
         supplied = set(positional[:len(call.args)]) | keywords
+        for decorator in definitions[target.id].decorator_list:
+            if (isinstance(decorator, ast.Call) and isinstance(decorator.func, ast.Attribute)
+                    and decorator.func.attr == "autotune"):
+                config = next(k.value for k in decorator.keywords if k.arg == "configs")
+                config = assignments[config.id] if isinstance(config, ast.Name) else config
+                choices = [{k.value for k in n.args[0].keys} for n in ast.walk(config)
+                           if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)
+                           and n.func.attr == "Config" and isinstance(n.args[0], ast.Dict)]
+                assert choices and all(choice == choices[0] for choice in choices)
+                assert not choices[0] - parameters
+                supplied |= choices[0]
         assert not required - supplied, (target.id, "missing", required - supplied)
         assert not keywords - parameters - launch_options, (target.id, "unknown", keywords)
         checked.add(target.id)
@@ -48,19 +62,19 @@ def _check_launch_arguments(tree, launch_tree=None):
 def test_affine_source_view_preserves_storage_and_strides():
     producer = torch.randn(2, 4, 11)
     values = producer[..., :7]
-    rows = _source_rows_view(values, 8, 7)
-    assert rows.stride() == (11, 1)
-    assert rows.untyped_storage().data_ptr() == producer.untyped_storage().data_ptr()
-    torch.testing.assert_close(rows, values.flatten(0, -2), rtol=0, atol=0)
+    sources, row_strides, feature_strides, count = _source_pointer_table((values,))
+    assert sources[0] is values
+    assert row_strides == (11,) and feature_strides == (1,) and count == 1
 
 
 def test_non_affine_batch_layout_compacts_under_fullgraph():
     values = torch.randn(2, 3, 4, 7).transpose(1, 2).requires_grad_()
-    compiled = torch.compile(_source_rows_view, fullgraph=True, dynamic=False, backend="eager")
-    rows = compiled(values, 24, 7)
-    assert rows.is_contiguous()
-    torch.testing.assert_close(rows, values.flatten(0, -2), rtol=0, atol=0)
-    gradient, = torch.autograd.grad(rows.sum(), (values,))
+    compiled = torch.compile(lambda x: _source_pointer_table((x,))[0][0],
+                             fullgraph=True, dynamic=False, backend="eager")
+    prepared = compiled(values)
+    assert prepared.is_contiguous()
+    torch.testing.assert_close(prepared, values, rtol=0, atol=0)
+    gradient, = torch.autograd.grad(prepared.sum(), (values,))
     torch.testing.assert_close(gradient, torch.ones_like(values), rtol=0, atol=0)
 
 
@@ -74,13 +88,13 @@ def test_output_compaction_handles_non_affine_leading_batches():
 
 
 def test_fixed_tail_kernel_launch_signatures_without_cuda():
-    from attnres._kernels import fixed_tail, fixed_tail_sources
+    from attnres._kernels import fixed_tail, fixed_tail_sources, fla_full_sources
 
     core = ast.parse(Path(fixed_tail.__file__).read_text())
     adapter = ast.parse(Path(fixed_tail_sources.__file__).read_text())
     _check_launch_arguments(core)
-    _check_launch_arguments(core, adapter)
     _check_launch_arguments(adapter)
+    _check_launch_arguments(ast.parse(Path(fla_full_sources.__file__).read_text()))
 
 
 @pytest.mark.parametrize("arguments", ["x", "x, WIDTH=8, unknown=True"])

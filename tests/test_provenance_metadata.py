@@ -2,12 +2,10 @@ from __future__ import annotations
 
 import hashlib
 import json
-import re
 from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-HASH_RE = re.compile(r"\b[0-9a-f]{64}\b")
 
 
 def _sha256(path: Path) -> str:
@@ -50,23 +48,25 @@ def test_provenance_covers_kernel_and_license_identities(historical_release_root
         "src/attnres/_kernels/fixed_tail_sources.py":
             "1373614c93d7291ad96697b1b8ff627120590b75f63f7e38bd65d50b19fcfb4a",
     }
-    found_hashes = set(HASH_RE.findall(provenance))
 
     assert campaign["schema"] == "attnres.compiled_step_campaign.manifest.v1"
     assert campaign["repo_head"] == "81dffbfeb0f84470513e846e3df8080e8ffb563d"
     assert campaign["kernel_sha256"] == historical_runtime_hashes
-    assert campaign["repo_head"] in provenance
-    assert "1cceb5e0a37330015ca2945312da29aa7566aaeb" in provenance
-    assert "results/compiled_step/campaign_manifest.json" in provenance
-    assert set(historical_runtime_hashes.values()) <= found_hashes
-    assert set(current_runtime_hashes.values()) <= found_hashes
+    assert "validation/frozen.json" in provenance
+    assert "configs/bf16_primary.json" in provenance
+    assert "v1.0.0/results/compiled_step" in provenance
     assert "5e02dd3a7651f5f2797eb8b12bbec401826031e1" in provenance
-    assert "2cd59a9a50f34ecc4d9535ad51c9668cd4d8b67f519b8eb78b45ce2156288781" in found_hashes
+    from benchmarks.bf16_primary import package_digest
+    primary = json.loads((ROOT / "configs/bf16_primary.json").read_text())
+    assert primary["identities"]["candidate"] == package_digest(ROOT / "src/attnres")
+    frozen = json.loads((ROOT / "validation/frozen.json").read_text())
+    for name in historical_runtime_hashes:
+        assert frozen[name] == _sha256(ROOT / name)
 
     for path, digest in current_runtime_hashes.items():
         assert _sha256(historical_release_root / path) == digest
-    assert "Historical compiled-step campaign" in provenance
-    assert "not relabelled as measurements of the current kernel" in provenance
+    assert "Historical evidence" in provenance
+    assert "not been merged or released" in provenance
     assert _sha256(ROOT / "LICENSE") == (
         "1f373b38f897df1fffb9e5747f44b1a1f3249fffc7da687c96ee6f46a251901d"
     )

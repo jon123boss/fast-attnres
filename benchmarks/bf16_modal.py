@@ -342,10 +342,8 @@ def _git_origin(root):
 
 def prepare(args):
     config = json.loads(Path(args.config).read_text())
-    if args.gpus == 8 and config.get("kind") != "distributed":
-        raise ValueError("eight GPUs are reserved for exclusive distributed qualification")
-    if args.gpus != 8 and config.get("kind") == "distributed":
-        raise ValueError("distributed qualification requires --gpus 8")
+    if args.gpus != 1 or config.get("kind") == "distributed":
+        raise ValueError("this campaign permits one GPU at a time")
     stamp = dt.datetime.now(dt.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     job_id = f"{stamp}-{args.gpu.lower()}-{args.name}"
     snapshot = WORK / "snapshots" / job_id
@@ -363,7 +361,7 @@ def prepare(args):
     competitors = {}
     for value in args.competitor:
         name, path = value.split("=", 1)
-        if name not in ("fla", "liger", "legacy", "catswe", "hydra"):
+        if name not in ("fla", "liger", "legacy", "catswe", "hydra", "hilda"):
             raise ValueError("unsupported competitor")
         _copy_tree(Path(path).resolve(), snapshot / "competitors" / name)
         competitors[name] = f"competitors/{name}"
@@ -390,6 +388,8 @@ def prepare(args):
 
 
 def reserve(job):
+    if job["gpu_count"] != 1:
+        raise ValueError("this campaign permits one GPU at a time")
     ledger_path = WORK / "ledger.json"
     # 300 seconds startup allowance in addition to the full execution timeout.
     rate = {"H100": .001097, "B200": .001736}[job["config"]["gpu"]] * job["gpu_count"]
@@ -403,8 +403,7 @@ def reserve(job):
         if any(x["id"] == job["id"] for x in data["jobs"]):
             raise RuntimeError("job already admitted; retrieve durable evidence instead of rerunning")
         active = [x for x in data["jobs"] if x["status"] in ("reserved", "running")]
-        if any(x.get("gpu_count", 1) > 1 or job["gpu_count"] > 1 or
-               x["gpu"] == job["config"]["gpu"] for x in active):
+        if active:
             raise RuntimeError("GPU concurrency limit: reconcile the active job before admission")
         committed = float(sum(accounted(x, WORK) for x in data["jobs"]))
         if committed + bound > data["cap_usd"]:
@@ -501,7 +500,7 @@ def main():
     p.add_argument("--source", action="append", required=True)
     p.add_argument("--competitor", action="append", default=[])
     p.add_argument("--optimizer-source")
-    p.add_argument("--gpus", type=int, choices=[1, 8], default=1)
+    p.add_argument("--gpus", type=int, choices=[1], default=1)
     p.add_argument("--timeout", type=int, choices=range(600, 10801), default=2400)
     p.add_argument("--gpu", choices=["H100", "B200"], required=True)
     p.add_argument("--name", required=True)

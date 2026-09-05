@@ -639,10 +639,17 @@ def training_case(case, backends, config, seed, checkpoint, runtime=None):
     baseline_gradients = None
     baseline_model_update = None
     baseline_optimizer_update = None
+    warmups = config.get("warmups", 10)
+    deferred_warmup = int(warmups >= 2)
 
     smoke_enabled = _save_resume_enabled(case, config, model_config)
     for name, op in selected_backends:
         started = time.monotonic()
+
+        def progress(phase):
+            print(json.dumps({"backend": name, "phase": phase,
+                              "elapsed_s": time.monotonic() - started}), flush=True)
+
         model = optimizers = compiled = compiled_loss = step = None
         gradients = None
         qualification = None
@@ -711,7 +718,9 @@ def training_case(case, backends, config, seed, checkpoint, runtime=None):
 
             # First compare the complete pre-update loss/gradient result.
             phase = "qualification"
+            progress(phase)
             loss = step(0, update=False)
+            progress("gradient_snapshot")
             loss_cpu = loss.detach().cpu()
             gradients = {
                 parameter_name: parameter.grad.detach().cpu().clone()
@@ -744,11 +753,13 @@ def training_case(case, backends, config, seed, checkpoint, runtime=None):
             # Restore the pre-update model/optimizer state before warmup so the
             # timed training geometry retains its original update count.
             phase = "first_optimizer_update"
+            progress(phase)
             pre_update_optimizer = _cpu_optimizer_state(optimizers)
             step(0, update=True)
             torch.cuda.synchronize()
             model_update = _cpu_state(model)
             optimizer_update = _cpu_optimizer_state(optimizers)
+            progress("compare_first_update")
             if baseline_model_update is None:
                 first_update = {
                     "status": "baseline",
@@ -788,7 +799,8 @@ def training_case(case, backends, config, seed, checkpoint, runtime=None):
             torch.cuda.synchronize()
 
             phase = "warmup"
-            for iteration in range(config.get("warmups", 10)):
+            progress(phase)
+            for iteration in range(warmups - deferred_warmup):
                 step(iteration)
             torch.cuda.synchronize()
             memory = _safe_memory_record(
@@ -814,6 +826,7 @@ def training_case(case, backends, config, seed, checkpoint, runtime=None):
                 baseline_model_update = model_update
                 baseline_optimizer_update = optimizer_update
             _offload_arm(arms[name])
+            progress("qualified")
             committed = True
         except Exception as exc:
             if name in arms:
@@ -863,6 +876,18 @@ def training_case(case, backends, config, seed, checkpoint, runtime=None):
         record["resident_admission"] = plan
         resident = plan["admitted"]
     record["arm_residency"] = "all_gpu_arms" if resident else "one_gpu_arm"
+    # Finish the existing warmup after restoring comparison state. This keeps
+    # the same inputs and update count while excluding first-use setup after
+    # activation from steady-state samples.
+    if deferred_warmup:
+        for arm in arms.values():
+            if not resident:
+                _activate_arm(arm)
+            arm["step"](warmups - 1)
+            torch.cuda.synchronize()
+            if not resident:
+                _offload_arm(arm)
+    record["warmup_after_activation"] = bool(deferred_warmup)
     checkpoint(record)
     active_name = None
     for iteration in range(config.get("rounds", 120)):

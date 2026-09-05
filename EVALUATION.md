@@ -11,13 +11,13 @@ source archives and do not qualify the current package.
 `[S, ..., D]` or ordered sources `[..., D]`, and a BF16 query `[R]`.
 Keys are the last R value coordinates. RMS normalization, query dot product,
 source softmax, and the full-width value mixture use stable internal FP32
-accumulation. Outputs and input gradients are BF16. There is no shipped CPU,
-FP32, or reference execution product.
+accumulation. Outputs and input gradients are BF16.
 
 Full passes the embedding and previous writer outputs. Block passes the
 embedding, completed block sums, and current partial sum. Both use the same
-function and dispatch. Prepared Block state, phase caches, cross-read reuse,
-projected keys, priors, and architectural changes are outside this campaign.
+function and dispatch. Every read computes routing and the mixture from its
+current inputs. Projected keys, priors, and architectural changes are outside
+this campaign.
 
 ## Correctness
 
@@ -55,14 +55,17 @@ failures and incomplete measurements. Use simultaneous 95% confidence
 intervals and require adjacent lower/higher-rank latency ratio upper bounds
 at most 1.005 for primary coverage, or 1.01 for broader coverage. Never slow
 higher ranks, relax correctness tolerances, omit regressions, or select the
-fastest retry. Missing or inconclusive coverage is an unmet target.
+fastest retry. The fastest-kernel target additionally requires an upper latency
+ratio bound below 1.0 against each cell's strongest qualified alternative.
+Missing or inconclusive coverage is an unmet target.
 
 ## Resources and delivery
 
 The Modal cap is US$500: baseline/profiling $80, experiments $220,
-confirmation/distributed $140, and infrastructure/retry reserve $60. Reserve
+confirmation $140, and infrastructure/retry reserve $60. Reserve
 each job's full timeout and startup maximum before launch. Run at most one
-single-GPU job per architecture; eight-GPU qualification runs exclusively.
+single-GPU job across both architectures. Use B200 for intermediate work and
+run final H100/B200 qualification sequentially. Distributed work is disabled.
 Reservations remain charged to the cap after failures. Resume only missing
 work and retain incremental evidence.
 

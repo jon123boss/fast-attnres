@@ -53,6 +53,8 @@ def render(summary, ledger, *, summary_link="primary-summary.json", ledger_link=
              f"[Primary summary](<{summary_link}>) · [Budget ledger](<{ledger_link}>)", "",
              f"Candidate: `{text(summary.get('candidate_identity'))}`. "
              f"Primary target passed: **{text(summary.get('primary_pass'))}**.", "",
+             f"Faster than every qualified alternative: **{text(summary.get('fastest_pass'))}**. "
+             "This stricter gate requires the upper simultaneous confidence bound below 1.0 in every cell.", "",
              f"Recorded comparisons: {len(cells)}; admitted comparisons: {admitted}; "
              f"missing entries: {len(missing)}; failure records: {len(failures)}; "
              f"admission/inconclusive records: {len(admissions)}.", "",

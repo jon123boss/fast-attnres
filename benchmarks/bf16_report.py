@@ -10,10 +10,10 @@ from pathlib import Path
 import numpy as np
 
 SEEDS = (20260827, 20260903, 20260911)
-RANKS = (1536, 768, 384, 192, 96, 64, 32, 16)
+RANKS = (1536, 1024, 768, 640, 512, 384, 256, 128, 64, 32, 16)
 BACKENDS = ("release", "candidate", "torch_compile", "legacy_uncached", "liger",
             "fla_checkpoint0", "fla_checkpoint1", "fla_gluon_checkpoint0",
-            "fla_gluon_checkpoint1", "catswe_phase1", "hydra_2p", "hydra_2p8")
+            "fla_gluon_checkpoint1", "catswe_phase1", "hydra_2p", "hydra_2p8", "hilda")
 FAMILIES = {**{name: "fla" for name in BACKENDS if name.startswith("fla_")},
             "legacy_uncached": "legacy", "catswe_phase1": "catswe",
             "hydra_2p": "hydra", "hydra_2p8": "hydra"}
@@ -310,6 +310,7 @@ def summarize(paths, *, candidate="candidate", required_rounds=120, contract=Non
         name = cell["cell"] + "/vs_" + cell["strongest_correct_alternative"]
         cell.update(intervals[name])
         cell["nonregression_pass"] = cell["ci95_simultaneous"][1] <= 1.005
+        cell["faster_pass"] = cell["ci95_simultaneous"][1] < 1.0
     monotonic = [{"comparison": n, **intervals[n],
                   "pass": intervals[n]["ci95_simultaneous"][1] <= 1.005} for n in adjacent]
     gain = math.exp(np.mean([math.log(1 / cell["ratio"]) for cell in cells])) if cells else None
@@ -319,6 +320,8 @@ def summarize(paths, *, candidate="candidate", required_rounds=120, contract=Non
             "geometric_mean_speedup_observed_cells": gain, "cells": cells,
             "adjacent_ranks": monotonic, "failures": failures, "missing": sorted(set(missing)),
             "admission_failures": admission_failures,
+            "fastest_pass": not missing and not admission_failures and bool(cells)
+                            and all(c["faster_pass"] for c in cells),
             "primary_pass": not missing and not admission_failures and all(c["nonregression_pass"] for c in cells)
                             and all(c["pass"] for c in monotonic)}
 

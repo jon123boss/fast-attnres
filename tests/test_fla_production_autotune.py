@@ -1,4 +1,4 @@
-"""CPU and static contracts for the standard FLA production route."""
+"""CPU and static contracts for the shared source-list kernels."""
 
 from __future__ import annotations
 
@@ -11,20 +11,6 @@ from attnres._kernels import fixed_tail_sources, fla_full_sources
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / "src" / "attnres" / "_kernels" / "fla_full_sources.py"
-
-
-def test_standard_route_is_gated_to_contiguous_full_rank_inputs():
-    values = tuple(torch.empty(2, 4, dtype=torch.bfloat16) for _ in range(2))
-    query = torch.empty(4, dtype=torch.float32)
-    assert fla_full_sources._standard_path(values, query, 4, 4)
-    assert not fla_full_sources._standard_path(values, query, 4, 2)
-    fp32_values = tuple(value.float() for value in values)
-    assert not fla_full_sources._standard_path(fp32_values, query, 4, 4)
-
-    noncontiguous_values = tuple(value[:, ::2] for value in values)
-    assert not fla_full_sources._standard_path(noncontiguous_values, query, 2, 2)
-    noncontiguous_query = torch.empty(8, dtype=torch.float32)[::2]
-    assert not fla_full_sources._standard_path(values, noncontiguous_query, 4, 4)
 
 
 def test_save_mixed_policy_is_structural_and_value_independent():
@@ -72,17 +58,19 @@ def test_production_configs_and_cache_dimensions_are_static():
     assert '"N"' in source
     assert '"PIPELINE_STAGES": stages' in source
     assert source.count("num_stages=PIPELINE_STAGES") == 4
+    for field in ('"ROW_STRIDES"', '"FEATURE_STRIDES"', '"QUERY_STRIDE"'):
+        assert field in source
 
 
-def test_fake_aux_shape_matches_generic_and_checkpoint_routes():
+def test_fake_aux_shape_matches_saved_and_recomputed_reads():
     sources = [torch.empty(2, 4, dtype=torch.bfloat16)]
-    generic = fixed_tail_sources._source_forward_fake(
+    low_rank_recompute = fixed_tail_sources._source_forward_fake(
         sources, torch.empty(2), 1e-6, 1.0
     )
     standard_recompute = fixed_tail_sources._source_forward_fake(
         sources, torch.empty(4), 1e-6, 1.0
     )
-    assert generic[1].shape == (2, 4)
+    assert low_rank_recompute[1].shape == (0, 4)
     assert standard_recompute[1].shape == (0, 4)
 
     saved = fixed_tail_sources._source_forward_fake(
