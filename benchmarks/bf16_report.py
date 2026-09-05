@@ -13,9 +13,10 @@ SEEDS = (20260827, 20260903, 20260911)
 RANKS = (1536, 768, 384, 192, 96, 64, 32, 16)
 BACKENDS = ("release", "candidate", "torch_compile", "legacy_uncached", "liger",
             "fla_checkpoint0", "fla_checkpoint1", "fla_gluon_checkpoint0",
-            "fla_gluon_checkpoint1", "catswe_phase1")
+            "fla_gluon_checkpoint1", "catswe_phase1", "hydra_2p", "hydra_2p8")
 FAMILIES = {**{name: "fla" for name in BACKENDS if name.startswith("fla_")},
-            "legacy_uncached": "legacy", "catswe_phase1": "catswe"}
+            "legacy_uncached": "legacy", "catswe_phase1": "catswe",
+            "hydra_2p": "hydra", "hydra_2p8": "hydra"}
 MODEL = {"layers": 24, "width": 1536, "heads": 24, "ffn": 4224,
          "vocab": 100277, "context": 2048, "block_count": 8,
          "activation_checkpointing": False, "rope_theta": 500000.,
@@ -65,6 +66,20 @@ def _contract_errors(report, result, required_rounds):
         identity = identities.get(FAMILIES.get(name, name), {})
         if not identity.get("content_hash", identity.get("sha256")):
             errors.append(f"missing frozen source identity: {name}")
+    if not identities.get("training_fixture", {}).get("sha256"):
+        errors.append("missing frozen training fixture identity")
+    gate = result.get("operator_qualification", {})
+    operator = gate.get("result") or {}
+    model = result.get("model", {})
+    sources = 2 * model.get("layers", 0) + 1 if model.get("mode") == "full" else model.get("block_count", 0) + 1
+    expected_shape = [sources, 8192, 1536, model.get("rank")]
+    if (gate.get("replays") != 8 or operator.get("case", {}).get("shape") != expected_shape or
+        operator.get("case", {}).get("query_scale") != .05 or operator.get("seed") != result["seed"]):
+        errors.append("missing nonzero-query operator qualification")
+    for name in passed:
+        arm = operator.get("arms", {}).get(name, {})
+        if arm.get("status") != "passed" or len(arm.get("samples_ms", [])) != required_rounds:
+            errors.append(f"missing qualified operator timings: {name}")
     optimizer = identities.get("optimizer", {})
     if not config.get("optimizer_source") or not optimizer.get("sha256") or optimizer.get("implementation") != "Muon+AdamW(configured)":
         errors.append("missing original optimizer identity")

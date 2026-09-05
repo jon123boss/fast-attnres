@@ -232,6 +232,80 @@ def load_catswe(root):
         "adapter": "native single-query phase1 per read; source stack/copies and all gradients included"}
 
 
+def load_hydra(root):
+    """Run native Hydra phase 1+2 afresh for one full-width query."""
+    root = Path(root).resolve()
+    sys.path.insert(0, str(root / 'src'))
+    module = importlib.import_module('attnres_kernel.triton_impl')
+    if Path(module.__file__).resolve() != root / 'src/attnres_kernel/triton_impl.py':
+        raise RuntimeError('Hydra import resolved outside the frozen checkout')
+    native = module._TritonAttnRes
+
+    class Context:
+        def save_for_backward(self, *tensors):
+            self.saved_tensors = tensors
+
+    @torch.library.custom_op('campaign_hydra::forward', mutates_args=())
+    def forward(blocks: Tensor, query: Tensor, warps: int, eps: float) -> tuple[Tensor, Tensor, Tensor]:
+        ctx = Context()
+        partial = torch.zeros_like(blocks[:1])
+        enabled = torch.zeros(1, device=query.device, dtype=torch.bool)
+        width = query.shape[-1]
+        out = native.forward(ctx, query, blocks, partial, enabled,
+                             1 << (width - 1).bit_length(), warps, eps)
+        return out, ctx.saved_tensors[-2], ctx.saved_tensors[-1]
+
+    @forward.register_fake
+    def fake_forward(blocks, query, warps, eps):
+        stats = blocks.new_empty((1, blocks.shape[1]), dtype=torch.float32)
+        return torch.empty_like(blocks[:1]), stats, torch.empty_like(stats)
+
+    @torch.library.custom_op('campaign_hydra::backward', mutates_args=())
+    def backward(blocks: Tensor, query: Tensor, output: Tensor, maximum: Tensor,
+                 denominator: Tensor, upstream: Tensor, warps: int, eps: float) -> tuple[Tensor, Tensor]:
+        ctx = Context()
+        partial = torch.zeros_like(blocks[:1])
+        enabled = torch.zeros(1, device=query.device, dtype=torch.bool)
+        ctx.saved_tensors = (query, blocks, partial, enabled, output, maximum, denominator)
+        ctx.meta = (blocks.shape, partial.shape, 1 << (query.shape[-1] - 1).bit_length(), warps, eps)
+        dq, dv, _, *_ = native.backward(ctx, upstream.contiguous())
+        return dv, dq
+
+    @backward.register_fake
+    def fake_backward(blocks, query, output, maximum, denominator, upstream, warps, eps):
+        return torch.empty_like(blocks), torch.empty_like(query)
+
+    def setup(ctx, inputs, output):
+        blocks, query, ctx.warps, ctx.eps = inputs
+        ctx.save_for_backward(blocks, query, *output)
+        ctx.mark_non_differentiable(*output[1:])
+
+    def autograd_backward(ctx, upstream, *_):
+        dv, dq = backward(*ctx.saved_tensors, upstream, ctx.warps, ctx.eps)
+        return dv, dq, None, None
+
+    forward.register_autograd(autograd_backward, setup_context=setup)
+
+    def backend(warps):
+        def call(values, query, *, eps=2**-23, scale=1.0):
+            width = values[0].shape[-1]
+            if query.numel() != width or scale != 1:
+                raise Ineligible('Hydra implements full-width keys and scale=1')
+            if width > 8192 or len(values) > 129:
+                raise Ineligible('Hydra exceeds the frozen width/source envelope')
+            if query.dtype != torch.bfloat16 or values[0].dtype != torch.bfloat16:
+                raise Ineligible('Hydra campaign storage is BF16')
+            shape = values[0].shape
+            packed = values if isinstance(values, Tensor) else torch.stack(tuple(values))
+            blocks = packed.reshape(len(values), -1, width).contiguous()
+            return forward(blocks, query.reshape(1, width).contiguous(), warps, float(eps))[0].reshape(shape)
+        return call
+    return {'hydra_2p': backend(4), 'hydra_2p8': backend(8)}, {
+        'revision': 'ea1f63eda8e31b0f10456b3b49cacd8fb66091dc',
+        'adapter': 'native single-query phase1+phase2 per read; source preparation and disabled partial included',
+        'block_d': 'nextpow2(D)', 'num_warps': {'hydra_2p': 4, 'hydra_2p8': 8}}
+
+
 def model_ineligibility(name, model):
     """Static public-comparator limits for an entire uncached model schedule."""
     width, rank = model.width, model.rank
@@ -249,6 +323,8 @@ def model_ineligibility(name, model):
             return "legacy standard requires scale=1"
         if rank != width and (rank > 256 or sources > 16):
             return "legacy uncached LR requires rank<=256 and sources<=16"
+    if name.startswith("hydra_2p") and (rank != width or model.attnres_scale != 1 or width > 8192 or sources > 129):
+        return "Hydra requires R=D, scale=1, width<=8192 and sources<=129"
     if name == "catswe_phase1":
         if rank != width or width & (width - 1):
             return "Catswe phase1 requires R=D and power-of-two D"
@@ -265,7 +341,7 @@ def load_all(roots):
         identities[name] = source_digest(root)
         try:
             ops, adapter = {"fla": load_fla, "liger": load_liger,
-                            "legacy": load_legacy, "catswe": load_catswe}[name](root)
+                            "legacy": load_legacy, "catswe": load_catswe, "hydra": load_hydra}[name](root)
             backends.update(ops)
             identities[name]["adapter"] = adapter
         except Exception as exc:

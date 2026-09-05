@@ -1,25 +1,71 @@
-# Frozen evaluation contract
+# BF16 H100/B200 evaluation contract
 
-Candidate authors must not modify this document, validation/oracle.py, validation/protocol.json, validation/frozen.json, reference.py, or root-owned tests. Root verifies their hashes.
+The root owns the oracle, tests, timing harness, source manifests, budget ledger,
+and final selection. Independent candidate authors may change only their
+assigned isolated implementation. Historical release reports retain their own
+source archives and do not qualify the current package.
 
-## Equations
+## Operator
 
-values [S,...,D] or a sequence of S tensors [...,D], query [R]. Keys are the implicit tail values[...,D-R:]. R=D is standard AttnRes. Parameter-free RMS key norm, query dot, scale, source softmax, full-width value mixture. eps=2^-23; scale=1. FP32 compute, BF16/FP32 storage and queries; FP64 reference for gradcheck. S=1..129,D=1..8192,R=1..D. Support packed inputs and strided source views; include source assembly and any required copies in training timing. Separate projected-key and carrier APIs are outside the active scope.
+`attnres(values, query, *, eps=2**-23, scale=1)` accepts CUDA BF16 values
+`[S, ..., D]` or ordered sources `[..., D]`, and a BF16 query `[R]`.
+Keys are the last R value coordinates. RMS normalization, query dot product,
+source softmax, and the full-width value mixture use stable internal FP32
+accumulation. Outputs and input gradients are BF16. There is no shipped CPU,
+FP32, or reference execution product.
 
-Block passes completed values and the sequential current partial as ordinary sources to the same `attnres` primitive used by Full. Block values are sums, not averages; their keys are the implicit tail. There is no separate Block attention kernel or prepared-state API. No private GraphTask APIs, mutable tickets, alpha/beta/count priors, dynamic queries, output norm, or split-block extensions.
+Full passes the embedding and previous writer outputs. Block passes the
+embedding, completed block sums, and current partial sum. Both use the same
+function and dispatch. Prepared Block state, phase caches, cross-read reuse,
+projected keys, priors, and architectural changes are outside this campaign.
 
 ## Correctness
 
-Independent FP32 equation oracle. Strict output and all value/query gradient gates: BF16 rtol=atol=.05; FP32 rtol=.001,atol=.0001; require finite outputs/gradients. No normwise rescue. Test FP64 gradcheck, aliases, repeated reads and backward, checkpointing, noncontiguous upstreams, nonzero queries, changed-input CUDA Graph replay and compiled model all-parameter gradients. Compare identical architectures/weights/data for parity.
+The BF16 test oracle in `validation/oracle.py` is the independent comparison.
+Every output and source/query gradient must be finite and satisfy
+`rtol=atol=0.05`. Direct and routing derivatives combine before the BF16 input
+boundary; BF16 addition and casting are not assumed associative. The user's
+BF16 nonlinearity clarification does not change the tolerance.
 
-## Timing
+Cover packed and source-list layouts, odd dimensions, strides, duplicate
+sources and shared views, repeated reads, partial blocks, analytic gradients,
+activation checkpointing, fullgraph compilation, eight changed-input CUDA
+Graph replays, optimizer updates, and exact save/resume. Compare equal ranks.
 
-Primary metric is complete compiled training: projection, source assembly, loss, backward, accumulation, zero_grad, optimizer and any scheduler. Exclude compilation/warmup/profiling; record them separately. Same-device balanced paired runs; fixed model/batch/sequence/optimizer/checkpoint settings across ranks. Preserve every raw sample and source/software/hardware hash. The active native baseline is FLA Triton checkpoint 1 from the exact clean checkout pinned in the production config. Same-R LR comparisons are separate from architectural LR-versus-standard comparisons.
+## Performance
 
-Primary: layers24,D1024,heads16,MLP2816,B2,T2048,vocab32768,Block count8,AdamW,BF16 autocast,static queries. R=1,2,4,8,16,32,64,128,256,512,1024. Accumulation1 primary; accumulation2/checkpointing separate integration checks. Three seeds for final confirmation; incomplete budget-limited subsets are not promotion.
+`configs/bf16_primary.json` defines the current primary model, rank ladder,
+seeds, runtime, competitor inventory, and immutable source identity contract.
+The model has 24 layers, width 1536, 24 heads, MLP width 4224, vocabulary
+100277, context 2048, batch four, accumulation four, and eight blocks. It uses
+ordinary source assembly, BF16 cross-entropy, gradient clipping at 1.0, and the
+original Muon plus AdamW implementation. Activation checkpointing is qualified
+separately and is disabled in the primary model.
 
-Gain: simultaneous paired95% CI for smaller/larger latency entirely below1. Plateau: CI contains1 and lies wholly in[.99,1.01]. Entirely above1 is slowdown; other outcomes inconclusive. All adjacent ranks must pass gain/plateau and show gains over larger ranks. No dropped failures or hold-out tuning.
+Measure three seeds and 120 balanced paired rounds after ten warmups. Include
+input copies, source preparation, forward, loss, backward, accumulation,
+zeroing gradients, and optimizer work. Record compilation/warmup, operator
+latency, complete-step latency, and memory separately. This controlled
+synthetic-data fixture excludes dataset I/O, logging, and scheduler host work;
+it does not reproduce historical training throughput.
 
-## Budget
+Compare each cell with its fastest correct eligible alternative. Preserve all
+failures and incomplete measurements. Use simultaneous 95% confidence
+intervals and require adjacent lower/higher-rank latency ratio upper bounds
+at most 1.005 for primary coverage, or 1.01 for broader coverage. Never slow
+higher ranks, relax correctness tolerances, omit regressions, or select the
+fastest retry. Missing or inconclusive coverage is an unmet target.
 
-Root alone submits Modal jobs; exact H100! and B200. User-authorized total US$400. The root budget ledger accounts for prior jobs; this rebuild does not reset spending. Workspace limits remain hard stops. Bounded resumable jobs; no paid retries of unchanged compiler/correctness failures.
+## Resources and delivery
+
+The Modal cap is US$500: baseline/profiling $80, experiments $220,
+confirmation/distributed $140, and infrastructure/retry reserve $60. Reserve
+each job's full timeout and startup maximum before launch. Run at most one
+single-GPU job per architecture; eight-GPU qualification runs exclusively.
+Reservations remain charged to the cap after failures. Resume only missing
+work and retain incremental evidence.
+
+Deliver a clean BF16 package, shared model integration, reproducible commands,
+raw results, confidence intervals, source identities, failure records, and a
+draft GitHub PR. Do not merge or publish a release. Unverified fastest-kernel,
+monotonicity, or production-qualification claims are not deliverables.

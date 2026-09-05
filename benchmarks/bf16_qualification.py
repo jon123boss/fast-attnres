@@ -585,6 +585,28 @@ def run_qualification(
         gc.collect()
         torch.cuda.empty_cache()
 
+    if effective.get("pytest"):
+        import subprocess
+        import sys
+        import re
+        try:
+            checked = subprocess.run(
+                [sys.executable, "-m", "pytest", "-q", "--strict-markers", *effective["pytest"]],
+                cwd=Path(__file__).resolve().parents[1], capture_output=True, text=True, timeout=1200)
+            output = checked.stdout + checked.stderr
+            row = {"name": "additional_cuda_tests", "phase": "pytest", "exit_code": checked.returncode,
+                   "output": output, "status": "passed"}
+            if checked.returncode or re.search(r"[1-9][0-9]* skipped", output):
+                row["status"] = "failed"
+                row["error"] = "CUDA tests failed or required coverage was skipped"
+        except Exception as exc:
+            row = _failure("additional_cuda_tests", "pytest", exc)
+        report["cases"].append(row)
+        report["passed" if row["status"] == "passed" else "failed"] += 1
+        if row["status"] != "passed":
+            report["failures"].append(row)
+        _checkpoint(checkpoint, report)
+
     report["status"] = "failed" if report["failures"] else "passed"
     report["complete"] = True
     _checkpoint(checkpoint, report)

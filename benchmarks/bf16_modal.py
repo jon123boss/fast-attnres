@@ -15,6 +15,7 @@ import os
 from pathlib import Path
 import shutil
 import sys
+import tarfile
 import time
 import traceback
 
@@ -63,16 +64,33 @@ def _remote(job):
     cache_root = Path("/evidence/compiler-cache") / job["config"]["gpu"] / "torch2.13-triton3.7.1-cu130"
     cache_enabled = job["config"].get("reuse_compiler_cache", False)
     cache_loaded = False
-    cache_ignore = shutil.ignore_patterns("locks", "*.lock", "*.tmp", "tmp.*", "__pycache__")
-    if cache_enabled:
-        for name in ("triton", "inductor"):
-            source = cache_root / name
-            if source.exists():
-                shutil.copytree(source, Path("/tmp") / f"attnres-{name}",
-                                dirs_exist_ok=True, ignore=cache_ignore)
-                cache_loaded = True
+    cache_archive = cache_root / "artifacts.tar.gz"
+    cached_results = 0
+    def save_compiler_cache():
+        if not cache_enabled:
+            return
+        try:
+            local_archive = Path("/tmp/compiler-artifacts.tar.gz")
+            def completed_file(info):
+                parts = Path(info.name).parts
+                if any(part in ("locks", "__pycache__") or part.endswith((".lock", ".tmp"))
+                       or part.startswith("tmp.") for part in parts):
+                    return None
+                return info if info.isfile() or info.isdir() else None
+            with tarfile.open(local_archive, "w:gz", compresslevel=1) as archive:
+                for name in ("triton", "inductor"):
+                    source = Path("/tmp") / f"attnres-{name}"
+                    if source.exists():
+                        archive.add(source, arcname=source.name, filter=completed_file)
+            cache_root.mkdir(parents=True, exist_ok=True)
+            pending = cache_root / "artifacts.pending"
+            shutil.copyfile(local_archive, pending)
+            pending.replace(cache_archive)
+        except Exception:
+            (root / "compiler-cache-error.txt").write_text(traceback.format_exc())
+
     def checkpoint(report):
-        nonlocal sequence
+        nonlocal sequence, cached_results
         sequence += 1
         report["elapsed_s"] = time.monotonic() - started
         report["compiler_cache"] = {"reuse_enabled": cache_enabled, "loaded": cache_loaded}
@@ -83,8 +101,17 @@ def _remote(job):
         history = root / "history"
         history.mkdir(exist_ok=True)
         shutil.copy2(path, history / f"{sequence:06d}.json")
+        completed = len(report.get("results", []))
+        if completed > cached_results:
+            save_compiler_cache()
+            cached_results = completed
         volume.commit()
     try:
+        checkpoint({"status": "running", "phase": "load_compiler_cache", "config": job["config"]})
+        if cache_enabled and cache_archive.exists():
+            with tarfile.open(cache_archive, "r:gz") as archive:
+                archive.extractall("/tmp", filter="data")
+            cache_loaded = True
         for label, expected in job["hashes"].items():
             actual = source_digest(Path("/job") / label)["sha256"]
             if actual != expected:
@@ -109,7 +136,10 @@ def _remote(job):
                 report["identity"] = candidate_source
                 checkpoint(report)
                 return json.loads(json.dumps(report, default=str))
-            return _distributed(config, job, root, checkpoint)
+            report = _distributed(config, job, root, checkpoint)
+            report["identity"] = candidate_source
+            checkpoint(report)
+            return report
         if config.get("kind", "operator") == "operator":
             return json.loads(json.dumps(run_operator(config, checkpoint), default=str))
         if config.get("kind") == "alias_diagnostic":
@@ -124,19 +154,9 @@ def _remote(job):
         checkpoint(failure)
         return failure
     finally:
-        # Compile locally. Copy completed artifacts only between jobs, with an
-        # architecture/version partition; no compilation runs on Volume I/O.
-        if cache_enabled:
-            try:
-                for name in ("triton", "inductor"):
-                    source = Path("/tmp") / f"attnres-{name}"
-                    if source.exists():
-                        shutil.copytree(source, cache_root / name,
-                                        dirs_exist_ok=True, ignore=cache_ignore)
-                volume.commit()
-            except Exception:
-                (root / "compiler-cache-error.txt").write_text(traceback.format_exc())
-                volume.commit()
+        # Preserve compilation work even when a later measurement fails.
+        save_compiler_cache()
+        volume.commit()
 
 
 def _training(config, root, checkpoint):
@@ -286,7 +306,7 @@ def prepare(args):
     competitors = {}
     for value in args.competitor:
         name, path = value.split("=", 1)
-        if name not in ("fla", "liger", "legacy", "catswe"):
+        if name not in ("fla", "liger", "legacy", "catswe", "hydra"):
             raise ValueError("unsupported competitor")
         _copy_tree(Path(path).resolve(), snapshot / "competitors" / name)
         competitors[name] = f"competitors/{name}"
@@ -403,9 +423,11 @@ def main():
         prepare(args)
     else:
         path = Path(args.snapshot).resolve()
-        if SNAPSHOT.resolve() != path:
+        frozen_launcher = path / "runner" / "benchmarks" / "bf16_modal.py"
+        if SNAPSHOT.resolve() != path or Path(__file__).resolve() != frozen_launcher:
             os.environ["ATTNRES_JOB_SNAPSHOT"] = str(path)
-            os.execv(sys.executable, [sys.executable, __file__, "run", str(path)])
+            os.environ["ATTNRES_CAMPAIGN_WORK"] = str(WORK.resolve())
+            os.execv(sys.executable, [sys.executable, str(frozen_launcher), "run", str(path)])
         run(path)
 
 

@@ -377,7 +377,7 @@ def _primary_report(gpu, mode, rank, seed):
                             optimizer_source="/frozen/optimizer")
     report["identities"].update({
         name: {"sha256": name + "-v1"}
-        for name in ("release", "torch_compile", "fla", "liger", "legacy", "catswe")})
+        for name in ("release", "torch_compile", "fla", "liger", "legacy", "catswe", "hydra")})
     report["identities"]["optimizer"] = {
         "sha256": "optimizer-v1", "implementation": "Muon+AdamW(configured)"}
     result = report["results"][0]
@@ -389,6 +389,11 @@ def _primary_report(gpu, mode, rank, seed):
     result.update(grad_clip=1.0, loss_dtype="bfloat16",
                   qualification_tolerances={"rtol": .05, "atol": .05},
                   requested_backends=list(bf16_report.BACKENDS))
+    report["identities"]["training_fixture"] = {"sha256": "fixture-v1"}
+    result["operator_qualification"] = {"replays": 8, "result": {
+        "seed": seed, "case": {"shape": [49 if mode == "full" else 9, 8192, 1536, rank],
+                                "query_scale": .05},
+        "arms": {name: {"status": "passed", "samples_ms": [1.] * 120} for name in arms}}}
     for name, arm in arms.items():
         arm["round_ids"] = list(range(120))
         arm.update(optimizer="Muon+AdamW(configured)", qualification={
@@ -414,7 +419,7 @@ def test_complete_frozen_campaign_passes_with_resumed_seed_subsets(tmp_path, exa
     assert not summary["admission_failures"]
 
 
-@pytest.mark.parametrize("change", ["dtype", "clipping", "inventory", "identity", "optimizer", "seed", "rounds", "pairing", "inputs", "runtime", "model"])
+@pytest.mark.parametrize("change", ["dtype", "clipping", "inventory", "identity", "optimizer", "seed", "rounds", "pairing", "inputs", "runtime", "model", "operator", "fixture"])
 def test_primary_contract_rejects_mismatched_execution(change):
     report = _primary_report("H100", "block", 64, bf16_report.SEEDS[0])
     result = report["results"][0]
@@ -441,4 +446,8 @@ def test_primary_contract_rejects_mismatched_execution(change):
         report["runtime"]["capability"] = [8, 0]
     elif change == "model":
         result["model"]["rope_theta"] = 10000.
+    elif change == "operator":
+        result["operator_qualification"]["result"]["case"]["query_scale"] = 0.
+    elif change == "fixture":
+        del report["identities"]["training_fixture"]
     assert bf16_report._contract_errors(report, result, 120)

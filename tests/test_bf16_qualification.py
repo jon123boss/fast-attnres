@@ -1,4 +1,6 @@
 import json
+import pytest
+import torch
 
 from benchmarks import bf16_qualification_distributed as distributed
 from benchmarks import bf16_qualification as qualification
@@ -44,3 +46,32 @@ def test_distributed_defaults_preserve_primary_configuration_and_rank_override()
     assert primary["mode"] == "block"
     assert primary["block_count"] == 8
     assert distributed._model_spec({"primary_rank": 384}, "primary")["rank"] == 384
+
+
+def test_collective_gradient_mismatch_finishes_all_reductions(monkeypatch):
+    from types import SimpleNamespace
+    model = torch.nn.Linear(2, 2, dtype=torch.bfloat16)
+    for parameter in model.parameters():
+        parameter.grad = torch.ones_like(parameter)
+    calls = []
+    def reduce(tensor, op=None):
+        calls.append(tuple(tensor.shape))
+        if tensor.ndim:
+            tensor.mul_(2)
+            if tensor.ndim == 2:
+                tensor.add_(1)
+    monkeypatch.setattr(distributed.dist, "all_reduce", reduce)
+    monkeypatch.setattr(distributed.dist, "get_world_size", lambda: 2)
+    with pytest.raises(AssertionError, match="collective gradient mismatch"):
+        distributed._collective_gradients(SimpleNamespace(module=model), torch.device("cpu"))
+    assert calls == [(), (2, 2), (2,), (), ()]
+
+
+def test_snapshot_unwraps_ddp_and_compiled_model():
+    from types import SimpleNamespace
+    model = torch.nn.Linear(2, 2, dtype=torch.bfloat16)
+    wrapped = SimpleNamespace(module=SimpleNamespace(_orig_mod=model))
+    snapshot = distributed._state_snapshot(wrapped, [])
+    assert set(snapshot["model"]) == {"weight", "bias"}
+    assert snapshot["model"]["weight"].device.type == "cpu"
+    assert snapshot["model"]["weight"].data_ptr() != model.weight.data_ptr()

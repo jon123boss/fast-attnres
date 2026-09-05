@@ -121,9 +121,11 @@ def _model_spec(config: Mapping[str, Any], name: str) -> dict[str, Any]:
 
 
 def _device_metadata(device: torch.device) -> dict[str, Any]:
+    import triton
     properties = torch.cuda.get_device_properties(device)
     return {
         "torch": str(torch.__version__),
+        "triton": str(triton.__version__),
         "cuda": torch.version.cuda,
         "python": platform.python_version(),
         "device": str(device),
@@ -131,6 +133,7 @@ def _device_metadata(device: torch.device) -> dict[str, Any]:
         "capability": list(torch.cuda.get_device_capability(device)),
         "memory_bytes": int(properties.total_memory),
         "sms": int(properties.multi_processor_count),
+        "bf16_supported": bool(torch.cuda.is_bf16_supported()),
     }
 
 
@@ -146,10 +149,16 @@ def _clone_cpu(value: Any) -> Any:
     return value
 
 
+def _unwrap_model(model):
+    while hasattr(model, "module") or hasattr(model, "_orig_mod"):
+        model = model.module if hasattr(model, "module") else model._orig_mod
+    return model
+
+
 def _state_snapshot(model: DistributedDataParallel,
                     optimizers: list[torch.optim.Optimizer]) -> dict[str, Any]:
     return {
-        "model": _clone_cpu(model.module.state_dict()),
+        "model": _clone_cpu(_unwrap_model(model).state_dict()),
         "optimizers": [_clone_cpu(optimizer.state_dict()) for optimizer in optimizers],
     }
 
@@ -206,24 +215,28 @@ def _collective_gradients(model: DistributedDataParallel,
     parameters = tuple(model.module.named_parameters())
     finite = torch.ones((), device=device, dtype=torch.int32)
     for _, parameter in parameters:
-        if parameter.grad is None or not torch.isfinite(parameter.grad).all().item():
+        if (parameter.grad is None or parameter.grad.dtype != torch.bfloat16 or
+            not torch.isfinite(parameter.grad).all().item()):
             finite.zero_()
     dist.all_reduce(finite, op=dist.ReduceOp.MIN)
     if int(finite.item()) != 1:
         raise AssertionError("collective gradient contains a non-finite or missing value")
 
     maximum = 0.0
+    mismatch = torch.zeros((), device=device, dtype=torch.int32)
     for name, parameter in parameters:
         reduced = parameter.grad.detach().float().clone()
         dist.all_reduce(reduced, op=dist.ReduceOp.SUM)
         mean = reduced / dist.get_world_size()
-        torch.testing.assert_close(
-            parameter.grad.float(), mean, **TOLERANCE, msg=f"collective:{name}"
-        )
-        maximum = max(maximum, float((parameter.grad.float() - mean).abs().max().item()))
+        difference = (parameter.grad.float() - mean).abs()
+        mismatch.bitwise_or_((difference > TOLERANCE["atol"] + TOLERANCE["rtol"] * mean.abs()).any().int())
+        maximum = max(maximum, float(difference.max().item()))
         del reduced, mean
+    dist.all_reduce(mismatch, op=dist.ReduceOp.MAX)
     maximum_tensor = torch.tensor(maximum, device=device, dtype=torch.float32)
     dist.all_reduce(maximum_tensor, op=dist.ReduceOp.MAX)
+    if mismatch.item():
+        raise AssertionError(f"collective gradient mismatch: max_abs={maximum_tensor.item()}")
     return {
         "parameters": len(parameters),
         "finite": True,
@@ -244,6 +257,10 @@ def _step(model: DistributedDataParallel, optimizers: list[torch.optim.Optimizer
             loss = F.cross_entropy(
                 logits.reshape(-1, logits.shape[-1]), micro_targets.reshape(-1)
             )
+            finite = torch.isfinite(loss).all().int()
+            dist.all_reduce(finite, op=dist.ReduceOp.MIN)
+            if not finite.item():
+                raise AssertionError("nonfinite distributed BF16 loss")
             (loss / accumulation).backward()
         losses.append(loss.detach())
     collective = _collective_gradients(model, device)
@@ -269,6 +286,12 @@ def _case(config: Mapping[str, Any], name: str, seed: int,
         actual = {key: getattr(model_config, key) for key in expected}
         if actual != expected:
             raise ValueError(f"primary configuration changed: expected {expected}, got {actual}")
+        if (batch != 4 or accumulation != 4 or model_config.rank not in (1536, 64) or
+            model_config.rope_theta != 500000. or model_config.attnres_eps != 2**-23 or
+            model_config.attnres_scale != 1.):
+            raise ValueError("primary qualification requires R1536/R64, batch4/accum4 and original arithmetic")
+    if not config.get("optimizer_source"):
+        raise ValueError("distributed qualification requires the original Muon+AdamW source")
 
     torch.manual_seed(seed)
     model = Model(model_config, op=attnres).to(device).train()
@@ -282,6 +305,11 @@ def _case(config: Mapping[str, Any], name: str, seed: int,
     )
     from benchmarks.bf16_training import _optimizers
     optimizers = _optimizers(ddp, config)
+    expected_parameters = {id(p) for p in model.parameters()}
+    covered = [id(p) for optimizer in optimizers for group in optimizer.param_groups for p in group["params"]]
+    if (sorted(type(o).__name__ for o in optimizers) != ["AdamW", "Muon"] or
+        len(covered) != len(expected_parameters) or set(covered) != expected_parameters):
+        raise RuntimeError("Muon+AdamW must cover every model parameter exactly once")
     torch.manual_seed(seed + 17 + 1009 * dist.get_rank())
     step_tokens = torch.randint(
         model_config.vocab,
@@ -307,10 +335,11 @@ def _case(config: Mapping[str, Any], name: str, seed: int,
     torch.save(saved, encoded)
     encoded.seek(0)
     saved = torch.load(encoded, map_location="cpu", weights_only=True)
-    ddp.module.load_state_dict(saved["model"], strict=True)
+    _unwrap_model(ddp).load_state_dict(saved["model"], strict=True)
     for optimizer, state in zip(optimizers, saved["optimizers"]):
         optimizer.load_state_dict(state)
     del encoded
+    dist.barrier()
     resumed_loss, resumed_collective = _step(
         ddp, optimizers, step_tokens[1], step_targets[1], accumulation, device
     )
@@ -423,7 +452,20 @@ def run_distributed_qualification(
 
     device = torch.device("cuda", local_rank)
     torch.cuda.set_device(device)
-    report["runtime"] = _device_metadata(device) if rank == 0 else None
+    runtime = {**_device_metadata(device), "rank": rank, "local_rank": local_rank}
+    runtimes = [None] * world_size
+    dist.all_gather_object(runtimes, runtime)
+    report["runtime"] = runtimes[0]
+    report["rank_runtimes"] = runtimes
+    expected_capability = {"H100": [9, 0], "B200": [10, 0]}.get(config.get("gpu"))
+    invalid = [row for row in runtimes if
+               row["capability"] != expected_capability or not row["bf16_supported"] or
+               row["torch"] != "2.13.0+cu130" or row["triton"] != "3.7.1" or row["cuda"] != "13.0"]
+    if invalid or sorted(row["local_rank"] for row in runtimes) != list(range(8)):
+        report["failures"].append({"phase": "environment", "error": "distributed runtime substitution", "runtimes": runtimes})
+        report.update(status="failed", complete=True)
+        _save_checkpoint(checkpoint, report)
+        return report if rank == 0 else {"rank": rank, "status": "failed"}
     names = ["small"]
     if bool(config.get("include_primary", False)):
         names.append("primary")

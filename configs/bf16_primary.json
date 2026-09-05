@@ -1,0 +1,93 @@
+{
+  "scope": "primary",
+  "gpus": [
+    "H100",
+    "B200"
+  ],
+  "modes": [
+    "full",
+    "block"
+  ],
+  "model": {
+    "layers": 24,
+    "width": 1536,
+    "heads": 24,
+    "ffn": 4224,
+    "vocab": 100277,
+    "context": 2048,
+    "block_count": 8,
+    "activation_checkpointing": false,
+    "rope_theta": 500000.0,
+    "norm_pos": "before",
+    "qk_norm": true,
+    "attnres_eps": 1.1920928955078125e-07,
+    "attnres_scale": 1.0
+  },
+  "batch": 4,
+  "sequence": 2048,
+  "accumulation": 4,
+  "ranks": [
+    1536,
+    768,
+    384,
+    192,
+    96,
+    64,
+    32,
+    16
+  ],
+  "seeds": [
+    20260827,
+    20260903,
+    20260911
+  ],
+  "rounds": 120,
+  "warmups": 10,
+  "tolerance": {
+    "atol": 0.05,
+    "rtol": 0.05
+  },
+  "monotonic_ratio_upper_bound": 1.005,
+  "note": "Original research model does not activation-checkpoint layers. Checkpointing is qualified separately; earlier activation-checkpointed screens are not primary confirmation. Gradient clipping at 1.0 and BF16 cross-entropy match the original loop arithmetic; data/I/O logging and scheduler host updates are excluded, and pinned input copies are included.",
+  "grad_clip": 1.0,
+  "loss_dtype": "bfloat16",
+  "backends": [
+    "release",
+    "candidate",
+    "torch_compile",
+    "legacy_uncached",
+    "liger",
+    "fla_checkpoint0",
+    "fla_checkpoint1",
+    "fla_gluon_checkpoint0",
+    "fla_gluon_checkpoint1",
+    "catswe_phase1",
+    "hydra_2p",
+    "hydra_2p8"
+  ],
+  "runtime": {
+    "torch": "2.13.0+cu130",
+    "triton": "3.7.1",
+    "cuda": "13.0"
+  },
+  "identities": {
+    "candidate": "5c9dafa9e56b7a2a5a8bc2a86bedf40b50960b9946bdbfa43bd92a2bc5b637f6",
+    "release": "9315347d6f1fd3ab36d50665a24504d4eb4e38270634f72a1fbd41d80ae17b61",
+    "fla": "aa3a4a4b4b14629d42971791fe993148e4429859c1d0c0c60125e7c09c92fc1b",
+    "liger": "99ada5a6ca8ec83832c7fbfa6f4a435a5206a9d05fed2571f9e35c752102876a",
+    "legacy": "b1fa574804dde58747b3f2d86ea21a134d76ea55aad56bceaf362fe1b3211e4f",
+    "catswe": "39cc4ae133888f015323cef0e499bf2ee712c091ba45418862482adbf0938831",
+    "hydra": "128859bb5c81d082f5df036c54d947cab2feff7976a56da9d7a904143b8e10c3",
+    "optimizer": "5d5ba904e41829b416cb7a0718201a86d945b26b79ca1ca32dab331e2da6fcce",
+    "torch_compile": "36b9a6c2bb52df167584bfecf63573841fcdd41b0da4a789e3944fec5828be00",
+    "training_fixture": "c183662c5ae1c8c03941908088744082aac3648badc3f8a67295d7681867ec0d"
+  },
+  "status": "frozen before final primary measurements",
+  "operator_qualification": {
+    "query_scale": 0.05,
+    "replays": 8,
+    "rounds": 120,
+    "rows": 8192,
+    "sources": "maximum read source count for the schedule"
+  }
+}

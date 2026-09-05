@@ -15,7 +15,7 @@ from torch.nn import functional as F
 
 from benchmarks.baseline import load_baseline
 from benchmarks.bf16_competitors import load_all, model_ineligibility, Ineligible
-from benchmarks.bf16_device import bf16_torch, compare, metadata, source_digest
+from benchmarks.bf16_device import bf16_torch, compare, metadata, source_digest, operator_case
 from benchmarks.bf16_model import Config, Model
 
 
@@ -509,6 +509,37 @@ def training_case(case, backends, config, seed, checkpoint, runtime=None):
     if not selected_backends:
         return record
 
+    # Zero-initialized model queries cannot expose every routing derivative
+    # defect. Qualify nonzero queries at the largest read before model setup.
+    gate_ops = {}
+    for name, op in selected_backends:
+        reason = model_ineligibility(name, model_config)
+        if reason:
+            failures[name] = _failure_record("operator_qualification", Ineligible(reason))
+        else:
+            gate_ops[name] = (torch.compile(op, fullgraph=True, dynamic=False)
+                              if name == "torch_compile" else op)
+    sources = (2 * model_config.layers + 1 if model_config.mode == "full"
+               else min(2 * model_config.layers, model_config.block_count) + 1)
+    gate_case = {"shape": [sources, case.get("batch", 4) * case.get("sequence", model_config.context),
+                           model_config.width, model_config.rank], "layout": "list",
+                 "backends": list(gate_ops), "query_scale": .05}
+    gate = operator_case(gate_case, gate_ops, seed=seed, warmups=1,
+                         rounds=config.get("rounds", 120), replays=8) if gate_ops else None
+    record["operator_qualification"] = {"replays": 8, "result": gate}
+    for name, result in (gate or {}).get("arms", {}).items():
+        if result["status"] != "passed":
+            classification = "incorrect" if result.get("error", "").startswith("AssertionError:") else "unresolved"
+            failures[name] = _failure_record("operator_qualification", result.get("error", "operator failed"),
+                                            classification=classification)
+    selected_backends = [(name, op) for name, op in selected_backends if name not in failures]
+    record["arms"] = dict(failures)
+    checkpoint(record)
+    if not selected_backends:
+        return record
+    gc.collect()
+    torch.cuda.empty_cache()
+
     torch.manual_seed(seed)
     initial_model = Model(model_config, bf16_torch)
     initial = _cpu_state(initial_model)
@@ -759,9 +790,11 @@ def training_case(case, backends, config, seed, checkpoint, runtime=None):
             started = time.perf_counter()
             try:
                 begin.record()
-                arm["step"](iteration)
+                loss = arm["step"](iteration)
                 end.record()
                 end.synchronize()
+                if not torch.isfinite(loss).item():
+                    raise RuntimeError("nonfinite training loss")
                 arm["samples_ms"].append(begin.elapsed_time(end))
                 arm["wall_ms"].append((time.perf_counter() - started) * 1000)
             except Exception as exc:
@@ -824,6 +857,14 @@ def run_training(config, checkpoint):
                 "source": "benchmarks.bf16_device.bf16_torch",
                 "sha256": hashlib.sha256(b"".join(path.read_bytes() for path in fixture_files)).hexdigest(),
             }
+        import hashlib
+        from pathlib import Path
+        fixture_files = [Path(__file__).with_name(name) for name in
+                         ("bf16_training.py", "bf16_model.py", "bf16_competitors.py", "bf16_device.py")]
+        fixture_files.append(Path(__file__).parents[1] / "validation/oracle.py")
+        identities["training_fixture"] = {
+            "sha256": hashlib.sha256(b"".join(path.read_bytes() for path in fixture_files)).hexdigest()
+        }
         if config.get("optimizer_source"):
             optimizer_identity = source_digest(config["optimizer_source"])
             optimizer_identity["implementation"] = "Muon+AdamW(configured)"

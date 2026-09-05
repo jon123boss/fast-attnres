@@ -53,17 +53,42 @@ _SOURCE_BLOCK_CONFIGS = None
 _STANDARD_SOURCE_BLOCK_CONFIGS = None
 _STANDARD_QUERY_REDUCE_CONFIGS = None
 
-# These fields intentionally include all properties that can change the
-# generated standard kernel or the validity of a cached timing.  The generic
-# source-list kernels below retain their historical key and configuration set
-# so sliced/generic dispatch stays byte-for-byte compatible with the bounded
-# route that preceded this production specialization.
+# These fields intentionally include properties that can change the generated
+# kernel or the validity of a cached timing.  Generic source-list keys also
+# include the physical layouts because their dispatch accepts strided inputs.
+_GENERIC_FORWARD_AUTOTUNE_KEY = [
+    "ARCH",
+    "ROW_BUCKET",
+    "L2",
+    "D",
+    "R",
+    "QUERY_STRIDE",
+    "OUTPUT_ROW_STRIDE",
+    "OUTPUT_D_STRIDE",
+    "ROW_STRIDES",
+    "FEATURE_STRIDES",
+]
+_GENERIC_BACKWARD_AUTOTUNE_KEY = [
+    "ARCH",
+    "ROW_BUCKET",
+    "L2",
+    "D",
+    "R",
+    "QUERY_STRIDE",
+    "GRAD_OUTPUT_ROW_STRIDE",
+    "GRAD_OUTPUT_D_STRIDE",
+    "VALUE_ROW_STRIDES",
+    "VALUE_FEATURE_STRIDES",
+    "GRAD_VALUE_ROW_STRIDES",
+    "GRAD_VALUE_FEATURE_STRIDES",
+]
 _STANDARD_AUTOTUNE_KEY = [
     "ARCH",
     "DTYPE",
     "D",
     "R",
     "L2",
+    "ROW_BUCKET",
     "ROUTE",
     "CHECKPOINT",
 ]
@@ -84,6 +109,7 @@ _CONTIGUOUS_ROUTE = 1
 _GENERIC_ROUTE = 0
 _SAVE_MIXED_CHECKPOINT = 1
 _RECOMPUTE_CHECKPOINT = 0
+_AUTOTUNE_ROW_BUCKET_MAX = 8192
 
 
 def _next_power_of_two(value: int) -> int:
@@ -116,6 +142,14 @@ def _source_query_reduce_block(count: int) -> int:
         _QUERY_REDUCE_MAX_BLOCK,
         max(_QUERY_REDUCE_MIN_BLOCK, _next_power_of_two(count)),
     )
+
+
+def _autotune_row_bucket(count: int) -> int:
+    """Return a bounded power-of-two bucket for autotune cache keys."""
+
+    if count < 1:
+        raise ValueError("count must be positive")
+    return min(_AUTOTUNE_ROW_BUCKET_MAX, _next_power_of_two(count))
 
 
 def supports(sources: Sequence[torch.Tensor], width: int | None = None) -> bool:
@@ -442,7 +476,7 @@ if triton is not None:
 
     @triton.autotune(
         configs=_SOURCE_BLOCK_CONFIGS,
-        key=["L2", "D", "R"],
+        key=_GENERIC_FORWARD_AUTOTUNE_KEY,
     )
     @triton.jit(do_not_specialize=["count", "sources"])
     def _fla_source_forward_kernel(
@@ -464,6 +498,8 @@ if triton is not None:
         BLOCK_PREFIX: tl.constexpr,
         BL: tl.constexpr,
         LAYOUT_FAMILY: tl.constexpr,
+        ARCH: tl.constexpr,
+        ROW_BUCKET: tl.constexpr,
         QUERY_STRIDE,
         OUTPUT_ROW_STRIDE,
         OUTPUT_D_STRIDE,
@@ -701,7 +737,7 @@ if triton is not None:
 
     @triton.autotune(
         configs=_BACKWARD_SOURCE_BLOCK_CONFIGS,
-        key=["L2", "D", "R"],
+        key=_GENERIC_BACKWARD_AUTOTUNE_KEY,
     )
     @triton.jit(do_not_specialize=["count", "sources"])
     def _fla_source_backward_kernel(
@@ -724,6 +760,8 @@ if triton is not None:
         BLOCK_PREFIX: tl.constexpr,
         BL: tl.constexpr,
         LAYOUT_FAMILY: tl.constexpr,
+        ARCH: tl.constexpr,
+        ROW_BUCKET: tl.constexpr,
         QUERY_STRIDE,
         GRAD_OUTPUT_ROW_STRIDE,
         GRAD_OUTPUT_D_STRIDE,
@@ -1123,6 +1161,7 @@ if triton is not None:
         BL: tl.constexpr,
         PIPELINE_STAGES: tl.constexpr,
         ARCH: tl.constexpr,
+        ROW_BUCKET: tl.constexpr,
         DTYPE: tl.constexpr,
         ROUTE: tl.constexpr,
         CHECKPOINT: tl.constexpr,
@@ -1135,8 +1174,8 @@ if triton is not None:
     ):
         """Simple full-width source reduction for contiguous standard AttnRes."""
 
-        # ARCH, DTYPE, ROUTE, and CHECKPOINT values are constexpr cache
-        # dimensions.  The
+        # ARCH, ROW_BUCKET, DTYPE, ROUTE, and CHECKPOINT values are constexpr
+        # cache dimensions.  The
         # standard dispatcher supplies only the contiguous full-rank case, so
         # no result-dependent or GPU-specific config filter is needed here.
         row = tl.program_id(0).to(tl.int64)
@@ -1219,7 +1258,7 @@ if triton is not None:
 
     @triton.autotune(
         configs=_STANDARD_SOURCE_BLOCK_CONFIGS,
-        key=_STANDARD_AUTOTUNE_KEY,
+        key=_STANDARD_AUTOTUNE_KEY + ["GRAD_OUTPUT_ROW_STRIDE", "GRAD_OUTPUT_D_STRIDE"],
     )
     @triton.jit(do_not_specialize=["count", "sources"])
     def _fla_standard_backward_kernel(
@@ -1241,6 +1280,7 @@ if triton is not None:
         BL: tl.constexpr,
         PIPELINE_STAGES: tl.constexpr,
         ARCH: tl.constexpr,
+        ROW_BUCKET: tl.constexpr,
         DTYPE: tl.constexpr,
         ROUTE: tl.constexpr,
         CHECKPOINT: tl.constexpr,
@@ -1541,6 +1581,7 @@ def _launch_standard_forward(
         R=rank,
         BLOCK_D=_next_power_of_two(width),
         ARCH=_architecture_id(first.device),
+        ROW_BUCKET=_autotune_row_bucket(count),
         DTYPE=_dtype_key(first.dtype),
         ROUTE=_CONTIGUOUS_ROUTE,
         CHECKPOINT=checkpoint,
@@ -1601,6 +1642,7 @@ def _launch_standard_backward(
         R=rank,
         BLOCK_D=_next_power_of_two(width),
         ARCH=_architecture_id(query.device),
+        ROW_BUCKET=_autotune_row_bucket(count),
         DTYPE=_dtype_key(source_tuple[0].dtype),
         ROUTE=_CONTIGUOUS_ROUTE,
         CHECKPOINT=checkpoint,
@@ -1671,6 +1713,8 @@ def forward(
         D=width,
         R=rank,
         BLOCK_D=_next_power_of_two(width),
+        ARCH=_architecture_id(first.device),
+        ROW_BUCKET=_autotune_row_bucket(count),
         BLOCK_R=_next_power_of_two(rank),
         BLOCK_PREFIX=_next_power_of_two(max(1, width - rank)),
         QUERY_STRIDE=int(query.stride(0)),
@@ -1744,6 +1788,8 @@ def backward(
         D=width,
         R=rank,
         BLOCK_D=_next_power_of_two(width),
+        ARCH=_architecture_id(query.device),
+        ROW_BUCKET=_autotune_row_bucket(count),
         BLOCK_R=_next_power_of_two(rank),
         BLOCK_PREFIX=_next_power_of_two(max(1, width - rank)),
         QUERY_STRIDE=int(query.stride(0)),

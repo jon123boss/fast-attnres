@@ -33,7 +33,6 @@ from .statistics import simultaneous_paired_ratio_bootstrap
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 FROZEN_FILES = (
     "EVALUATION.md",
-    "src/attnres/reference.py",
     "validation/oracle.py",
     "validation/protocol.json",
     "tests/test_reference.py",
