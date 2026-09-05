@@ -31,6 +31,9 @@ def load_fla(root):
         raise RuntimeError("FLA import resolved outside the frozen checkout")
 
     gluon = importlib.import_module("fla.ops.attnres.backends.gluon")
+    # Native RMSNorm's fixed unit scale is a constant operand, allocated once.
+    # It contains no source values, routing results, or Block state.
+    unit_scale = torch.ones(8192, device="cuda", dtype=torch.float32)
     def engine(level):
         if level >= 2:
             return gluon._fused_attnres_fwd, gluon._fused_attnres_bwd, gluon._check_sources
@@ -40,7 +43,7 @@ def load_fla(root):
     def forward(values: List[Tensor], query: Tensor, eps: float,
                 scale: float, level: int) -> tuple[Tensor, Tensor, Tensor, Tensor, Tensor]:
         sources = [v.contiguous() for v in values]
-        weight = torch.ones_like(query, dtype=torch.float32)
+        weight = unit_scale[:query.numel()]
         fwd, _, table = engine(level)
         out, pre, rms, logits, lse = fwd(
             query.contiguous(), sources, table(sources), weight, None, eps, scale, level % 2)
@@ -61,7 +64,7 @@ def load_fla(root):
                  pre: Tensor, rms: Tensor, logits: Tensor, lse: Tensor,
                  eps: float, scale: float, level: int) -> tuple[List[Tensor], Tensor]:
         sources = [v.contiguous() for v in values]
-        weight = torch.ones_like(query, dtype=torch.float32)
+        weight = unit_scale[:query.numel()]
         _, bwd, table = engine(level)
         dvs, dq, _, _ = bwd(
             upstream.contiguous(), query.contiguous(), sources, table(sources), weight,

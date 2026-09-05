@@ -382,6 +382,8 @@ def _primary_report(gpu, mode, rank, seed):
         "sha256": "optimizer-v1", "implementation": "Muon+AdamW(configured)"}
     result = report["results"][0]
     result["model"] = {**bf16_report.MODEL, "mode": mode, "rank": rank}
+    result["case"]["model"] = dict(result["model"])
+    report["config"]["cases"] = [result["case"]]
     report["runtime"] = {"torch": "2.13.0+cu130", "triton": "3.7.1",
                          "capability": {"H100": [9, 0], "B200": [10, 0]}[gpu]}
     result["input_sha256"] = "a" * 64
@@ -390,6 +392,10 @@ def _primary_report(gpu, mode, rank, seed):
                   qualification_tolerances={"rtol": .05, "atol": .05},
                   requested_backends=list(bf16_report.BACKENDS))
     report["identities"]["training_fixture"] = {"sha256": "fixture-v1"}
+    from benchmarks.bf16_primary import contract_digest
+    expected = {name: row.get("content_hash", row.get("sha256")) for name, row in report["identities"].items()}
+    report["config"]["expected_identities"] = expected
+    report["config"]["primary_contract_sha256"] = contract_digest({"identities": expected})
     result["operator_qualification"] = {"replays": 8, "result": {
         "seed": seed, "case": {"shape": [49 if mode == "full" else 9, 8192, 1536, rank],
                                 "query_scale": .05},
@@ -451,3 +457,19 @@ def test_primary_contract_rejects_mismatched_execution(change):
     elif change == "fixture":
         del report["identities"]["training_fixture"]
     assert bf16_report._contract_errors(report, result, 120)
+
+
+def test_intervals_are_independent_of_contrast_insertion_order():
+    rng = np.random.default_rng(193)
+    shared = rng.lognormal(size=120)
+    rows = {f"case-{i}": (shared, rng.lognormal(size=120), True) for i in range(8)}
+    expected = bf16_report.simultaneous_intervals(rows, resamples=1000)
+    actual = bf16_report.simultaneous_intervals(dict(reversed(list(rows.items()))), resamples=1000)
+    assert actual == expected
+
+
+def test_report_cannot_relabel_a_measured_rank():
+    report = _primary_report("H100", "block", 64, bf16_report.SEEDS[0])
+    result = report["results"][0]
+    result["model"]["rank"] = 32
+    assert "result model differs from the requested case" in bf16_report._contract_errors(report, result, 120)

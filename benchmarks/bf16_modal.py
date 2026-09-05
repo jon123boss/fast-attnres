@@ -14,6 +14,7 @@ import json
 import os
 from pathlib import Path
 import shutil
+import subprocess
 import sys
 import tarfile
 import time
@@ -285,6 +286,37 @@ def _copy_tree(source, destination):
         ".git", "__pycache__", ".pytest_cache", ".venv", "results", "build", "dist", "*.egg-info"))
 
 
+def verify_primary(snapshot, config):
+    if not config.get("expected_identities"):
+        return
+    sys.path.insert(0, str(snapshot / "runner"))
+    from benchmarks.bf16_primary import contract_digest, fixture_digest, package_digest
+    contract = json.loads((snapshot / "runner/configs/bf16_primary.json").read_text())
+    if (config.get("primary_contract_sha256") != contract_digest(contract) or
+        config["expected_identities"] != contract["identities"]):
+        raise ValueError("primary configuration differs from the frozen contract")
+    actual = {name: package_digest(snapshot / path / "src/attnres")
+              for name, path in config["sources"].items()}
+    actual.update({name: _digest(snapshot / path) for name, path in config["competitors"].items()})
+    actual["optimizer"] = _digest(snapshot / "optimizer")
+    actual["training_fixture"] = fixture_digest(snapshot / "runner")
+    actual["torch_compile"] = hashlib.sha256(b"".join((snapshot / "runner" / name).read_bytes()
+        for name in ("benchmarks/bf16_device.py", "validation/oracle.py"))).hexdigest()
+    if actual != config["expected_identities"]:
+        raise ValueError("primary source identity mismatch before GPU admission")
+
+
+def _git_origin(root):
+    root = Path(root).resolve()
+    if not (root / ".git").exists():
+        return None
+    def git(*args):
+        result = subprocess.run(["git", "-C", str(root), *args], capture_output=True, text=True, check=True)
+        return result.stdout.strip()
+    return {"commit": git("rev-parse", "HEAD"), "tree": git("rev-parse", "HEAD^{tree}"),
+            "dirty": bool(git("status", "--porcelain"))}
+
+
 def prepare(args):
     config = json.loads(Path(args.config).read_text())
     if args.gpus == 8 and config.get("kind") != "distributed":
@@ -297,12 +329,14 @@ def prepare(args):
     snapshot.mkdir(parents=True)
     _copy_tree(PROJECT, snapshot / "runner")
     sources = {}
+    origins = {"runner": _git_origin(PROJECT)}
     for value in args.source:
         name, path = value.split("=", 1)
         if not name.replace("_", "").isalnum():
             raise ValueError("source names must be alphanumeric")
         _copy_tree(Path(path).resolve(), snapshot / "sources" / name)
         sources[name] = f"sources/{name}"
+        origins[f"sources/{name}"] = _git_origin(path)
     competitors = {}
     for value in args.competitor:
         name, path = value.split("=", 1)
@@ -310,6 +344,7 @@ def prepare(args):
             raise ValueError("unsupported competitor")
         _copy_tree(Path(path).resolve(), snapshot / "competitors" / name)
         competitors[name] = f"competitors/{name}"
+        origins[f"competitors/{name}"] = _git_origin(path)
     config.update(gpu=args.gpu, sources=sources, competitors=competitors)
     hashes = {"runner": _digest(snapshot / "runner")}
     hashes.update({p: _digest(snapshot / p) for p in sources.values()})
@@ -321,7 +356,8 @@ def prepare(args):
         _copy_tree(optimizer_root / "muon", snapshot / "optimizer" / "muon")
         config["optimizer_source"] = "optimizer"
         hashes["optimizer"] = _digest(snapshot / "optimizer")
-    job = {"id": job_id, "config": config, "hashes": hashes,
+    verify_primary(snapshot, config)
+    job = {"id": job_id, "config": config, "hashes": hashes, "origins": origins,
            "stage": args.stage, "timeout_s": args.timeout, "gpu_count": args.gpus,
            "cpu_cores": 32 if args.gpus == 8 else 8,
            "memory_mib": 262144 if args.gpus == 8 else 65536}
@@ -374,24 +410,35 @@ def run(snapshot):
     job = json.loads((snapshot / "job.json").read_text())
     if (job.get("cpu_cores"), job.get("memory_mib")) != (CPU_CORES, MEMORY_MIB):
         raise RuntimeError("snapshot resources differ from the bounded launcher; prepare a new job")
+    verify_primary(snapshot, job["config"])
     reserve(job)
     result_dir = WORK / "results" / job["id"]
-    result_dir.mkdir(parents=True)
-    shutil.copy2(snapshot / "job.json", result_dir / "job.json")
-    with app.run(detach=True):
-        fn = {("H100", 1): h100, ("B200", 1): b200,
-              ("H100", 8): h100_distributed, ("B200", 8): b200_distributed}[(job["config"]["gpu"], job["gpu_count"])]
-        call = fn.spawn(job)
-        update_job(job["id"], status="running", call_id=call.object_id, app_id=app.app_id)
-        (result_dir / "call.json").write_text(json.dumps({"call_id": call.object_id,
-                                                         "app_id": app.app_id}) + "\n")
-        print(json.dumps({"job": job["id"], "call_id": call.object_id,
-                          "app_id": app.app_id}), flush=True)
-        report = call.get()
-        (result_dir / "report.json").write_text(json.dumps(report, indent=2, default=str) + "\n")
-        update_job(job["id"], status=report["status"], elapsed_s=report.get("elapsed_s"),
-                   completed_utc=dt.datetime.now(dt.timezone.utc).isoformat())
-        print(json.dumps({"job": job["id"], "status": report["status"]}), flush=True)
+    try:
+        result_dir.mkdir(parents=True)
+        shutil.copy2(snapshot / "job.json", result_dir / "job.json")
+        with app.run(detach=True):
+            fn = {("H100", 1): h100, ("B200", 1): b200,
+                  ("H100", 8): h100_distributed, ("B200", 8): b200_distributed}[(job["config"]["gpu"], job["gpu_count"])]
+            call = fn.spawn(job)
+            update_job(job["id"], status="running", call_id=call.object_id, app_id=app.app_id)
+            (result_dir / "call.json").write_text(json.dumps({"call_id": call.object_id,
+                                                             "app_id": app.app_id}) + "\n")
+            print(json.dumps({"job": job["id"], "call_id": call.object_id,
+                              "app_id": app.app_id}), flush=True)
+            report = call.get()
+            (result_dir / "report.json").write_text(json.dumps(report, indent=2, default=str) + "\n")
+            update_job(job["id"], status=report["status"], elapsed_s=report.get("elapsed_s"),
+                       completed_utc=dt.datetime.now(dt.timezone.utc).isoformat())
+            print(json.dumps({"job": job["id"], "status": report["status"]}), flush=True)
+    except BaseException as exc:
+        failure = {"error": f"{type(exc).__name__}: {exc}", "traceback": traceback.format_exc(),
+                   "reconciliation_required": True}
+        # A lost client response does not prove that a GPU stopped. Preserve
+        # the active reservation until the app is confirmed stopped.
+        result_dir.mkdir(parents=True, exist_ok=True)
+        (result_dir / "client-error.json").write_text(json.dumps(failure, indent=2) + "\n")
+        update_job(job["id"], **failure)
+        raise
 
 
 def main():

@@ -2,10 +2,35 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 from pathlib import Path
 
 CONTRACT = Path(__file__).resolve().parents[1] / "configs/bf16_primary.json"
+
+FIXTURE_FILES = tuple("benchmarks/" + name for name in (
+    "baseline.py", "bf16_training.py", "bf16_model.py", "bf16_competitors.py",
+    "bf16_device.py", "bf16_primary.py", "gluon_compat.py",
+)) + ("validation/oracle.py",)
+
+
+def contract_digest(contract):
+    return hashlib.sha256(json.dumps(contract, sort_keys=True).encode()).hexdigest()
+
+
+def fixture_digest(root):
+    hashes = {name: hashlib.sha256((Path(root) / name).read_bytes()).hexdigest()
+              for name in FIXTURE_FILES}
+    return contract_digest(hashes)
+
+
+def package_digest(package):
+    digest = hashlib.sha256()
+    for path in sorted(Path(package).rglob("*.py")):
+        digest.update(str(path.relative_to(package)).encode())
+        digest.update(b"\0")
+        digest.update(path.read_bytes())
+    return digest.hexdigest()
 
 
 def configuration(contract, modes, ranks, seeds):
@@ -18,7 +43,9 @@ def configuration(contract, modes, ranks, seeds):
              for mode in modes for rank in ranks]
     return {"kind": "training", "cases": cases, "seeds": seeds,
             "rounds": contract["rounds"], "warmups": contract["warmups"],
-            "torch_baseline": True, "reuse_compiler_cache": True}
+            "torch_baseline": True, "reuse_compiler_cache": True,
+            "expected_identities": contract["identities"],
+            "primary_contract_sha256": contract_digest(contract)}
 
 
 def main():

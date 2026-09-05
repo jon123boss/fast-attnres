@@ -28,6 +28,13 @@ def _contract_errors(report, result, required_rounds):
     """Reject plausible-looking cells that differ from the frozen experiment."""
     errors = []
     config, identities = report["config"], report.get("identities", {})
+    actual_ids = {name: row.get("content_hash", row.get("sha256")) for name, row in identities.items()}
+    if config.get("expected_identities") != actual_ids:
+        errors.append("execution did not bind the frozen source identities")
+    if result.get("model") != result["case"]["model"]:
+        errors.append("result model differs from the requested case")
+    if result["case"] not in config.get("cases", []):
+        errors.append("result case was not requested")
     if config.get("gpu") not in ("H100", "B200"):
         errors.append("unknown GPU")
     seeds = config.get("seeds", [])
@@ -104,7 +111,7 @@ def simultaneous_intervals(contrasts, *, seed=20260905, resamples=20000):
     outlier is removed. Seeds and GPU architectures remain separate results.
     """
     rng = np.random.default_rng(seed)
-    names = list(contrasts)
+    names = sorted(contrasts)
     points = []
     for name in names:
         a, b, paired = contrasts[name]
@@ -160,13 +167,16 @@ def summarize(paths, *, candidate="candidate", required_rounds=120, contract=Non
     input_identities = {}
     if not contract or not contract.get("identities"):
         admission_failures.append({"reason": "missing frozen campaign identity contract"})
-    for path in paths:
+    for path in sorted(paths, key=str):
         data = Path(path).read_bytes()
         report = json.loads(data)
         inputs.append({"path": str(path), "sha256": hashlib.sha256(data).hexdigest()})
         if report.get("kind") != "training":
             raise ValueError("complete-step summary accepts training reports only")
         gpu = report["config"]["gpu"]
+        from benchmarks.bf16_primary import contract_digest
+        if contract and report["config"].get("primary_contract_sha256") != contract_digest(contract):
+            admission_failures.append({"path": str(path), "reason": "execution contract digest mismatch"})
         identity = report.get("identities", {}).get(candidate, {}).get("content_hash")
         if not isinstance(identity, str) or not identity:
             raise ValueError(f"missing candidate source identity: {path}")
@@ -182,7 +192,7 @@ def summarize(paths, *, candidate="candidate", required_rounds=120, contract=Non
             admission_failures.append({"path": str(path), "imports": report["import_failures"]})
         for result in report.get("results", []):
             case = result["case"]
-            model = result.get("model", case["model"])
+            model = case["model"]
             expected = {"layers": 24, "width": 1536, "heads": 24, "ffn": 4224,
                         "vocab": 100277, "context": 2048, "block_count": 8,
                         "activation_checkpointing": False}
@@ -213,7 +223,7 @@ def summarize(paths, *, candidate="candidate", required_rounds=120, contract=Non
         raise ValueError("a final summary requires exactly one candidate source identity")
 
     contrasts, cells, missing = {}, [], []
-    for key, result in rows.items():
+    for key, result in sorted(rows.items()):
         gpu, mode, rank, seed = key
         label = f"{gpu}/{mode}/r{rank}/seed{seed}"
         arms = result["arms"]

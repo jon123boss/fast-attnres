@@ -857,14 +857,9 @@ def run_training(config, checkpoint):
                 "source": "benchmarks.bf16_device.bf16_torch",
                 "sha256": hashlib.sha256(b"".join(path.read_bytes() for path in fixture_files)).hexdigest(),
             }
-        import hashlib
+        from benchmarks.bf16_primary import fixture_digest
         from pathlib import Path
-        fixture_files = [Path(__file__).with_name(name) for name in
-                         ("bf16_training.py", "bf16_model.py", "bf16_competitors.py", "bf16_device.py")]
-        fixture_files.append(Path(__file__).parents[1] / "validation/oracle.py")
-        identities["training_fixture"] = {
-            "sha256": hashlib.sha256(b"".join(path.read_bytes() for path in fixture_files)).hexdigest()
-        }
+        identities["training_fixture"] = {"sha256": fixture_digest(Path(__file__).parents[1])}
         if config.get("optimizer_source"):
             optimizer_identity = source_digest(config["optimizer_source"])
             optimizer_identity["implementation"] = "Muon+AdamW(configured)"
@@ -879,6 +874,10 @@ def run_training(config, checkpoint):
                     "AdamW(default)",
                 ],
             }
+        if config.get("expected_identities"):
+            actual_ids = {name: row.get("content_hash", row.get("sha256")) for name, row in identities.items()}
+            if actual_ids != config["expected_identities"]:
+                raise RuntimeError("training inputs differ from frozen primary source identities")
         report = {
             "kind": "training",
             "status": "running",

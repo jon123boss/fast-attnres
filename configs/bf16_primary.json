@@ -80,7 +80,7 @@
     "hydra": "128859bb5c81d082f5df036c54d947cab2feff7976a56da9d7a904143b8e10c3",
     "optimizer": "5d5ba904e41829b416cb7a0718201a86d945b26b79ca1ca32dab331e2da6fcce",
     "torch_compile": "36b9a6c2bb52df167584bfecf63573841fcdd41b0da4a789e3944fec5828be00",
-    "training_fixture": "c183662c5ae1c8c03941908088744082aac3648badc3f8a67295d7681867ec0d"
+    "training_fixture": "007c7c2de636fffeea3801be05714a916f912c6d0e39bde2363df2fbc387dc8c"
   },
   "status": "frozen before final primary measurements",
   "operator_qualification": {
