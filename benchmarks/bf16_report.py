@@ -71,6 +71,11 @@ def _contract_errors(report, result, required_rounds):
         for i, row in enumerate(order)
     ):
         errors.append("missing or unequal paired rounds")
+    else:
+        from itertools import combinations
+        if any(sum(row["backends"].index(a) < row["backends"].index(b) for row in order)
+               != required_rounds // 2 for a, b in combinations(sorted(passed), 2)):
+            errors.append("backend pairs do not have balanced first/second exposure")
     for name in BACKENDS:
         identity = identities.get(FAMILIES.get(name, name), {})
         if not identity.get("content_hash", identity.get("sha256")):

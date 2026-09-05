@@ -238,3 +238,10 @@ before admission and retain the same stage and total caps; retries remain off.
 Completed cell reports from a timed-out parent remain usable, while unfinished
 cells remain incomplete. Select the first complete attempt, never the fastest
 retry. Modal supports these bounds via its [function timeout](https://modal.com/docs/guide/timeouts).
+
+Training uses each cyclic backend ordering followed immediately by its exact
+reverse, giving every backend pair 60 first/second exposures over 120 rounds.
+Unused allocator blocks are released before constructing each model arm,
+outside timing. Allocated, reserved, and driver-free memory are recorded
+separately. A resource failure remains unresolved and cannot remove an eligible
+alternative from a strongest-alternative claim.

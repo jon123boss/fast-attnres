@@ -387,7 +387,7 @@ def _primary_report(gpu, mode, rank, seed):
     report["runtime"] = {"torch": "2.13.0+cu130", "triton": "3.7.1",
                          "capability": {"H100": [9, 0], "B200": [10, 0]}[gpu], "cache_autotuning": True}
     result["input_sha256"] = "a" * 64
-    result["round_order"] = [{"round": i, "input": i % 8, "backends": list(arms)} for i in range(120)]
+    result["round_order"] = [{"round": i, "input": i % 8, "backends": list(arms) if i % 2 == 0 else list(reversed(arms))} for i in range(120)]
     result.update(grad_clip=1.0, loss_dtype="bfloat16",
                   qualification_tolerances={"rtol": .05, "atol": .05},
                   requested_backends=list(bf16_report.BACKENDS))
@@ -481,3 +481,11 @@ def test_primary_rejects_mixed_autotuning_cache_policy(location):
     report[location]["cache_autotuning"] = False
     errors = bf16_report._contract_errors(report, report["results"][0], 120)
     assert "autotuning cache policy differs from the frozen environment" in errors
+
+
+def test_primary_rejects_unbalanced_backend_order():
+    report = _primary_report("H100", "block", 64, bf16_report.SEEDS[0])
+    result = report["results"][0]
+    for row in result["round_order"]:
+        row["backends"] = list(result["arms"])
+    assert "backend pairs do not have balanced first/second exposure" in bf16_report._contract_errors(report, result, 120)

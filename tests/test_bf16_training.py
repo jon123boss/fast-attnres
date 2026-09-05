@@ -140,3 +140,13 @@ def test_failure_classification_keeps_compiler_errors_unresolved():
 
     assert qualification["classification"] == "incorrect"
     assert compile_failure["classification"] == "unresolved"
+
+
+@pytest.mark.parametrize("count", range(2, 13))
+def test_round_schedule_balances_every_backend_pair(count):
+    from itertools import combinations
+    names = list(range(count))
+    orders = [bf16_training._balanced_order(names, i) for i in range(120)]
+    assert all(sorted(order) == names for order in orders)
+    for a, b in combinations(names, 2):
+        assert sum(order.index(a) < order.index(b) for order in orders) == 60

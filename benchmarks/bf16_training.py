@@ -298,13 +298,17 @@ def _safe_memory_record(baseline, *, model_incremental=None,
     if baseline is None:
         return None
     try:
-        return _memory_record(
+        record = _memory_record(
             baseline,
             torch.cuda.max_memory_allocated(),
             torch.cuda.memory_allocated(),
             model_incremental=model_incremental,
             model_optimizer_incremental=model_optimizer_incremental,
         )
+        record.update(current_reserved_bytes_global_total=int(torch.cuda.memory_reserved()),
+                      peak_reserved_bytes_global_total=int(torch.cuda.max_memory_reserved()),
+                      driver_free_bytes=int(torch.cuda.mem_get_info()[0]))
+        return record
     except Exception:
         return None
 
@@ -467,6 +471,13 @@ def _arm_rows(arms, failures, status):
     }
 
 
+
+def _balanced_order(names, iteration):
+    pivot = (iteration // 2) % len(names)
+    order = names[pivot:] + names[:pivot]
+    return order if iteration % 2 == 0 else list(reversed(order))
+
+
 def training_case(case, backends, config, seed, checkpoint, runtime=None):
     model_config = Config(**case["model"])
     runtime = _validate_runtime(config) if runtime is None else runtime
@@ -589,6 +600,9 @@ def training_case(case, backends, config, seed, checkpoint, runtime=None):
             # Reset after the previous arm remains resident. This makes the
             # subsequent peak a delta above the resident-arm global baseline.
             torch.cuda.synchronize()
+            # Release unused blocks from previous compilation/qualification.
+            # Live arms remain resident; this runs outside all timing rounds.
+            torch.cuda.empty_cache()
             arm_baseline = int(torch.cuda.memory_allocated())
             torch.cuda.reset_peak_memory_stats()
 
@@ -778,12 +792,9 @@ def training_case(case, backends, config, seed, checkpoint, runtime=None):
         names = list(arms)
         if not names:
             break
-        # Rotate the starting backend and reverse every other round. Each arm
-        # sees identical minibatches and optimizer-update counts.
-        pivot = iteration % len(names)
-        order = names[pivot:] + names[:pivot]
-        if iteration % 2:
-            order.reverse()
+        # Each pair of rounds uses one rotation and its exact reverse.
+        # Every backend pair receives equal first/second exposure.
+        order = _balanced_order(names, iteration)
         record["round_order"].append({"round": iteration, "input": iteration % 8, "backends": order})
         for name in order:
             arm = arms.get(name)
