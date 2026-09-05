@@ -26,9 +26,9 @@ source-list ABI:
 * the sliced key derivative is folded into one full-width value gradient
   before the BF16 store.
 
-Routing coordinates occupy the leading internal lanes, so masking follows the
-rank directly. Loads and stores map those lanes to the physical tail without
-copying or padding source tensors. Full-rank tiles retain their natural order.
+Routing tails that cross an aligned rank tile occupy the leading internal
+lanes. Contained tails and full-rank tiles retain their natural order. Loads
+and stores map directly to source coordinates without copying or padding values.
 
 The same source kernels handle every supported width, rank, and physical
 layout. ``fixed_tail_sources.py`` supplies the PyTorch autograd boundary.
@@ -75,7 +75,8 @@ _STANDARD_QUERY_AUTOTUNE_KEY = [
     "CHECKPOINT",
 ]
 
-_CONTIGUOUS_ROUTE = 1
+# Keep graph-timed launch choices separate from older cold-cache records.
+_CONTIGUOUS_ROUTE = 2
 _SAVE_MIXED_CHECKPOINT = 1
 _RECOMPUTE_CHECKPOINT = 0
 _AUTOTUNE_ROW_BUCKET_MAX = 8192
@@ -85,6 +86,14 @@ def _next_power_of_two(value: int) -> int:
     if value < 1:
         raise ValueError("value must be positive")
     return 1 << (int(value) - 1).bit_length()
+
+
+def _routing_prefix(width: int, rank: int) -> int:
+    """Keep contained tails in place; align crossing tails without enlarging a tile."""
+    tile = _next_power_of_two(rank)
+    if (width - rank) // tile == (width - 1) // tile:
+        return 0
+    return rank
 
 
 def _source_query_reduce_tile(rank: int) -> int:
@@ -210,16 +219,18 @@ def _row_layout(tensor: torch.Tensor) -> tuple[torch.Tensor, int, int]:
 
 
 if triton is not None:
-    # FLA's production standard/full-width route uses the complete BL x warp
-    # x pipeline set on both SM90 (H100) and SM100 (B200).  Architecture is a
-    # cache key, rather than a result-derived config filter, so both targets
-    # see the same candidate set and tune independently.
+    from triton.testing import do_bench_cudagraph
+
+    # Both architectures tune the same source tiles with CUDA Graph timing.
+    # Constant and dynamic bounds allow the compiler's source selection and
+    # pipelining to compete without a rank-specific dispatch table.
     _STANDARD_SOURCE_BLOCK_CONFIGS = [
         triton.Config(
-            {"BL": block, "PIPELINE_STAGES": stages},
+            {"BL": block, "PIPELINE_STAGES": stages, "EXACT_SOURCES": exact},
             num_warps=warps,
             num_stages=stages,
         )
+        for exact in (False, True)
         for block in (1, 2, 4, 8)
         for warps in (4, 8, 16)
         for stages in (2, 3)
@@ -275,7 +286,20 @@ if triton is not None:
         return pointer + row * row_stride, feature_stride
 
 
+    @triton.jit
+    def _copy_gradient_kernel(source, target, N: tl.constexpr, D: tl.constexpr,
+                              RS: tl.constexpr, DS: tl.constexpr,
+                              BN: tl.constexpr, BD: tl.constexpr):
+        rows = tl.program_id(0).to(tl.int64) * BN + tl.arange(0, BN)
+        cols = tl.program_id(1).to(tl.int64) * BD + tl.arange(0, BD)
+        valid = (rows[:, None] < N) & (cols[None, :] < D)
+        value = tl.load(source + rows[:, None] * RS + cols[None, :] * DS,
+                        mask=valid, other=0.)
+        tl.store(target + rows[:, None] * D + cols[None, :], value, mask=valid)
+
+
     @triton.autotune(
+        do_bench=do_bench_cudagraph,
         configs=_STANDARD_SOURCE_BLOCK_CONFIGS,
         key=_STANDARD_AUTOTUNE_KEY + ["ROW_STRIDES", "FEATURE_STRIDES", "QUERY_STRIDE"],
     )
@@ -295,7 +319,9 @@ if triton is not None:
         D: tl.constexpr,
         R: tl.constexpr,
         BLOCK_D: tl.constexpr,
+        ROUTING_PREFIX: tl.constexpr,
         BL: tl.constexpr,
+        EXACT_SOURCES: tl.constexpr,
         PIPELINE_STAGES: tl.constexpr,
         ARCH: tl.constexpr,
         ROW_BUCKET: tl.constexpr,
@@ -317,14 +343,21 @@ if triton is not None:
         # no result-dependent or GPU-specific config filter is needed here.
         row = tl.program_id(0).to(tl.int64)
         count64 = tl.cast(count, tl.int64)
-        source_count64 = tl.cast(sources, tl.int64)
+        source_count64 = tl.cast(L2 if EXACT_SOURCES else sources, tl.int64)
         d_offsets = tl.arange(0, BLOCK_D).to(tl.int64)
-        d_mask = d_offsets < D
-        physical_offsets = d_offsets if R == D else tl.where(
-            d_offsets < R, D - R + d_offsets, d_offsets - R
-        )
-        key_mask = d_mask & (d_offsets < R)
-        key_offsets = d_offsets
+        if ROUTING_PREFIX:
+            physical_offsets = tl.where(
+                d_offsets < R, D - R + d_offsets, d_offsets - ROUTING_PREFIX
+            )
+            d_mask = (d_offsets < R) | ((d_offsets >= ROUTING_PREFIX)
+                                      & (d_offsets < ROUTING_PREFIX + D - R))
+            key_mask = d_offsets < R
+            key_offsets = d_offsets
+        else:
+            physical_offsets = d_offsets
+            d_mask = d_offsets < D
+            key_mask = d_mask & (d_offsets >= D - R)
+            key_offsets = d_offsets - (D - R)
         row_valid = row < count64
         eps_f32 = tl.cast(eps, tl.float32)
         scale_f32 = tl.cast(scale, tl.float32)
@@ -338,7 +371,7 @@ if triton is not None:
         running_denom = tl.zeros([], tl.float32)
         running_output = tl.zeros((BLOCK_D,), tl.float32)
         for source_base in tl.range(
-            0, sources, BL, num_stages=PIPELINE_STAGES
+            0, L2 if EXACT_SOURCES else sources, BL, num_stages=PIPELINE_STAGES
         ):
             source_offsets = tl.arange(0, BL).to(tl.int64)
             source_ids = tl.cast(source_base, tl.int64) + source_offsets
@@ -357,7 +390,7 @@ if triton is not None:
                 mask=source_mask[:, None] & row_valid & d_mask[None, :],
                 other=0.0,
             ).to(tl.float32)
-            inverse_rms = tl.rsqrt(tl.sum(tl.where((R == D) | (d_offsets[None, :] < R), value * value, 0.0), axis=1) / R + eps_f32)
+            inverse_rms = tl.rsqrt(tl.sum(tl.where((R == D) | key_mask[None, :], value * value, 0.0), axis=1) / R + eps_f32)
             saved_score = (
                 tl.sum(value * query_value[None, :], axis=1)
                 * inverse_rms
@@ -399,6 +432,7 @@ if triton is not None:
 
 
     @triton.autotune(
+        do_bench=do_bench_cudagraph,
         configs=_STANDARD_SOURCE_BLOCK_CONFIGS,
         key=_STANDARD_AUTOTUNE_KEY + ["VALUE_ROW_STRIDES", "VALUE_FEATURE_STRIDES",
                                       "QUERY_STRIDE", "GRAD_OUTPUT_ROW_STRIDE",
@@ -421,7 +455,9 @@ if triton is not None:
         D: tl.constexpr,
         R: tl.constexpr,
         BLOCK_D: tl.constexpr,
+        ROUTING_PREFIX: tl.constexpr,
         BL: tl.constexpr,
+        EXACT_SOURCES: tl.constexpr,
         PIPELINE_STAGES: tl.constexpr,
         ARCH: tl.constexpr,
         ROW_BUCKET: tl.constexpr,
@@ -441,14 +477,21 @@ if triton is not None:
 
         row = tl.program_id(0).to(tl.int64)
         count64 = tl.cast(count, tl.int64)
-        source_count64 = tl.cast(sources, tl.int64)
+        source_count64 = tl.cast(L2 if EXACT_SOURCES else sources, tl.int64)
         d_offsets = tl.arange(0, BLOCK_D).to(tl.int64)
-        d_mask = d_offsets < D
-        physical_offsets = d_offsets if R == D else tl.where(
-            d_offsets < R, D - R + d_offsets, d_offsets - R
-        )
-        key_mask = d_mask & (d_offsets < R)
-        key_offsets = d_offsets
+        if ROUTING_PREFIX:
+            physical_offsets = tl.where(
+                d_offsets < R, D - R + d_offsets, d_offsets - ROUTING_PREFIX
+            )
+            d_mask = (d_offsets < R) | ((d_offsets >= ROUTING_PREFIX)
+                                      & (d_offsets < ROUTING_PREFIX + D - R))
+            key_mask = d_offsets < R
+            key_offsets = d_offsets
+        else:
+            physical_offsets = d_offsets
+            d_mask = d_offsets < D
+            key_mask = d_mask & (d_offsets >= D - R)
+            key_offsets = d_offsets - (D - R)
         row_valid = row < count64
         scale_f32 = tl.cast(scale, tl.float32)
         query_value = tl.load(
@@ -474,7 +517,7 @@ if triton is not None:
             # compile-time policy choice and never depends on output values.
             mixed = tl.zeros((BLOCK_D,), tl.float32)
             for source_base in tl.range(
-                0, sources, BL, num_stages=PIPELINE_STAGES
+                0, L2 if EXACT_SOURCES else sources, BL, num_stages=PIPELINE_STAGES
             ):
                 source_offsets = tl.arange(0, BL).to(tl.int64)
                 source_ids = tl.cast(source_base, tl.int64) + source_offsets
@@ -518,7 +561,7 @@ if triton is not None:
         lse = tl.load(saved_lse + row, mask=row_valid, other=0.0).to(tl.float32)
         grad_query = tl.zeros((BLOCK_D,), tl.float32)
         for source_base in tl.range(
-            0, sources, BL, num_stages=PIPELINE_STAGES
+            0, L2 if EXACT_SOURCES else sources, BL, num_stages=PIPELINE_STAGES
         ):
             source_offsets = tl.arange(0, BL).to(tl.int64)
             source_ids = tl.cast(source_base, tl.int64) + source_offsets
@@ -561,7 +604,7 @@ if triton is not None:
             dweight = tl.sum(value * grad[None, :], axis=1)
             dscore = probability * (dweight - delta)
             scaled_dscore = dscore * scale_f32
-            normalized_key = tl.where((R == D) | (d_offsets[None, :] < R), value * inverse_rms[:, None], 0.0)
+            normalized_key = tl.where((R == D) | key_mask[None, :], value * inverse_rms[:, None], 0.0)
             grad_query += tl.sum(
                 scaled_dscore[:, None] * normalized_key,
                 axis=0,
@@ -747,6 +790,7 @@ def _launch_standard_forward(
         D=width,
         R=rank,
         BLOCK_D=_next_power_of_two(width),
+        ROUTING_PREFIX=_routing_prefix(width, rank),
         ARCH=_architecture_id(first.device),
         ROW_BUCKET=_autotune_row_bucket(count),
         DTYPE=_dtype_key(first.dtype),
@@ -777,6 +821,14 @@ def _launch_standard_backward(
 ) -> list[torch.Tensor]:
     pointers, row_strides, feature_strides, l2 = _source_pointer_table(source_tuple)
     grad_output_prepared, grad_row_stride, grad_feature_stride = _row_layout(grad_output)
+    # A full row tile coalesces transposed gradients; dense gradients need no copy.
+    if count >= 32 and grad_row_stride < grad_feature_stride:
+        contiguous_gradient = torch.empty((count, width), device=query.device, dtype=grad_output.dtype)
+        _copy_gradient_kernel[(triton.cdiv(count, 32), triton.cdiv(width, 32))](
+            grad_output_prepared, contiguous_gradient, N=count, D=width,
+            RS=grad_row_stride, DS=grad_feature_stride, BN=32, BD=32, num_warps=4,
+        )
+        grad_output_prepared, grad_row_stride, grad_feature_stride = contiguous_gradient, width, 1
     grad_values = [
         torch.empty_like(source, memory_format=torch.contiguous_format)
         for source in source_tuple
@@ -808,6 +860,7 @@ def _launch_standard_backward(
         D=width,
         R=rank,
         BLOCK_D=_next_power_of_two(width),
+        ROUTING_PREFIX=_routing_prefix(width, rank),
         ARCH=_architecture_id(query.device),
         ROW_BUCKET=_autotune_row_bucket(count),
         DTYPE=_dtype_key(source_tuple[0].dtype),
