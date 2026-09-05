@@ -48,7 +48,20 @@ def _contract_errors(report, result, required_rounds):
     if (residency.get("status") != "passed" or residency.get("updates") != 8 or
         residency.get("exact") is not True or residency.get("parameter_identities_preserved") is not True):
         errors.append("missing exact comparison-state transfer qualification")
-    if result.get("arm_residency") != "one_gpu_arm":
+    policy = config.get("comparison_residency", "one_gpu_arm")
+    pool = result.get("resident_admission", {})
+    if policy == "resident_when_safe":
+        admitted = pool.get("admitted")
+        budget = all(type(pool.get(k)) is int and pool[k] >= 0 for k in
+                     ("persistent_bytes", "temporary_bytes", "margin_bytes", "available_bytes"))
+        fits = budget and pool["persistent_bytes"] + pool["temporary_bytes"] + pool["margin_bytes"] <= pool["available_bytes"]
+        if (type(admitted) is not bool or not budget or admitted != fits or
+            pool["margin_bytes"] < 8 * 2**30 or
+            result.get("arm_residency") != ("all_gpu_arms" if admitted else "one_gpu_arm") or
+            (admitted and (pool.get("arms") != sum(a.get("status") == "passed" for a in result["arms"].values())
+                           or not pool.get("disjoint_gpu_storages")))):
+            errors.append("missing bounded independent comparison residency proof")
+    elif policy != "one_gpu_arm" or result.get("arm_residency") != "one_gpu_arm":
         errors.append("comparison residency policy changed or missing")
     if result.get("grad_clip") != 1.0 or result.get("loss_dtype") != "bfloat16":
         errors.append("loss precision or gradient clipping changed")
@@ -190,6 +203,8 @@ def summarize(paths, *, candidate="candidate", required_rounds=120, contract=Non
         from benchmarks.bf16_primary import contract_digest
         if contract and report["config"].get("primary_contract_sha256") != contract_digest(contract):
             admission_failures.append({"path": str(path), "reason": "execution contract digest mismatch"})
+        if contract and report["config"].get("comparison_residency", "one_gpu_arm") != contract.get("comparison_residency", "one_gpu_arm"):
+            admission_failures.append({"path": str(path), "reason": "comparison residency differs from frozen contract"})
         identity = report.get("identities", {}).get(candidate, {}).get("content_hash")
         if not isinstance(identity, str) or not identity:
             raise ValueError(f"missing candidate source identity: {path}")

@@ -534,6 +534,9 @@ def _balanced_order(names, iteration):
 
 
 def training_case(case, backends, config, seed, checkpoint, runtime=None):
+    residency = config.get("comparison_residency", "one_gpu_arm")
+    if residency not in ("one_gpu_arm", "resident_when_safe"):
+        raise ValueError("unknown comparison residency policy")
     model_config = Config(**case["model"])
     runtime = _validate_runtime(config) if runtime is None else runtime
     del runtime  # Validation is intentionally complete before CUDA allocation.
@@ -569,7 +572,8 @@ def training_case(case, backends, config, seed, checkpoint, runtime=None):
         "memory_measurement": (
             "peak_allocated_bytes is per-arm incremental allocation from the pre-arm "
             "global baseline and includes persistent model/optimizer allocation; "
-            "peak_allocated_bytes_global_total is the global allocator total; inactive comparison arms reside on CPU"
+            "peak_allocated_bytes_global_total is the qualification global allocator total; "
+            "inactive comparison arms reside on CPU during qualification; timing residency is recorded separately"
         ),
         "arms": failures,
     }
@@ -847,6 +851,19 @@ def training_case(case, backends, config, seed, checkpoint, runtime=None):
 
     begin = torch.cuda.Event(enable_timing=True)
     end = torch.cuda.Event(enable_timing=True)
+    resident = False
+    if residency == "resident_when_safe":
+        from benchmarks.bf16_comparison import activate_all
+        try:
+            plan = activate_all(list(arms.values()), _activate_arm, _state_tensors)
+        except Exception:
+            for arm in arms.values():
+                _discard_qualified_arm(arm)
+            raise
+        record["resident_admission"] = plan
+        resident = plan["admitted"]
+    record["arm_residency"] = "all_gpu_arms" if resident else "one_gpu_arm"
+    checkpoint(record)
     active_name = None
     for iteration in range(config.get("rounds", 120)):
         names = list(arms)
@@ -862,7 +879,7 @@ def training_case(case, backends, config, seed, checkpoint, runtime=None):
                 continue
             phase = "residency"
             try:
-                if active_name != name:
+                if not resident and active_name != name:
                     if active_name in arms:
                         _offload_arm(arms[active_name])
                     active_name = None

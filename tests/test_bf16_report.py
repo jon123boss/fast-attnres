@@ -427,6 +427,24 @@ def test_complete_frozen_campaign_passes_with_resumed_seed_subsets(tmp_path, exa
     assert not summary["admission_failures"]
 
 
+def test_resident_policy_requires_live_capacity_and_all_independent_arms():
+    report = _primary_report("B200", "block", 64, bf16_report.SEEDS[0])
+    result = report["results"][0]
+    report["config"]["comparison_residency"] = "resident_when_safe"
+    result["arm_residency"] = "all_gpu_arms"
+    assert bf16_report._contract_errors(report, result, 120)
+    result["resident_admission"] = {"persistent_bytes": 40 * 2**30,
+        "temporary_bytes": 30 * 2**30, "margin_bytes": 20 * 2**30,
+        "available_bytes": 170 * 2**30, "admitted": True,
+        "arms": len(result["arms"]), "disjoint_gpu_storages": 100}
+    assert not bf16_report._contract_errors(report, result, 120)
+    result["resident_admission"]["available_bytes"] = 60 * 2**30
+    assert bf16_report._contract_errors(report, result, 120)
+    result["resident_admission"]["admitted"] = False
+    result["arm_residency"] = "one_gpu_arm"
+    assert not bf16_report._contract_errors(report, result, 120)
+
+
 @pytest.mark.parametrize("change", ["dtype", "clipping", "inventory", "identity", "optimizer", "seed", "rounds", "pairing", "inputs", "runtime", "model", "operator", "fixture"])
 def test_primary_contract_rejects_mismatched_execution(change):
     report = _primary_report("H100", "block", 64, bf16_report.SEEDS[0])

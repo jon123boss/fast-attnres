@@ -33,6 +33,17 @@ logging, and scheduler host updates are excluded. The primary source inventory
 is the one in `configs/bf16_primary.json`; the evaluator and
 `validation/oracle.py` are immutable inputs.
 
+Comparison models are qualified individually. For timing, the current contract
+keeps all qualified models and optimizer states on the GPU when their measured
+persistent allocations plus the largest measured temporary allocation fit with
+at least 8 GiB or 10% device capacity in reserve. Otherwise it parks inactive
+comparison models on CPU. These transfers occur outside timed steps. The memory
+decision, storage independence, and actual timing residency are recorded.
+Eight changed-input updates compare an uninterrupted resident control with a
+transferred control exactly. Garbage collection keeps its ordinary policy.
+Historical measurements using only one resident model have a different fixture
+identity and remain separate; none of their samples are discarded.
+
 Correctness uses `rtol=0.05` and `atol=0.05` for outputs and first-order
 gradients. It covers packed and ordered source lists, repeated reads, partial
 Blocks, changed inputs, non-contiguous layouts, duplicate/shared sources,

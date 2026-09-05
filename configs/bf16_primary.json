@@ -81,7 +81,7 @@
     "hydra": "128859bb5c81d082f5df036c54d947cab2feff7976a56da9d7a904143b8e10c3",
     "optimizer": "5d5ba904e41829b416cb7a0718201a86d945b26b79ca1ca32dab331e2da6fcce",
     "torch_compile": "4833e20f4cda606f545f910b425b05d8a80a948d942e5adab3c7527b5546e952",
-    "training_fixture": "857340c1cdf1600d83c069fd25b15fe22822379fc6a5e4ce14487a2778bfecd9"
+    "training_fixture": "384e50a1065c64ab72939a22d5115024e7bba5ff3606ddf5c6f0ecc01cd760f6"
   },
   "status": "frozen before final primary measurements",
   "operator_qualification": {
@@ -90,5 +90,6 @@
     "rounds": 120,
     "rows": 8192,
     "sources": "maximum read source count for the schedule"
-  }
+  },
+  "comparison_residency": "resident_when_safe"
 }

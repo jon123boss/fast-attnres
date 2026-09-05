@@ -6,18 +6,9 @@ from contextlib import contextmanager
 import json
 from pathlib import Path
 
-import torch
 
 
-def memory_plan(memories, *, free, reserved, allocated, capacity):
-    persistent = sum(m["persistent_incremental_allocated_bytes"] for m in memories)
-    scratch = max(m["peak_allocated_bytes_incremental"] - m["persistent_incremental_allocated_bytes"]
-                  for m in memories)
-    available = free + reserved - allocated
-    margin = max(8 * 2**30, capacity // 10)
-    return {"persistent_bytes": persistent, "temporary_bytes": scratch,
-            "available_bytes": available, "margin_bytes": margin,
-            "admitted": persistent + scratch + margin <= available}
+from benchmarks.bf16_comparison import activate_all, memory_plan
 
 
 class Pool:
@@ -40,34 +31,11 @@ class Pool:
             arms = [a for a in self.arms if "step" in a]
             if not arms or not any(arm is a for a in arms):
                 raise RuntimeError("resident diagnostic missed a qualified arm")
-            free, capacity = torch.cuda.mem_get_info()
-            self.plan = memory_plan([a["memory"] for a in arms], free=free, capacity=capacity,
-                                    reserved=torch.cuda.memory_reserved(), allocated=torch.cuda.memory_allocated())
+            self.plan = activate_all(arms, self.activate_original, self.training._state_tensors)
             print(json.dumps({"resident_admission": self.plan}), flush=True)
             if not self.plan["admitted"]:
                 raise RuntimeError("resident diagnostic exceeds guarded live GPU capacity")
-            owners = {}
-            for index, known in enumerate(arms):
-                parameters = tuple(known["model"].parameters())
-                self.activate_original(known)
-                if not all(a is b for a, b in zip(parameters, known["model"].parameters())):
-                    raise AssertionError("activation replaced Parameter identities")
-                tensors = [*known["model"].parameters(), *known["model"].buffers(),
-                           *(p.grad for p in parameters if p.grad is not None),
-                           *self.training._state_tensors([o.state_dict() for o in known["optimizers"]])]
-                for tensor in tensors:
-                    if not tensor.is_cuda:
-                        # Optimizer scalar counters can intentionally remain on CPU.
-                        if tensor.numel() != 1:
-                            raise AssertionError("non-scalar comparison state remains on CPU")
-                        continue
-                    pointer = tensor.untyped_storage().data_ptr()
-                    if pointer in owners and owners[pointer] != index:
-                        raise AssertionError("different comparison models share GPU storage")
-                    owners[pointer] = index
-                self.resident.add(id(known))
-            self.plan.update(arms=len(arms), disjoint_gpu_storages=len(owners),
-                             allocated_after_activation=torch.cuda.memory_allocated())
+            self.resident.update(id(known) for known in arms)
         if id(arm) not in self.resident:
             raise RuntimeError("unregistered resident comparison arm")
 
