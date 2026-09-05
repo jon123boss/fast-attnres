@@ -413,10 +413,11 @@ def _case(config: Mapping[str, Any], name: str, seed: int,
     torch.save(saved, encoded)
     encoded.seek(0)
     serialized = torch.load(encoded, map_location="cpu", weights_only=True)
+    del encoded
     restoration_metrics = _restore_serialized_state(
         ddp, optimizers, saved, serialized, device
     )
-    del encoded
+    del saved, serialized
     dist.barrier()
     resumed_loss, resumed_collective = _step(
         ddp, optimizers, step_tokens[1], step_targets[1], accumulation, device
