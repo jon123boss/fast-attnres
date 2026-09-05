@@ -189,8 +189,11 @@ def _training(config, root, checkpoint):
             config_file.write_text(json.dumps(specification) + "\n")
             report["in_progress"] = {"case": case, "seed": seed}
             checkpoint(report)
-            entry = ("benchmarks.bf16_memory_check" if "activation_memory_budget" in config
-                     else "benchmarks.bf16_training")
+            if config.get("gc_diagnostic") and "activation_memory_budget" in config:
+                raise ValueError("run compiler and GC diagnostics separately")
+            entry = ("benchmarks.bf16_timing_diagnostic" if config.get("gc_diagnostic") else
+                     "benchmarks.bf16_memory_check" if "activation_memory_budget" in config else
+                     "benchmarks.bf16_training")
             command = [sys.executable, "-X", "faulthandler", "-m", entry,
                        "--config", str(config_file), "--output", str(output)]
             with (cell / "process.log").open("w") as log:

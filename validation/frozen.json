@@ -10,7 +10,7 @@
   "benchmarks/bf16_campaign_report.py": "a6f0142ae7a12d1f4299b6b1bfa01da935c98d768ca1d37df678679ec19f747c",
   "benchmarks/bf16_competitors.py": "4f1b5762083351251f3525c1f3bb981125dd216ba24428ac8d2d537ea7cdb18f",
   "benchmarks/bf16_device.py": "d0f4708bd883fe836eb38b80e935f9aede2051d92b27fe60b4b358a24dfe182b",
-  "benchmarks/bf16_modal.py": "f7475731ee1e96da5b7c886e7a0bba4b46e8cc88115b8f7e2505b12491ca9e4a",
+  "benchmarks/bf16_modal.py": "9683cfd78c3f522d52f5a7331f35552df4a717cae2efd8a5e8d0cf673a317a7a",
   "benchmarks/bf16_model.py": "5bee20cfd28475a120fef70560643cb150a7ce4eaf10ed2093108bc6b4757892",
   "benchmarks/bf16_primary.py": "ea952a9eafdf1d814309407353620161e627909c86309176ec4971068e22e4f5",
   "benchmarks/bf16_qualification.py": "76969b170fe6baf96f5f69e9c97a61737289cf53c72b46cc22261684321eaf98",
