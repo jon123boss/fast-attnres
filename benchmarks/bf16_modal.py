@@ -157,21 +157,16 @@ def _remote(job):
             raise RuntimeError(f"GPU substitution: {actual}")
         if actual["torch"] != "2.13.0+cu130" or actual["triton"] != "3.7.1":
             raise RuntimeError(f"runtime substitution: {actual}")
-        if config.get("kind") in ("qualification", "distributed"):
+        if config.get("kind") == "qualification":
             runner_source = source_digest("/job/runner/src/attnres")
             candidate_source = source_digest(config["sources"]["candidate"] + "/src/attnres")
             if runner_source["sha256"] != candidate_source["sha256"]:
                 raise RuntimeError("qualification runner differs from the selected candidate")
-            if config["kind"] == "qualification":
-                from benchmarks.bf16_qualification import run_qualification
-                report = run_qualification(config, checkpoint)
-                report["identity"] = candidate_source
-                checkpoint(report)
-                return json.loads(json.dumps(report, default=str))
-            report = _distributed(config, job, root, checkpoint)
+            from benchmarks.bf16_qualification import run_qualification
+            report = run_qualification(config, checkpoint)
             report["identity"] = candidate_source
             checkpoint(report)
-            return report
+            return json.loads(json.dumps(report, default=str))
         if config.get("kind", "operator") == "operator":
             return json.loads(json.dumps(run_operator(config, checkpoint), default=str))
         if config.get("kind") == "alias_diagnostic":
@@ -248,37 +243,6 @@ def _training(config, root, checkpoint):
             report.pop("in_progress", None)
             checkpoint(report)
     report["status"] = "complete"
-    checkpoint(report)
-    return report
-
-
-def _distributed(config, job, root, checkpoint):
-    import subprocess
-    import torch
-    if job["gpu_count"] != 8 or torch.cuda.device_count() != 8:
-        raise RuntimeError("distributed qualification requires exactly eight GPUs")
-    config = dict(config)
-    if config.get("optimizer_source"):
-        config["optimizer_source"] = "/job/optimizer"
-    config_file = root / "distributed-config.json"
-    config_file.write_text(json.dumps(config, indent=2) + "\n")
-    output = root / "distributed-report.json"
-    command = [sys.executable, "-m", "torch.distributed.run", "--standalone",
-               "--nproc-per-node=8", "-m", "benchmarks.bf16_qualification_distributed",
-               "--config", str(config_file), "--output", str(output)]
-    log = root / "distributed.log"
-    with log.open("w") as stream:
-        process = subprocess.Popen(command, stdout=stream, stderr=subprocess.STDOUT)
-        while process.poll() is None:
-            if output.exists():
-                checkpoint(json.loads(output.read_text()))
-            volume.commit()
-            time.sleep(15)
-    report = json.loads(output.read_text()) if output.exists() else {"status": "failed"}
-    report["exit_code"] = process.returncode
-    if process.returncode:
-        report["status"] = "failed"
-        report["log_tail"] = log.read_text()[-12000:]
     checkpoint(report)
     return report
 
@@ -399,8 +363,8 @@ def prepare(args):
     verify_primary(snapshot, config)
     job = {"id": job_id, "config": config, "hashes": hashes, "origins": origins,
            "stage": args.stage, "timeout_s": args.timeout, "gpu_count": args.gpus,
-           "cpu_cores": 32 if args.gpus == 8 else 8,
-           "memory_mib": 262144 if args.gpus == 8 else 65536}
+           "cpu_cores": 8,
+           "memory_mib": 65536}
     (snapshot / "job.json").write_text(json.dumps(job, indent=2) + "\n")
     print(snapshot)
     return snapshot
