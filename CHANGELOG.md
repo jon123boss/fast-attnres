@@ -7,6 +7,14 @@ entry is not a replacement for that evidence.
 
 ## [Unreleased]
 
+- Narrow the public operator to CUDA BF16 values, queries, and first-order
+  gradients, with FP32 internal math and an independent validation oracle.
+- Share one per-read backend across Full/Block standard and sliced LR AttnRes.
+- Reduce unused auxiliary-gradient work and coalesce transposed upstream
+  gradients; tune source kernels with CUDA Graph timing on each architecture.
+- Add immutable BF16 comparison reports and a budgeted campaign that admits
+  one GPU at a time. Final H100/B200 performance qualification is pending.
+
 ## [1.0.0] - 2026-08-31
 
 ### Added
