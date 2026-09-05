@@ -255,3 +255,15 @@ Before model measurements, an eight-update check compares the transferred model
 and original Muon+AdamW state against an uninterrupted control, preserving
 Parameter identities and checking that transfers do not repeatedly recompile
 the model. These transfer costs are not production training latency.
+
+### Verified billing reconciliation
+
+The launcher retains every original full-timeout reservation. A stopped app can
+be reconciled explicitly using two identical hourly Modal billing readings at
+least ten minutes apart, covering every GPU/CPU/memory row and at least one hour
+after shutdown. Hash-bound proof lives in that job's results directory. The
+accounting bound retains 150% of the metered charge plus $0.25, capped by the
+original reservation. Active, unmatched, changing, or incomplete metering keeps
+the full original bound. Admission verifies the retained evidence again; a
+client error or short elapsed time alone never releases budget. The report
+shows historical reservations and current accounting bounds separately.

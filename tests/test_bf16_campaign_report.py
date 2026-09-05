@@ -36,3 +36,13 @@ def test_missing_data_and_failed_reservations():
     assert "Total reserved: **$10**" in render({}, ledger)
     ledger["jobs"].append({"stage": "experiments"})
     assert "Total reserved: **$unknown**" in render({}, ledger)
+
+
+def test_accounting_preserves_original_and_active_reservations():
+    ledger = {"cap_usd": 500, "jobs": [
+        {"stage": "experiments", "reserved_usd": 10, "status": "complete", "accounting_upper_usd": "6.25"},
+        {"stage": "experiments", "reserved_usd": 10, "status": "running", "accounting_upper_usd": "1"},
+    ]}
+    result = render({}, ledger)
+    assert "Total reserved: **$20**" in result
+    assert "current accounting bound: **$16.25**" in result

@@ -33,6 +33,16 @@ def reserved(jobs):
     return sum(values) if all(type(v) in (int, float) and math.isfinite(v) and v >= 0 for v in values) else None
 
 
+def accounting(jobs):
+    try:
+        values = [float(row.get("accounting_upper_usd", row["reserved_usd"]))
+                  if row.get("status") not in ("running", "reserved") else float(row["reserved_usd"])
+                  for row in jobs]
+        return sum(values) if all(math.isfinite(v) and v >= 0 for v in values) else None
+    except (ValueError, TypeError, KeyError):
+        return None
+
+
 def render(summary, ledger, *, summary_link="primary-summary.json", ledger_link="ledger.json"):
     summary = summary if isinstance(summary, dict) else {}
     ledger = ledger if isinstance(ledger, dict) else {}
@@ -81,14 +91,15 @@ def render(summary, ledger, *, summary_link="primary-summary.json", ledger_link=
         if not records:
             lines.append("None recorded.")
     lines += ["", "## Budget reservations", "",
-              "These are worst-case commitments, not actual bills. Failed and completed jobs remain counted.", "",
-              "| Stage | Jobs | Reserved USD | Ceiling USD |", "| --- | ---: | ---: | ---: |"]
+              "Original reservations remain recorded. The current accounting bound uses full reservations for unsettled jobs and verified metering plus a 50% and $0.25 cushion for reconciled stopped apps. These bounds are not actual bills.", "",
+              "| Stage | Jobs | Original reserved USD | Current bound USD | Ceiling USD |", "| --- | ---: | ---: | ---: | ---: |"]
     jobs = rows(ledger, "jobs")
     for stage in [*STAGES, *sorted({row.get("stage", "unknown") for row in jobs} - STAGES.keys())]:
         group = [row for row in jobs if row.get("stage", "unknown") == stage]
         amount = reserved(group)
-        lines.append(f"| {text(stage)} | {len(group)} | {number(amount)} | {number(STAGES.get(stage))} |")
+        lines.append(f"| {text(stage)} | {len(group)} | {number(amount)} | {number(accounting(group))} | {number(STAGES.get(stage))} |")
     lines += ["", f"Total reserved: **${number(reserved(jobs))}** "
+              f"(historical reservations); current accounting bound: **${number(accounting(jobs))}** "
               f"of **${number(ledger.get('cap_usd'))}**.", ""]
     return "\n".join(lines)
 
