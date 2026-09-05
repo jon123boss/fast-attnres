@@ -30,7 +30,8 @@ BF16 nonlinearity clarification does not change the tolerance.
 Cover packed and source-list layouts, odd dimensions, strides, duplicate
 sources and shared views, repeated reads, partial blocks, analytic gradients,
 activation checkpointing, fullgraph compilation, eight changed-input CUDA
-Graph replays, optimizer updates, and exact save/resume. Compare equal ranks.
+Graph replays, optimizer updates, exact checkpoint restoration, and BF16
+continuation after resume. Compare equal ranks.
 
 ## Performance
 
