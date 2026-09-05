@@ -13,7 +13,7 @@
   "benchmarks/bf16_comparison.py": "412b0711adc33554663b200f4b6208f29b846fd613176386602e3236e662077a",
   "benchmarks/bf16_competitors.py": "493392928ae2bda260a46e0c4b934f33ea1f1ea30bdb020865c6d9f486c146cc",
   "benchmarks/bf16_device.py": "d0f4708bd883fe836eb38b80e935f9aede2051d92b27fe60b4b358a24dfe182b",
-  "benchmarks/bf16_modal.py": "a09d8e38524ef3b3dd6f7ea5d3b0111c22c48c0cfd4c27208bc703318f9c527c",
+  "benchmarks/bf16_modal.py": "27a55a6f53878fc775b16c63cf6b826b5a3531a9b3a0a85d22d637107be78986",
   "benchmarks/bf16_model.py": "5bee20cfd28475a120fef70560643cb150a7ce4eaf10ed2093108bc6b4757892",
   "benchmarks/bf16_primary.py": "7099f8cc58489938daed9b864830f915cb12be2864e4f6532b34046396fa5f5e",
   "benchmarks/bf16_qualification.py": "76969b170fe6baf96f5f69e9c97a61737289cf53c72b46cc22261684321eaf98",

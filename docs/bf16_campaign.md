@@ -265,8 +265,9 @@ benchmark processes. The primary contract enables `TRITON_CACHE_AUTOTUNING=1`
 uniformly for every arm; the launcher sets it before backend imports and records
 the input archive hash. No source-dependent tensors or Block state persist.
 Reports are checkpointed after each completed cell. Compiler backups are copied
-only when completed artifact files change; repeated cache hits do not recompress
-the same archive.
+at job exit, including ordinary failure exits, only when completed artifacts
+change. This keeps backups outside the measurement loop. An externally stopped
+job may need to recompile its new artifacts; completed reports remain available.
 Qualification checks cold and warm fresh processes against the same BF16 oracle
 and eight changed-input CUDA Graph replays, then verifies identical selected
 configurations without retuning in the warm process. `compile_warmup_s` includes

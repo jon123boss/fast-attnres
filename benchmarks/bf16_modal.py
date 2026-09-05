@@ -91,7 +91,6 @@ def _remote(job):
     cache_archive = cache_root / "artifacts.tar.gz"
     local_cache_roots = [Path("/tmp") / f"attnres-{name}" for name in ("triton", "inductor")]
     saved_cache_stamp = None
-    cached_results = 0
     def save_compiler_cache():
         nonlocal saved_cache_stamp
         if not cache_enabled:
@@ -118,7 +117,7 @@ def _remote(job):
             (root / "compiler-cache-error.txt").write_text(traceback.format_exc())
 
     def checkpoint(report):
-        nonlocal sequence, cached_results
+        nonlocal sequence
         sequence += 1
         report["elapsed_s"] = time.monotonic() - started
         report["allocator_config"] = os.environ.get("PYTORCH_ALLOC_CONF", "default")
@@ -135,10 +134,6 @@ def _remote(job):
         history = root / "history"
         history.mkdir(exist_ok=True)
         shutil.copy2(path, history / f"{sequence:06d}.json")
-        completed = len(report.get("results", []))
-        if completed > cached_results:
-            save_compiler_cache()
-            cached_results = completed
         volume.commit()
     try:
         checkpoint({"status": "running", "phase": "load_compiler_cache", "config": job["config"]})
