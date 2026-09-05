@@ -195,6 +195,21 @@ retained in the linked summary. Latencies, ratios, intervals, and geometric
 mean speedup are copied from that summary. The speedup is always labelled as
 an observed-cell result; no negative result is removed or global winner claimed.
 
+Wider and irregular operator measurements have a separate full contract. Supply
+job IDs whose snapshots and results are present in the campaign directory:
+
+```bash
+python -m benchmarks.bf16_broader_report \
+  --work "$CAMPAIGN" --contract configs/bf16_broader.json \
+  --output "$CAMPAIGN/broader-summary.json" JOB_ID_1 JOB_ID_2
+```
+
+The summary verifies the archived evaluator and source identities, accepts
+completed rows from interrupted jobs, and retains unresolved arms and missing
+coverage. Operator pairing follows the verified evaluator's alternating order;
+the eight changed-input correctness replays precede timing. These measurements
+do not establish complete-step speedups.
+
 ## Archive and restore
 
 Seal only after all jobs are terminal or explicitly reconciled:
