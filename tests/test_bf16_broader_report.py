@@ -80,3 +80,16 @@ def test_duplicate_jobs_cannot_select_the_fastest_retry(evidence):
     work, name, contract, _, _ = evidence
     with pytest.raises(ValueError, match="duplicate measurement"):
         report.summarize(work, [name, name], contract)
+
+
+def test_native_shape_error_requires_matching_declared_geometry():
+    arm = {"phase": "qualification", "status": "failed",
+           "error": "ValueError: Catswe native phase 1 requires power-of-two D"}
+    assert report.failure_kind("catswe_phase1", {"shape": [9, 8192, 1536, 1536]}, arm) == "ineligible"
+    assert report.failure_kind("catswe_phase1", {"shape": [9, 8192, 2048, 2048]}, arm) == "unresolved"
+    assert report.failure_kind("candidate", {"shape": [9, 8192, 1536, 1536]}, arm) == "unresolved"
+    assert report.failure_kind("catswe_phase1", {"shape": [9, 8192, 1536, 1536]},
+                               {**arm, "error": "ValueError: unexpected failure"}) == "unresolved"
+    rank_error = {**arm, "error": "ValueError: Catswe is only matched for standard R=D"}
+    assert report.failure_kind("catswe_phase1", {"shape": [9, 8192, 2048, 1024]}, rank_error) == "ineligible"
+    assert report.failure_kind("catswe_phase1", {"shape": [9, 8192, 2048, 2048]}, rank_error) == "unresolved"

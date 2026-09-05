@@ -45,7 +45,6 @@ except Exception:  # pragma: no cover - exercised by CPU-only environments.
     tl = None  # type: ignore[assignment]
 
 
-_QUERY_REDUCE_MIN_BLOCK = 128
 _QUERY_REDUCE_MAX_BLOCK = 1024
 _QUERY_REDUCE_MAX_TILE = 32
 _STANDARD_SOURCE_BLOCK_CONFIGS = None
@@ -104,10 +103,7 @@ def _source_query_reduce_block(count: int) -> int:
 
     if count < 1:
         raise ValueError("count must be positive")
-    return min(
-        _QUERY_REDUCE_MAX_BLOCK,
-        max(_QUERY_REDUCE_MIN_BLOCK, _next_power_of_two(count)),
-    )
+    return min(_QUERY_REDUCE_MAX_BLOCK, _next_power_of_two(count))
 
 
 def _autotune_row_bucket(count: int) -> int:
@@ -697,7 +693,7 @@ def _reduce_query(grad_query_partial, grad_query, count, rank):
         R=rank,
         BLOCK_N=_source_query_reduce_block(count),
         BLOCK_R=query_reduce_tile,
-        num_warps=8 if rank >= 1024 else 4,
+        num_warps=4,
         num_stages=2,
     )
 

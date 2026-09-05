@@ -145,6 +145,8 @@ if _custom_op is not None:
     def _source_setup_context(ctx: Any, inputs: tuple[Any, ...], output: tuple[Any, ...]) -> None:
         sources, query, _eps, scale = inputs
         _output, saved_output_fp32, saved_key_inv_rms, saved_logit, saved_lse = output
+        ctx.mark_non_differentiable(*output[1:])
+        ctx.set_materialize_grads(False)
         ctx.save_for_backward(*sources, query, saved_output_fp32, saved_key_inv_rms,
                               saved_logit, saved_lse)
         ctx.source_count = len(sources)

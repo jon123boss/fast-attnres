@@ -1037,6 +1037,8 @@ if triton is not None and _triton_op is not None and _wrap_triton is not None:
     ) -> None:
         values, query, _eps, scale = inputs
         _output, saved_output_fp32, saved_key_inv_rms, saved_logit, saved_lse = output
+        ctx.mark_non_differentiable(*output[1:])
+        ctx.set_materialize_grads(False)
         ctx.save_for_backward(
             values, query, saved_output_fp32, saved_key_inv_rms, saved_logit, saved_lse
         )

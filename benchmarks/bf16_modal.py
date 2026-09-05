@@ -42,6 +42,22 @@ if SNAPSHOT.is_dir():
     image = image.add_local_dir(str(SNAPSHOT), "/job", copy=True)
 
 
+def _completed_cache_path(path):
+    return not any(part in ("locks", "__pycache__") or part.endswith((".lock", ".tmp"))
+                   or part.startswith("tmp.") for part in Path(path).parts)
+
+
+def _compiler_cache_stamp(roots):
+    """Detect backup changes; the compilers still validate their own cache keys."""
+    entries = []
+    for root in roots:
+        for path in sorted(root.rglob("*")):
+            if path.is_file() and _completed_cache_path(path):
+                stat = path.stat()
+                entries.append((str(path), stat.st_size, stat.st_mtime_ns))
+    return tuple(entries)
+
+
 def _remote(job):
     faulthandler.enable()
     allocator = job["config"].get("allocator_config")
@@ -73,27 +89,31 @@ def _remote(job):
     cache_loaded = False
     cache_input_sha256 = None
     cache_archive = cache_root / "artifacts.tar.gz"
+    local_cache_roots = [Path("/tmp") / f"attnres-{name}" for name in ("triton", "inductor")]
+    saved_cache_stamp = None
     cached_results = 0
     def save_compiler_cache():
+        nonlocal saved_cache_stamp
         if not cache_enabled:
             return
         try:
+            stamp = _compiler_cache_stamp(local_cache_roots)
+            if stamp == saved_cache_stamp:
+                return
             local_archive = Path("/tmp/compiler-artifacts.tar.gz")
             def completed_file(info):
-                parts = Path(info.name).parts
-                if any(part in ("locks", "__pycache__") or part.endswith((".lock", ".tmp"))
-                       or part.startswith("tmp.") for part in parts):
+                if not _completed_cache_path(info.name):
                     return None
                 return info if info.isfile() or info.isdir() else None
             with tarfile.open(local_archive, "w:gz", compresslevel=1) as archive:
-                for name in ("triton", "inductor"):
-                    source = Path("/tmp") / f"attnres-{name}"
+                for source in local_cache_roots:
                     if source.exists():
                         archive.add(source, arcname=source.name, filter=completed_file)
             cache_root.mkdir(parents=True, exist_ok=True)
             pending = cache_root / "artifacts.pending"
             shutil.copyfile(local_archive, pending)
             pending.replace(cache_archive)
+            saved_cache_stamp = stamp
         except Exception:
             (root / "compiler-cache-error.txt").write_text(traceback.format_exc())
 
@@ -128,6 +148,7 @@ def _remote(job):
             with tarfile.open(cache_archive, "r:gz") as archive:
                 archive.extractall("/tmp", filter="data")
             cache_loaded = True
+            saved_cache_stamp = _compiler_cache_stamp(local_cache_roots)
         for label, expected in job["hashes"].items():
             actual = source_digest(Path("/job") / label)["sha256"]
             if actual != expected:
@@ -160,6 +181,9 @@ def _remote(job):
             return json.loads(json.dumps(run_operator(config, checkpoint), default=str))
         if config.get("kind") == "alias_diagnostic":
             from benchmarks.bf16_alias_diagnostic import run_diagnostic
+            return json.loads(json.dumps(run_diagnostic(config, checkpoint), default=str))
+        if config.get("kind") == "rank_diagnostic":
+            from benchmarks.bf16_rank_diagnostic import run_diagnostic
             return json.loads(json.dumps(run_diagnostic(config, checkpoint), default=str))
         if config.get("optimizer_source"):
             config["optimizer_source"] = "/job/optimizer"

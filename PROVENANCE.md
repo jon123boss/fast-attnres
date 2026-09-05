@@ -35,6 +35,8 @@ incorrect result does not enter the timing comparison.
 Source preparation and native gradient work remain inside the measured call.
 Constant unit RMS-weight buffers contain no source-dependent data. Adapters
 preserve the native arithmetic; they do not repair a comparator's gradients.
+Their custom autograd boundaries disable unused auxiliary gradients, avoiding
+zero-fill work introduced by the benchmark wrapper.
 
 [Hilda](https://github.com/kirsten-1/hilda-kernel/tree/c0b4d8a587c5fd06e85d7c057c7224d68ddc35cf)
 is pinned at `c0b4d8a587c5fd06e85d7c057c7224d68ddc35cf`. Its native wrapper

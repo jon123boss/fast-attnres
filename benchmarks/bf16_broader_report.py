@@ -86,6 +86,26 @@ def admission_errors(report, job, snapshot, contract):
     return errors
 
 
+def failure_kind(backend, case, arm):
+    if arm.get("phase") not in ("qualification", "changed_input"):
+        return "unresolved"
+    error = arm.get("error", "")
+    if error.startswith("AssertionError:"):
+        return "incorrect"
+    if error.startswith("Ineligible:"):
+        return "ineligible"
+    # The pinned native Catswe shape guard uses ValueError rather than the
+    # adapter exception. Verify its declared geometry restriction as well as
+    # the exact error; arbitrary ValueErrors remain unresolved.
+    width, rank = case["shape"][2:]
+    if backend == "catswe_phase1" and arm.get("phase") == "qualification":
+        limits = {"ValueError: Catswe native phase 1 requires power-of-two D": bool(width & (width - 1)),
+                  "ValueError: Catswe is only matched for standard R=D": rank != width}
+        if limits.get(error, False):
+            return "ineligible"
+    return "unresolved"
+
+
 def summarize(work, jobs, contract):
     validate_contract(contract)
     rows, inputs, failures, admissions = {}, [], [], []
@@ -122,9 +142,10 @@ def summarize(work, jobs, contract):
                     and all(type(x) in (float, int) and math.isfinite(x) and x > 0 for x in samples)):
                     valid[backend] = arm
                 else:
-                    failures.append({"cell": key, "backend": backend, "arm": arm})
-                    if not (arm.get("phase") in ("qualification", "changed_input")
-                            and arm.get("error", "").startswith(("Ineligible:", "AssertionError:"))):
+                    classification = failure_kind(backend, case, arm)
+                    failures.append({"cell": key, "backend": backend, "arm": arm,
+                                     "classification": classification})
+                    if classification == "unresolved":
                         admissions.append({"cell": key, "backend": backend, "reason": "unresolved arm"})
             rows[key] = valid
 

@@ -256,10 +256,17 @@ The restore command verifies each content hash before writing the recorded
 relative paths. Keep the archive, primary summary, ledger, and rendered report
 together when delivering the campaign record.
 
+The same command reads public `fast-attnres-public-v1` bundles. Public bundles
+retain project source and measurement reports; obtain external comparator and
+optimizer checkouts separately at the recorded identities before rerunning a job.
+
 Compiler artifacts and Triton autotuning metadata may persist between fresh
 benchmark processes. The primary contract enables `TRITON_CACHE_AUTOTUNING=1`
 uniformly for every arm; the launcher sets it before backend imports and records
 the input archive hash. No source-dependent tensors or Block state persist.
+Reports are checkpointed after each completed cell. Compiler backups are copied
+only when completed artifact files change; repeated cache hits do not recompress
+the same archive.
 Qualification checks cold and warm fresh processes against the same BF16 oracle
 and eight changed-input CUDA Graph replays, then verifies identical selected
 configurations without retuning in the warm process. `compile_warmup_s` includes

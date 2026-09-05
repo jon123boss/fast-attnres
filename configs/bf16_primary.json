@@ -76,7 +76,7 @@
     "cache_autotuning": true
   },
   "identities": {
-    "candidate": "a6724b051a4bf921b8fe7386fc90652408aa1e91c40a3cafa09840cec036f68c",
+    "candidate": "2cb9fbd618ff8fdc4a2019bc0b0ac077dd5bdb2066da36010d777f3ac8393ae3",
     "release": "9315347d6f1fd3ab36d50665a24504d4eb4e38270634f72a1fbd41d80ae17b61",
     "fla": "aa3a4a4b4b14629d42971791fe993148e4429859c1d0c0c60125e7c09c92fc1b",
     "liger": "99ada5a6ca8ec83832c7fbfa6f4a435a5206a9d05fed2571f9e35c752102876a",
@@ -86,7 +86,7 @@
     "hilda": "1bfc85d6460035d24c565f5fa3d8273de5de708111ff6fb41634353a475685a4",
     "optimizer": "5d5ba904e41829b416cb7a0718201a86d945b26b79ca1ca32dab331e2da6fcce",
     "torch_compile": "4833e20f4cda606f545f910b425b05d8a80a948d942e5adab3c7527b5546e952",
-    "training_fixture": "527c7ce64fb63aaa20bf770909b79a27ea29e991644410909c8af752f5ff69a5"
+    "training_fixture": "cf8cfe502e37992b067815590aa492b0424cb6b09484467f5e9695fe27c3f6ed"
   },
   "status": "frozen before final primary measurements",
   "operator_qualification": {

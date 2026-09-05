@@ -79,6 +79,7 @@ def load_fla(root):
         values, query, ctx.eps, ctx.scale, ctx.level = inputs
         ctx.save_for_backward(query, *output[1:], *values)
         ctx.mark_non_differentiable(*output[1:])
+        ctx.set_materialize_grads(False)
 
     def autograd_backward(ctx, upstream, *_):
         query, pre, rms, logits, lse, *values = ctx.saved_tensors
@@ -282,6 +283,7 @@ def load_hydra(root):
         blocks, query, ctx.warps, ctx.eps = inputs
         ctx.save_for_backward(blocks, query, *output)
         ctx.mark_non_differentiable(*output[1:])
+        ctx.set_materialize_grads(False)
 
     def autograd_backward(ctx, upstream, *_):
         dv, dq = backward(*ctx.saved_tensors, upstream, ctx.warps, ctx.eps)
@@ -346,6 +348,7 @@ def load_hilda(root):
         packed, query, ctx.eps = inputs
         ctx.save_for_backward(packed, query, *output[1:])
         ctx.mark_non_differentiable(*output[1:])
+        ctx.set_materialize_grads(False)
 
     def autograd_backward(ctx, upstream, *_):
         dv, dq = backward(*ctx.saved_tensors, upstream, ctx.eps)

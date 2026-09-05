@@ -8,6 +8,31 @@ import re
 import pytest
 
 
+def test_bf16_cache_backup_detects_completed_changes_and_ignores_temporary_files(tmp_path):
+    source = Path(__file__).parents[1] / "benchmarks/bf16_modal.py"
+    functions = [node for node in ast.parse(source.read_text()).body
+                 if isinstance(node, ast.FunctionDef)
+                 and node.name in {"_completed_cache_path", "_compiler_cache_stamp"}]
+    namespace = {"Path": Path}
+    exec(compile(ast.Module(body=functions, type_ignores=[]), str(source), "exec"), namespace)
+    stamp = lambda: namespace["_compiler_cache_stamp"]([tmp_path])
+    artifact = tmp_path / "kernel.cubin"
+    artifact.write_bytes(b"first")
+    before = stamp()
+    for name in ("locks/compile", "tmp.build/kernel.cubin", "kernel.tmp", "__pycache__/x.pyc"):
+        temporary = tmp_path / name
+        temporary.parent.mkdir(exist_ok=True)
+        temporary.write_bytes(b"in progress")
+    assert stamp() == before
+    original = artifact.stat()
+    artifact.write_bytes(b"other")
+    os.utime(artifact, ns=(original.st_atime_ns, original.st_mtime_ns + 1_000_000))
+    assert stamp() != before
+    before = stamp()
+    artifact.unlink()
+    assert stamp() != before
+
+
 @pytest.fixture
 def cache_helpers(tmp_path, monkeypatch):
     source = Path(__file__).parents[1] / "benchmarks/modal_runner.py"

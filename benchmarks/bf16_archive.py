@@ -41,7 +41,9 @@ def restore(bundle_path: Path, job: str, output: Path):
     output.mkdir(parents=True, exist_ok=False)
     with zipfile.ZipFile(bundle_path) as bundle:
         manifest = json.loads(bundle.read("manifest.json"))
-        for relative, digest in manifest["jobs"][job].items():
+        entry = manifest["jobs"][job]
+        files = entry["files"] if manifest.get("format") == "fast-attnres-public-v1" else entry
+        for relative, digest in files.items():
             path = Path(relative)
             if path.is_absolute() or ".." in path.parts:
                 raise ValueError("invalid archived path")
