@@ -441,6 +441,29 @@ def run(snapshot):
         raise
 
 
+def fetch(job_id, *, history=False):
+    """Retrieve retained reports and logs without launching or renting GPUs."""
+    if not job_id or Path(job_id).name != job_id or job_id in (".", ".."):
+        raise ValueError("expected a single job ID")
+    destination = WORK / "results" / job_id
+    count = 0
+    for entry in volume.iterdir(job_id, recursive=True):
+        relative = Path(entry.path.lstrip("/")).relative_to(job_id)
+        if ".." in relative.parts or relative.is_absolute():
+            raise ValueError("invalid evidence path")
+        if entry.type.name != "FILE" or (not history and "history" in relative.parts):
+            continue
+        target = destination / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        temporary = target.with_name(target.name + ".download")
+        with temporary.open("wb") as stream:
+            for block in volume.read_file(entry.path):
+                stream.write(block)
+        temporary.replace(target)
+        count += 1
+    print(json.dumps({"job": job_id, "retrieved_files": count}))
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest="action", required=True)
@@ -457,6 +480,9 @@ def main():
     p.add_argument("--name", required=True)
     p.add_argument("--stage", choices=["baseline", "experiments", "confirmation", "reserve"], required=True)
     p = sub.add_parser("run"); p.add_argument("snapshot")
+    p = sub.add_parser("fetch", help="retrieve durable evidence without renting GPUs")
+    p.add_argument("job_id")
+    p.add_argument("--history", action="store_true")
     args = parser.parse_args()
     if args.action == "init":
         if not 0 < args.cap <= 500:
@@ -466,6 +492,8 @@ def main():
             json.dump({"cap_usd": args.cap, "jobs": []}, stream, indent=2)
             stream.write("\n")
         print(WORK / "ledger.json")
+    elif args.action == "fetch":
+        fetch(args.job_id, history=args.history)
     elif args.action == "prepare":
         prepare(args)
     else:
