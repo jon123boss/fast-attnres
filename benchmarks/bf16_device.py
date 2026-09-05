@@ -29,7 +29,8 @@ def metadata():
     return {"torch": str(torch.__version__), "triton": str(triton.__version__),
             "cuda": torch.version.cuda, "python": platform.python_version(),
             "gpu": p.name, "capability": list(torch.cuda.get_device_capability()),
-            "memory_bytes": p.total_memory, "sms": p.multi_processor_count}
+            "memory_bytes": p.total_memory, "sms": p.multi_processor_count,
+            "cache_autotuning": bool(triton.knobs.autotuning.cache)}
 
 
 def bf16_torch(values, query, *, eps=2**-23, scale=1.0):

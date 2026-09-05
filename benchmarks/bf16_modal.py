@@ -44,6 +44,7 @@ if SNAPSHOT.is_dir():
 
 def _remote(job):
     faulthandler.enable()
+    os.environ["TRITON_CACHE_AUTOTUNING"] = "1" if job["config"].get("cache_autotuning", False) else "0"
     os.environ["TRITON_CACHE_DIR"] = "/tmp/attnres-triton"
     os.environ["TORCHINDUCTOR_CACHE_DIR"] = "/tmp/attnres-inductor"
     sys.path[:0] = ["/job/runner", "/job/runner/src"]
@@ -65,6 +66,7 @@ def _remote(job):
     cache_root = Path("/evidence/compiler-cache") / job["config"]["gpu"] / "torch2.13-triton3.7.1-cu130"
     cache_enabled = job["config"].get("reuse_compiler_cache", False)
     cache_loaded = False
+    cache_input_sha256 = None
     cache_archive = cache_root / "artifacts.tar.gz"
     cached_results = 0
     def save_compiler_cache():
@@ -94,7 +96,12 @@ def _remote(job):
         nonlocal sequence, cached_results
         sequence += 1
         report["elapsed_s"] = time.monotonic() - started
-        report["compiler_cache"] = {"reuse_enabled": cache_enabled, "loaded": cache_loaded}
+        report["compiler_cache"] = {
+            "reuse_enabled": cache_enabled, "loaded": cache_loaded,
+            "input_archive_sha256": cache_input_sha256,
+            "autotuning_enabled": job["config"].get("cache_autotuning", False),
+            "autotuning_records": sum(1 for _ in Path("/tmp/attnres-triton").rglob("*.autotune.json")),
+        }
         path = root / "report.json"
         temporary = path.with_suffix(".tmp")
         temporary.write_text(json.dumps(report, indent=2, default=str) + "\n")
@@ -110,6 +117,8 @@ def _remote(job):
     try:
         checkpoint({"status": "running", "phase": "load_compiler_cache", "config": job["config"]})
         if cache_enabled and cache_archive.exists():
+            with cache_archive.open("rb") as stream:
+                cache_input_sha256 = hashlib.file_digest(stream, "sha256").hexdigest()
             with tarfile.open(cache_archive, "r:gz") as archive:
                 archive.extractall("/tmp", filter="data")
             cache_loaded = True
@@ -293,7 +302,8 @@ def verify_primary(snapshot, config):
     from benchmarks.bf16_primary import contract_digest, fixture_digest, package_digest
     contract = json.loads((snapshot / "runner/configs/bf16_primary.json").read_text())
     if (config.get("primary_contract_sha256") != contract_digest(contract) or
-        config["expected_identities"] != contract["identities"]):
+        config["expected_identities"] != contract["identities"] or
+        config.get("cache_autotuning") is not contract["runtime"]["cache_autotuning"]):
         raise ValueError("primary configuration differs from the frozen contract")
     actual = {name: package_digest(snapshot / path / "src/attnres")
               for name, path in config["sources"].items()}

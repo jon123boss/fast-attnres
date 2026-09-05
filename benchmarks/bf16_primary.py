@@ -44,6 +44,7 @@ def configuration(contract, modes, ranks, seeds):
     return {"kind": "training", "cases": cases, "seeds": seeds,
             "rounds": contract["rounds"], "warmups": contract["warmups"],
             "torch_baseline": True, "reuse_compiler_cache": True,
+            "cache_autotuning": contract["runtime"]["cache_autotuning"],
             "expected_identities": contract["identities"],
             "primary_contract_sha256": contract_digest(contract)}
 

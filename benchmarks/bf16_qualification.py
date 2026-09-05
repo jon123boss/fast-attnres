@@ -585,6 +585,19 @@ def run_qualification(
         gc.collect()
         torch.cuda.empty_cache()
 
+    if effective.get("check_autotuning_cache"):
+        from benchmarks.bf16_cache_check import check_reuse
+        try:
+            row = {"name": "fresh_process_autotuning_cache", "phase": "compiler_cache",
+                   "status": "passed", "metrics": check_reuse()}
+        except Exception as exc:
+            row = _failure("fresh_process_autotuning_cache", "compiler_cache", exc)
+        report["cases"].append(row)
+        report["passed" if row["status"] == "passed" else "failed"] += 1
+        if row["status"] != "passed":
+            report["failures"].append(row)
+        _checkpoint(checkpoint, report)
+
     if effective.get("pytest"):
         import subprocess
         import sys

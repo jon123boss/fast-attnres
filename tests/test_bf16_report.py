@@ -374,7 +374,7 @@ def _primary_report(gpu, mode, rank, seed):
             for name in bf16_report.BACKENDS}
     report = _training_report(gpu, mode, rank, seed, arms)
     report["config"].update(seeds=[seed], rounds=120, warmups=10,
-                            optimizer_source="/frozen/optimizer")
+                            optimizer_source="/frozen/optimizer", cache_autotuning=True)
     report["identities"].update({
         name: {"sha256": name + "-v1"}
         for name in ("release", "torch_compile", "fla", "liger", "legacy", "catswe", "hydra")})
@@ -385,7 +385,7 @@ def _primary_report(gpu, mode, rank, seed):
     result["case"]["model"] = dict(result["model"])
     report["config"]["cases"] = [result["case"]]
     report["runtime"] = {"torch": "2.13.0+cu130", "triton": "3.7.1",
-                         "capability": {"H100": [9, 0], "B200": [10, 0]}[gpu]}
+                         "capability": {"H100": [9, 0], "B200": [10, 0]}[gpu], "cache_autotuning": True}
     result["input_sha256"] = "a" * 64
     result["round_order"] = [{"round": i, "input": i % 8, "backends": list(arms)} for i in range(120)]
     result.update(grad_clip=1.0, loss_dtype="bfloat16",
@@ -473,3 +473,11 @@ def test_report_cannot_relabel_a_measured_rank():
     result = report["results"][0]
     result["model"]["rank"] = 32
     assert "result model differs from the requested case" in bf16_report._contract_errors(report, result, 120)
+
+
+@pytest.mark.parametrize("location", ["config", "runtime"])
+def test_primary_rejects_mixed_autotuning_cache_policy(location):
+    report = _primary_report("H100", "block", 64, bf16_report.SEEDS[0])
+    report[location]["cache_autotuning"] = False
+    errors = bf16_report._contract_errors(report, report["results"][0], 120)
+    assert "autotuning cache policy differs from the frozen environment" in errors

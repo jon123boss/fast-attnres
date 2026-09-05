@@ -38,6 +38,8 @@ def _validate_runtime(config):
         raise RuntimeError("training benchmark requires a CUDA device")
 
     actual = metadata()
+    if "cache_autotuning" in config and actual.get("cache_autotuning") is not config["cache_autotuning"]:
+        raise RuntimeError("autotuning cache policy differs from the requested runtime")
     try:
         capability = tuple(int(value) for value in actual["capability"])
     except (KeyError, TypeError, ValueError) as exc:

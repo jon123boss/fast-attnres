@@ -59,6 +59,8 @@ def _contract_errors(report, result, required_rounds):
     if (runtime.get("torch") != "2.13.0+cu130" or runtime.get("triton") != "3.7.1" or
         runtime.get("capability") != {"H100": [9, 0], "B200": [10, 0]}.get(config.get("gpu"))):
         errors.append("runtime differs from the frozen environment")
+    if config.get("cache_autotuning") is not True or runtime.get("cache_autotuning") is not True:
+        errors.append("autotuning cache policy differs from the frozen environment")
     if len(result.get("input_sha256", "")) != 64:
         errors.append("missing input identity")
     order = result.get("round_order", [])

@@ -222,3 +222,13 @@ python -m benchmarks.bf16_archive restore \
 The restore command verifies each content hash before writing the recorded
 relative paths. Keep the archive, primary summary, ledger, and rendered report
 together when delivering the campaign record.
+
+Compiler artifacts and Triton autotuning metadata may persist between fresh
+benchmark processes. The primary contract enables `TRITON_CACHE_AUTOTUNING=1`
+uniformly for every arm; the launcher sets it before backend imports and records
+the input archive hash. No source-dependent tensors or Block state persist.
+Qualification checks cold and warm fresh processes against the same BF16 oracle
+and eight changed-input CUDA Graph replays, then verifies identical selected
+configurations without retuning in the warm process. `compile_warmup_s` includes
+compilation, correctness checks and warmup; it is not pure cold compilation time.
+The metadata policy follows the pinned [Triton 3.7.1 autotuner](https://github.com/triton-lang/triton/blob/v3.7.1/python/triton/runtime/autotuner.py).
