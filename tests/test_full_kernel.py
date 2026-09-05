@@ -191,7 +191,7 @@ def test_fixed_tail_compiled_changed_inputs_and_graph(source_layout, width, rank
         expected = oracle(views(v), q[::2])
         grads = torch.autograd.grad(expected, (v, q), upstream)
         for a, e in zip(actual, (expected, *grads)):
-            _compare(a, e, dtype)
+            _compare(a, e, v.dtype)
 
     check(step())
     counters = dict(torch._dynamo.utils.counters["stats"])

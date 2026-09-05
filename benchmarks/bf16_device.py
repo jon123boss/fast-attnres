@@ -6,6 +6,7 @@ import hashlib
 import json
 from pathlib import Path
 import platform
+import sys
 import time
 import traceback
 
@@ -58,7 +59,16 @@ def _profile_operator(op, values, query, params, upstream):
             y = op(values, query)
             torch.autograd.grad(y, params, upstream)
         torch.cuda.synchronize()
-    return {"iterations": 5, "timing_eligible": False,
+    module = sys.modules.get(op.__module__.rsplit(".", 1)[0] + "._kernels.fla_full_sources")
+    launches = {}
+    if module is not None:
+        for name in ("_fla_standard_forward_kernel", "_fla_standard_backward_kernel",
+                     "_fla_standard_query_reduce_kernel"):
+            config = getattr(getattr(module, name, None), "best_config", None)
+            if config is not None:
+                launches[name] = {"kwargs": config.kwargs, "num_warps": config.num_warps,
+                                  "num_stages": config.num_stages}
+    return {"iterations": 5, "timing_eligible": False, "launches": launches,
             "events": [{"name": event.key, "count": event.count,
                         "self_cpu_us": event.self_cpu_time_total,
                         "self_cuda_us": event.self_device_time_total,
