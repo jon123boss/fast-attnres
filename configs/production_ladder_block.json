@@ -65,7 +65,6 @@
     "input_protocol": "shared_per_sample_timed_inputs_v1",
     "source_layout": "list",
     "block_path": "per_read_public_attnres",
-    "cached_block": false,
     "schedule": "balanced_forward_reverse_pairs; adjacent edges stay within one split job",
     "fla_anchor": {
       "implementation": "triton",

@@ -13,10 +13,6 @@
     "rtol": 0.05,
     "atol": 0.05
   },
-  "fp32": {
-    "rtol": 0.001,
-    "atol": 0.0001
-  },
   "operator_smoke": [
     [
       1,
@@ -167,10 +163,13 @@
   "bootstrap_samples": 20000,
   "plateau_margin": 0.01,
   "budget": {
-    "new_total_usd": 100,
-    "admission_limit_usd": 75,
-    "contingency_usd": 25,
-    "baseline_metered_usd": 43.04164904,
-    "max_concurrent_each_gpu": 1
-  }
+    "total_usd": 500,
+    "baseline_usd": 80,
+    "experiments_usd": 220,
+    "confirmation_usd": 140,
+    "reserve_usd": 60,
+    "max_concurrent_each_gpu": 1,
+    "distributed_exclusive": true
+  },
+  "scope": "BF16 correctness and legacy benchmark fixture shapes; current complete-step contract is configs/bf16_primary.json"
 }

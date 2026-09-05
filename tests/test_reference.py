@@ -1,28 +1,50 @@
+from pathlib import Path
+
 import pytest
 import torch
-from attnres import attnres, reference_attnres
-from validation.oracle import oracle
+
+from attnres import attnres
 
 
-@pytest.mark.parametrize("dtype", [torch.float32, torch.bfloat16])
-def test_reference_and_gradients(dtype):
+def _oracle(values, query, *, eps=2**-23, scale=1.0):
+    """Test-only BF16 oracle; no reference implementation ships in attnres."""
+    values_fp32 = values.float()
+    keys_fp32 = values[..., -query.numel():].float()
+    query_fp32 = query.float()
+    scores = (
+        keys_fp32
+        * torch.rsqrt(keys_fp32.square().mean(-1, keepdim=True) + eps)
+        * query_fp32
+    ).sum(-1)
+    weights = torch.softmax(scores * scale, dim=0)
+    return (weights.unsqueeze(-1) * values_fp32).sum(0).to(values.dtype)
+
+
+@pytest.mark.cuda
+def test_cuda_bf16_operator_and_gradients_match_test_oracle():
+    if not torch.cuda.is_available():
+        pytest.skip("CUDA is not available")
+    pytest.importorskip("triton")
     torch.manual_seed(23)
-    v = torch.randn(3, 2, 17, dtype=dtype, requires_grad=True)
-    q = torch.randn(5, dtype=torch.float32, requires_grad=True)
-    params = [v, q]
-    actual = attnres(v, q)
-    expected = oracle(v, q)
-    tol = dict(rtol=.05, atol=.05) if dtype == torch.bfloat16 else dict(rtol=.001, atol=.0001)
-    torch.testing.assert_close(actual, expected, **tol)
-    g = torch.randn_like(actual)
-    ga = torch.autograd.grad(actual, params, g)
-    ge = torch.autograd.grad(expected, params, g)
-    for a, e in zip(ga, ge):
-        torch.testing.assert_close(a, e, **tol)
+    values = torch.randn(
+        3, 2, 17, device="cuda", dtype=torch.bfloat16, requires_grad=True
+    )
+    query = torch.randn(5, device="cuda", dtype=torch.bfloat16, requires_grad=True)
+    upstream = torch.randn_like(values[0])
+
+    actual = attnres(values, query)
+    expected = _oracle(values, query)
+    gradients = torch.autograd.grad(actual, (values, query), upstream)
+    expected_gradients = torch.autograd.grad(expected, (values, query), upstream)
+
+    assert actual.dtype == torch.bfloat16
+    assert all(gradient.dtype == torch.bfloat16 for gradient in gradients)
+    for actual_value, expected_value in zip(
+        (actual, *gradients), (expected, *expected_gradients)
+    ):
+        torch.testing.assert_close(actual_value, expected_value, rtol=0.05, atol=0.05)
 
 
-def test_fp64_reference_gradcheck():
-    v = torch.randn(3, 2, 5, dtype=torch.float64, requires_grad=True)
-    q = torch.randn(3, dtype=torch.float64, requires_grad=True)
-    assert torch.autograd.gradcheck(
-        lambda a,b: reference_attnres(a,b,compute_dtype=torch.float64), (v,q))
+def test_reference_module_is_removed_from_the_distribution():
+    package_dir = Path(__file__).resolve().parents[1] / "src" / "attnres"
+    assert not (package_dir / "reference.py").exists()

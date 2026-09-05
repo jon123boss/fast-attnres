@@ -294,7 +294,7 @@ def validate_campaign_config(config: Mapping[str, Any], *, seed: int | None = No
     _require(isinstance(production, Mapping), "campaign production_ladder is missing")
     _require(production.get("state_protocol") == "canonical_implicit_max_rank_v1", "campaign state protocol differs")
     _require(production.get("input_protocol") == "shared_per_sample_timed_inputs_v1", "campaign input protocol differs")
-    _require(production.get("source_layout") == "list" and production.get("cached_block") is False, "campaign source contract differs")
+    _require(production.get("source_layout") == "list" and production.get("block_path") == "per_read_public_attnres", "campaign source contract differs")
     _require(production.get("fla_anchor") == {"checkpoint_level": 1, "implementation": "triton", "rank": 1024, "scope": "R=D anchor only"}, "campaign FLA anchor differs")
     checkout = production.get("fla_checkout")
     _require(checkout == {"environment": "ATTNRES_FLA_DIR", "layout": "clean checkout containing fla/", "revision": EXPECTED_FLA_REVISION, "package_sha256": EXPECTED_FLA_PACKAGE_SHA256, "required_clean": True}, "campaign FLA checkout pin differs")

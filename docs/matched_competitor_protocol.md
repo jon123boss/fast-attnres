@@ -174,8 +174,8 @@ The declared native comparator surface is:
 | Hydra 2P | standard operator and declared Block panel; native timing is limited to `D <= 256` |
 
 FLA Triton checkpoint 0 is diagnostic-only and is never an eligible
-denominator. Catswe has no cached Block or model route, and the public AttnRes
-Block path is per-read; no cached Block method is benchmarked here.
+denominator. This historical protocol includes Catswe's operator route only;
+the public AttnRes Block path uses the shared per-read operator.
 
 All external comparator capabilities require `R = D`. The `lr_ranks` arm is a
 candidate model arm with ranks `[16, 64, 128, 512, 1024]`; its `R < D` rows

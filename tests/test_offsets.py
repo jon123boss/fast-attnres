@@ -21,7 +21,7 @@ def test_source_offsets_above_int32():
     # Preserve the frozen implicit fixture's RNG sequence before query/upstream.
     padding.copy_(torch.randn_like(padding))
     values.requires_grad_()
-    query = (torch.randn(rank, device="cuda") * 0.25).requires_grad_()
+    query = (torch.randn(rank, device="cuda", dtype=torch.bfloat16) * 0.25).requires_grad_()
     assert (values[1].data_ptr() - values[0].data_ptr()) // values.element_size() > 2**31
     actual = attnres(values, query)
     expected = oracle(values, query)
@@ -45,7 +45,7 @@ def test_source_list_row_stride_above_int32(variant):
     value.copy_(torch.randn_like(value))
     value.requires_grad_()
     other = torch.randn(2, width, device="cuda", dtype=torch.bfloat16, requires_grad=True)
-    query = (torch.randn(rank, device="cuda") * .25).requires_grad_()
+    query = (torch.randn(rank, device="cuda", dtype=torch.bfloat16) * .25).requires_grad_()
     values = (value, other)
     assert value.stride(0) > 2**31
     actual = attnres(values, query)

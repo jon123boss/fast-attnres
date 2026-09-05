@@ -1,4 +1,4 @@
-"""Root-owned sequence-interface gates; fixed oracle and tolerance are unchanged."""
+"""Root-owned sequence-interface gates with matched BF16 graph boundaries."""
 import contextlib
 
 import torch
@@ -50,7 +50,7 @@ def source_case(shape, mode, dtype, *, graph=False, shared=False, device="cuda")
         physical = ((n, 2 * width), (width, n), (n, width + 7))[i % 3]
         leaves.append(torch.randn(*physical, device=device, dtype=dtype, requires_grad=True))
     qshape = (3, 2 * r) if mode == "block" else (2 * r,)
-    query = torch.randn(*qshape, device=device, requires_grad=True)
+    query = torch.randn(*qshape, device=device, dtype=dtype, requires_grad=True)
     partial = torch.randn(n, width, device=device, dtype=dtype, requires_grad=True)
     params = (*leaves, query, partial) if mode == "block" else (*leaves, query)
     output_count = 5 if mode == "block" else 1
@@ -70,20 +70,15 @@ def source_case(shape, mode, dtype, *, graph=False, shared=False, device="cuda")
     def forward(args, weights, reference=False, packed=False):
         values = views(args)
         q = args[count][..., ::2]
-        if not reference:
-            if packed:
-                values = torch.stack(values)
+        if packed:
+            values = torch.stack(values)
         if mode == "full":
-            out = (oracle(torch.stack(values), q)
+            out = (oracle(values, q)
                    if reference else attnres(values, q))
             return (out,), (out.float() * weights[0].float()).sum()
         part = args[-1]
-        completed = torch.stack(values) if reference else values
-        combined = (
-            torch.cat((completed, part[..., :d].unsqueeze(0)), dim=0)
-            if reference
-            else (*values, part[..., :d])
-        )
+        completed = values
+        combined = (*values, part[..., :d])
         outputs = []
         for index in (0, 1, 1, 2):
             outputs.append(
@@ -99,8 +94,8 @@ def source_case(shape, mode, dtype, *, graph=False, shared=False, device="cuda")
         loss = sum((o.float() * w.float()).sum() for o, w in zip(outputs, weights))
         return tuple(outputs), loss
 
-    def compare(outputs, gradients, args, weights):
-        expected, loss = forward(args, weights, True)
+    def compare(outputs, gradients, args, weights, *, packed=False):
+        expected, loss = forward(args, weights, True, packed=packed)
         expected_grads = torch.autograd.grad(loss, args)
         return {"outputs": [_compare(a, e, dtype) for a, e in zip(outputs, expected)],
                 "grads": [_compare(a, e, dtype) for a, e in zip(gradients, expected_grads)]}
@@ -120,10 +115,10 @@ def source_case(shape, mode, dtype, *, graph=False, shared=False, device="cuda")
     result = {"eager": compare(outputs, gradients, params, upstream)}
     packed_outputs, packed_loss = forward(params, upstream, packed=True)
     packed_gradients = torch.autograd.grad(packed_loss, params)
-    result["packed_control"] = {
-        "outputs": [_compare(a, p, dtype) for a, p in zip(outputs, packed_outputs)],
-        "grads": [_compare(a, p, dtype) for a, p in zip(gradients, packed_gradients)],
-    }
+    # Packing changes where BF16 leaf contributions accumulate. Compare each
+    # layout against its own oracle graph, not against a different cast tree.
+    result["packed_control"] = compare(
+        packed_outputs, packed_gradients, params, upstream, packed=True)
     if not graph:
         return result
 
@@ -158,11 +153,13 @@ def source_case(shape, mode, dtype, *, graph=False, shared=False, device="cuda")
         with no_stack():
             outputs, loss = compiled(static, weights)
             gradients = torch.autograd.grad(loss, static)
-    with torch.no_grad():
-        for x, value in zip(static, replay):
-            x.copy_(value * .5)
-        weights.copy_(replay_upstream * .5)
-    capture.replay()
-    torch.cuda.synchronize()
-    result["graph_changed_input"] = compare(outputs, gradients, static, weights)
+    result["graph_changed_input"] = []
+    for index in range(8):
+        with torch.no_grad():
+            for x, value in zip(static, replay):
+                x.copy_(value * ((index + 1) / 8))
+            weights.copy_(replay_upstream * ((index + 1) / 8))
+        capture.replay()
+        torch.cuda.synchronize()
+        result["graph_changed_input"].append(compare(outputs, gradients, static, weights))
     return result

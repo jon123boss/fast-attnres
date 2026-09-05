@@ -517,7 +517,6 @@ def test_operator_warmup_passes_mode_and_upstream_in_order(monkeypatch):
         "bootstrap_samples": 32,
         "plateau_margin": 0.01,
         "bf16": {"rtol": 0.05, "atol": 0.05},
-        "fp32": {"rtol": 0.001, "atol": 0.0001},
     }
     case = {"id": "operator_0", "S": 1, "N": 2, "D": 4, "R": 4}
     result = runner._operator_timings(
@@ -582,7 +581,6 @@ def test_operator_statistics_use_kernel_as_baseline(monkeypatch):
         "bootstrap_samples": 32,
         "plateau_margin": 0.01,
         "bf16": {"rtol": 0.05, "atol": 0.05},
-        "fp32": {"rtol": 0.001, "atol": 0.0001},
     }
     case = {"id": "operator_0", "S": 1, "N": 2, "D": 4, "R": 4}
     result = runner._operator_timings(
@@ -612,21 +610,26 @@ def test_invalid_scope_fails_before_cuda_setup(monkeypatch):
 
 @pytest.mark.parametrize("variant,rank", [("standard", 17), ("sliced", 5)])
 def test_source_profile_checks_all_gradients_without_accumulation(variant, rank):
-    from attnres import attnres
     from benchmarks import source_profile as profile
+    from validation.oracle import oracle
+
+    def oracle_backend(values, query, *, eps=2**-23, scale=1.0):
+        if isinstance(values, (list, tuple)):
+            values = torch.stack(tuple(values), dim=0)
+        return oracle(values, query, eps=eps, scale=scale)
 
     case = {"variant": variant, "shape": [3, 5, 17, rank]}
     arms = profile._make_arms(case, torch.device("cpu"), 20260827, True)
     protocol = {"bf16": {"rtol": .05, "atol": .05}}
     for name, arm in arms.items():
-        result = profile._qualify(attnres, arm, protocol)
+        result = profile._qualify(oracle_backend, arm, protocol)
         tensors = profile._tensors(arm)
         assert len(result["gradient_max_abs"]) == len(tensors)
         assert all(t.is_leaf and t.grad is None for t in tensors)
-        assert arm["query"].dtype == torch.float32
+        assert arm["query"].dtype == torch.bfloat16
         for tensor in tensors:
             tensor.grad = torch.full_like(tensor, 7)
-        _, gradients = profile._step(attnres, arm, "forward_backward")
+        _, gradients = profile._step(oracle_backend, arm, "forward_backward")
         assert len(gradients) == len(tensors)
         assert all(torch.equal(t.grad, torch.full_like(t, 7)) for t in tensors)
         if name != "packed":
@@ -636,6 +639,12 @@ def test_source_profile_checks_all_gradients_without_accumulation(variant, rank)
 @pytest.mark.parametrize("variant,rank", [("standard", 8), ("sliced", 3)])
 def test_source_profile_entrypoint_hashes_implicit_inputs(monkeypatch, variant, rank):
     from benchmarks import source_profile as profile
+    from validation.oracle import oracle
+
+    def oracle_backend(values, query, *, eps=2**-23, scale=1.0):
+        if isinstance(values, (list, tuple)):
+            values = torch.stack(tuple(values), dim=0)
+        return oracle(values, query, eps=eps, scale=scale)
 
     make_arms = profile._make_arms
     arms_seen = []
@@ -646,6 +655,7 @@ def test_source_profile_entrypoint_hashes_implicit_inputs(monkeypatch, variant, 
         return arms
 
     monkeypatch.setattr(torch.cuda, "is_available", lambda: True)
+    monkeypatch.setattr(profile, "attnres", oracle_backend)
     monkeypatch.setattr(profile, "load_protocol", lambda root: (
         {"bf16": {"rtol": .05, "atol": .05}, "warmup": 0, "smoke_rounds": 1}, {}))
     monkeypatch.setattr(profile, "_make_arms", cpu_arms)

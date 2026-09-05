@@ -17,6 +17,7 @@ from collections.abc import Callable, Mapping, Sequence
 from typing import Any
 
 import torch
+from attnres import attnres
 
 from .run import (
     PROJECT_ROOT,
@@ -84,9 +85,7 @@ def _make_arms(
     sources, rows, width, rank = tuple(case["shape"])
     dtype = torch.bfloat16
     values = tuple(_leaf((rows, width), dtype, device, seed + 11 + 17 * index, True) for index in range(sources))
-    # The learned query fixture stays FP32 while activations and upstream are
-    # BF16, matching the training contract without an artificial offset.
-    query_data = _leaf((rank,), torch.float32, device, seed + 401, False)
+    query_data = _leaf((rank,), dtype, device, seed + 401, False)
     with torch.no_grad():
         query_data.mul_(0.02)
     upstream_data = _leaf((rows, width), dtype, device, seed + 402, False)
@@ -523,7 +522,7 @@ def run_source_profile(config: Mapping[str, Any]) -> dict[str, Any]:
             "source_values": "independent leaf tensors per source; no unbind views",
             "packed_values": "detach/clone packed leaf with identical logical data",
             "query_upstream": "same nonzero logical data in independent tensors",
-            "query_dtype": "torch.float32",
+            "query_dtype": "torch.bfloat16",
             "query_init_std": 0.02,
             "upstream_dtype": "torch.bfloat16",
             "input_hash_schema": "values-query-upstream-v1",
@@ -547,8 +546,6 @@ def run_source_profile(config: Mapping[str, Any]) -> dict[str, Any]:
         result["failures"].append(_fail("device", status="unavailable", reason=reason))
         result["resource_metadata"] = _resource_metadata(sorted({case["variant"] for case in cases}))
         return _jsonable(result)
-    from attnres import attnres
-
     for index, case in enumerate(cases):
         device = torch.device("cuda")
         arms = _make_arms(case, device, seed + index * 1000, baseline is not None)

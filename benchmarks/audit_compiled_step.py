@@ -579,7 +579,7 @@ def _check_config(report: Mapping[str, Any], seed: int) -> Mapping[str, Any]:
     ladder = _mapping(config.get("production_ladder"), "config.production_ladder")
     _require(ladder.get("state_protocol") == "canonical_implicit_max_rank_v1", "production ladder state protocol differs")
     _require(ladder.get("input_protocol") == "shared_per_sample_timed_inputs_v1", "production ladder input protocol differs")
-    _require(ladder.get("source_layout") == "list" and ladder.get("cached_block") is False, "production ladder source contract differs")
+    _require(ladder.get("source_layout") == "list" and ladder.get("block_path") == "per_read_public_attnres", "production ladder source contract differs")
     _require(ladder.get("fla_anchor") == {"checkpoint_level": 1, "implementation": "triton", "rank": 1024, "scope": "R=D anchor only"}, "FLA anchor differs")
     fla_expected = _mapping(ladder.get("fla_checkout"), "production_ladder.fla_checkout")
     _require(fla_expected.get("revision") == EXPECTED_FLA_REVISION and fla_expected.get("package_sha256") == EXPECTED_FLA_PACKAGE_SHA256 and fla_expected.get("required_clean") is True, "production ladder FLA checkout differs")

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import copy
 import json
+import sys
 from pathlib import Path
 
 import pytest
@@ -14,6 +15,14 @@ from benchmarks.audit_compiled_step import CompiledStepAuditError, expected_mode
 ROOT = Path(__file__).resolve().parents[1]
 CONFIG = ROOT / "configs" / "compiled_step_campaign.json"
 MANIFEST = ROOT / "configs" / "compiled_step_campaign_manifest.json"
+
+
+@pytest.fixture(autouse=True)
+def measured_checkout(historical_release_root, monkeypatch):
+    module = sys.modules[__name__]
+    monkeypatch.setattr(module, "ROOT", historical_release_root)
+    monkeypatch.setattr(module, "CONFIG", historical_release_root / "configs/compiled_step_campaign.json")
+    monkeypatch.setattr(module, "MANIFEST", historical_release_root / "configs/compiled_step_campaign_manifest.json")
 
 
 def test_sealed_matrix_and_exact_geometry_are_cpu_only():

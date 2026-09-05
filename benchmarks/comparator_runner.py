@@ -19,8 +19,8 @@ number is materialized when either arm fails qualification.
 
 Unsupported cells are materialized as ``not_applicable`` rows.  They never
 allocate inputs or invoke an adapter.  Missing vendors and failed gates remain
-visible, but are never counted in an eligible denominator.  No cached Block
-API is represented here; Block is always the project's public per-read model.
+visible, but are never counted in an eligible denominator. Block uses the
+project's public per-read model.
 """
 
 from __future__ import annotations
@@ -2477,8 +2477,7 @@ def run_matched_registry(
     The plan is always materialized.  Operator execution is opt-in because a
     caller must explicitly select a CUDA worker; model cells remain planned
     until the existing per-read model runner supplies their complete-step
-    inputs.  This function never changes that model runner or introduces a
-    cached Block path.
+    inputs. Both schedules use that shared model runner.
     """
 
     from .competitor_protocol import comparison_plan, config_digest, load_config, validate_config

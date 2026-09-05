@@ -1,125 +1,68 @@
 # Provenance
 
-This file records the implementation, benchmark, and third-party identities
-behind the current Fast-AttnRes release. It is an integrity record; the scoped
-performance claim and its limitations live in the current
-[`compiled-step adoption evidence`](results/adoption/README.md).
+This branch develops the CUDA BF16 operator in the existing draft PR. It has
+not been merged or released. Measurements apply to the exact source bytes
+recorded in each report, rather than to a branch name or package version.
 
-## Repository lineage
+## Source identity
 
-| Field | Value |
-| --- | --- |
-| Private adoption repository | `https://github.com/jon123boss/fast-attnres` |
-| Initial private seed | `76669dde5b2b34ac73772f456cba978c264a9ac5` |
-| Current adoption-screen source | `79a5ad623fd223f93dc00933b9885831977712d3` |
-| Current adoption-screen tree | `37786d60fdb27f2c9071db61b608224105d56b4b` |
-| Historical three-seed source | `81dffbfeb0f84470513e846e3df8080e8ffb563d` |
-| Historical three-seed tree | `1cceb5e0a37330015ca2945312da29aa7566aaeb` |
-| Package | `fast-attnres` 1.0.0 |
-| Project license | MIT |
+[`validation/frozen.json`](validation/frozen.json) records the selected source,
+validation, and packaging files. The primary experiment additionally binds
+package, evaluator, optimizer, and comparator identities in
+[`configs/bf16_primary.json`](configs/bf16_primary.json). The launcher verifies
+those identities before GPU admission and again inside the immutable snapshot.
 
-The compiled-step reports hash their exact performance-source checkout. Later
-documentation, audit, and plotting commits do not alter or relabel those
-measured source bytes.
+The shared source-list kernels adapt FLA's
+[`fused.py` at 5e02dd3a](https://github.com/fla-org/flash-linear-attention/blob/5e02dd3a7651f5f2797eb8b12bbec401826031e1/fla/ops/attnres/fused.py).
+Their upstream MIT attribution remains in the source header and
+[`NOTICE`](NOTICE). The public API and packed kernels are project code under
+[`LICENSE`](LICENSE).
 
-## Production kernel identity
+Full and Block execute the same per-read operator. Sliced routing uses the
+last `R` coordinates as keys while retaining width-`D` values and outputs.
+The independent [BF16 oracle](validation/oracle.py) defines the tested
+normalization, softmax, mixture, and first-order gradient contract.
 
-| Role | Path | SHA-256 |
-| --- | --- | --- |
-| Packed kernel | `src/attnres/_kernels/fixed_tail.py` | `2333b3034e3c0e6493855b1246280ed91e65d29a962ce1d150beff71e8bbd34e` |
-| Source-list fallback | `src/attnres/_kernels/fixed_tail_sources.py` | `1373614c93d7291ad96697b1b8ff627120590b75f63f7e38bd65d50b19fcfb4a` |
-| Bounded BF16 source-list route | `src/attnres/_kernels/fla_full_sources.py` | `8749c72c4714145214e33e8bc7d37f57b47a79b67f2e83044205db72cda416fa` |
+## External comparisons
 
-The source-list hashes above identify the current standard-source autotuned
-implementation introduced at `8ddb0bbaf184663703ded65b45839fddd1c429fc`
-(tree `a91fb6d7662c36652bf648aa2e8170c90887bc1a`). They are the bytes
-sealed by `validation/frozen.json` and the active campaign recipes.
+The [campaign adapters](benchmarks/bf16_competitors.py) call separately supplied
+native implementations: the released Fast-AttnRes package, PyTorch compilation,
+the research repository's per-read operators, FLA Triton and Gluon, Liger,
+Catswe, Hydra, and Hilda. The report records exact source hashes, adapter
+changes, runtime, shape restrictions, and correctness failures. A faster
+incorrect result does not enter the timing comparison.
 
-The FLA-derived source-list route retains its upstream attribution and MIT
-notice in [`NOTICE`](NOTICE) and in the source header. The public API, packed
-kernel, and fallback kernel are project code under the top-level MIT license.
+Source preparation and native gradient work remain inside the measured call.
+Constant unit RMS-weight buffers contain no source-dependent data. Adapters
+preserve the native arithmetic; they do not repair a comparator's gradients.
 
-## Historical compiled-step campaign
+[Hilda](https://github.com/kirsten-1/hilda-kernel/tree/c0b4d8a587c5fd06e85d7c057c7224d68ddc35cf)
+is pinned at `c0b4d8a587c5fd06e85d7c057c7224d68ddc35cf`. Its native wrapper
+caps source count at 32, so the adapter explicitly rejects larger reads. Its
+source is supplied externally and is not bundled with this repository.
 
-The preserved campaign contains exactly six BF16 Full reports: three seeds on
-H100 SXM and three on B200. Every report records 120 matched AttnRes/FLA pairs
-under PyTorch 2.13.0+cu130, CUDA 13.0, and Triton 3.7.1. Seeds and devices are
-kept separate.
+No external comparator kernel source is redistributed in the package. Each
+upstream checkout's own license and notices remain authoritative.
 
-Those reports predate the current autotuned source-list kernels. Their measured
-candidate hashes are intentionally retained in the result manifest:
+## Measurements
 
-| Historical measured role | SHA-256 |
-| --- | --- |
-| `fixed_tail.py` | `2333b3034e3c0e6493855b1246280ed91e65d29a962ce1d150beff71e8bbd34e` |
-| `fixed_tail_sources.py` | `20fa0206fcbf6cc6b28a2973ac280575b6e8e378b09e0903449bf423d9812196` |
-| `fla_full_sources.py` | `2cd7ac89b15faeb13640bff4a7948e437453b69446bfc8c7922511e341843e10` |
+The [evaluation contract](EVALUATION.md) and [runbook](docs/bf16_campaign.md)
+define the model, rank ladder, precision, optimizer, timing interval, confidence
+intervals, and resource limits. Raw results retain failed and interrupted runs.
+All published figures must identify their measured source and workload;
+operator latency and complete training-step latency remain separate.
 
-They remain reproducibility evidence for that exact historical implementation;
-they are not relabelled as measurements of the current kernel. New performance
-claims require reports whose runtime preflight records the current hashes.
+The primary model matches the 1B research geometry: 24 layers, width 1536,
+batch 4, context 2048, accumulation 4, and the original Muon plus AdamW
+implementation. Synthetic inputs exclude dataset I/O, logging, and scheduler
+host work. These measurements do not reproduce historical training throughput.
 
-The campaign's immutable bindings are stored in
-[`results/compiled_step/campaign_manifest.json`](https://github.com/jon123boss/fast-attnres/blob/main/results/compiled_step/campaign_manifest.json).
-That directory also contains the raw rows, per-report attestations, independent
-audit outputs, exact seed configs, reproduction wrapper, compact hero
-projection, and deterministic Matplotlib inputs.
+## Historical evidence
 
-The measured model is L24/D1024/H16/FFN2816/B2/T1024/V32768. Both arms execute
-the same standard AttnRes equation (`R=D=1024`), ordered Full source schedule,
-loss, backward, and fused capturable AdamW update. The event interval contains
-one complete CUDA Graph replay. Compilation, capture, warmup, qualification,
-hashing, input copies, and CPU work are outside the event interval.
-
-## External FLA denominator
-
-| Field | Value |
-| --- | --- |
-| Repository | `https://github.com/fla-org/flash-linear-attention.git` |
-| Revision | `5e02dd3a7651f5f2797eb8b12bbec401826031e1` |
-| Package SHA-256 | `2cd59a9a50f34ecc4d9535ad51c9668cd4d8b67f519b8eb78b45ce2156288781` |
-| Package file count | 506 |
-| Route | Native Triton AttnRes checkpoint 1 |
-| Checkout state | Clean |
-
-FLA receives one preallocated, nonpersistent FP32 unit RMS-weight buffer owned
-by its model wrapper. Generated-code inspection found no RMS allocation or
-unit-fill launch inside the measured graph. The FLA buffer is not optimized,
-serialized, or recreated per read.
-
-## Other external implementations
-
-FLA Gluon, Liger-Kernel, Catswe phase 1, Hydra 2P, and FLA checkpoint 0 are
-represented by optional adapters and a fail-closed capability registry. They
-do not have an accepted complete Full-model result in the current campaign,
-so they never enter its denominator. Their constraints and exclusion reasons
-are listed in the README and
-[`docs/matched_competitor_protocol.md`](https://github.com/jon123boss/fast-attnres/blob/main/docs/matched_competitor_protocol.md).
-
-No external comparator kernel source is redistributed in this repository.
-Optional adapters import separately installed, pinned checkouts. Their
-upstream license and notice files remain authoritative; [`NOTICE`](NOTICE)
-records source URLs and license identities at the project boundary.
-
-## Current compiled-step adoption screen
-
-The README chart and table are derived only from the eight raw reports under
-[`results/adoption/compiled_step_screen`](results/adoption/compiled_step_screen/).
-Their manifest binds every report, the plotting code, PNG/SVG, CSV, and
-Markdown table. The screen uses one predeclared seed, 5 warmups, 40 paired
-rounds, and a 20,000-resample simultaneous paired bootstrap per cell on H100
-SXM and B200 with PyTorch 2.13.0+cu130 and Triton 3.7.1. It covers standard
-Full, standard per-read Block, and explicitly labeled sliced LR architectural
-cells. Numeric, failed, and not-applicable arms remain separate; GPUs and cells
-are never pooled into a global ranking.
-
-The measured kernel hashes equal the current production identities above. The
-historical `validation/frozen.json` digest recorded at measurement time is
-`9286b3b5b7cbe3a8fb7c062ce5a795b2b1fe3c0d03dc2cf2b6848483b9ed1a31`.
-
-## Scholarly references
-
-- Kimi Team, *Attention Residuals*, arXiv:2603.15031,
-  <https://arxiv.org/abs/2603.15031>.
-- Jonathan Su, *Low-Rank Attention Residuals*, arXiv:2607.09694,
-  <https://arxiv.org/abs/2607.09694>.
+The [v1.0.0 release](https://github.com/jon123boss/fast-attnres/tree/v1.0.0)
+retains its original source and measurements. Its
+[three-seed Full campaign](https://github.com/jon123boss/fast-attnres/tree/v1.0.0/results/compiled_step)
+and [adoption screen](https://github.com/jon123boss/fast-attnres/tree/v1.0.0/results/adoption)
+use different source bytes and workloads from this continuation. Their raw
+reports and manifests remain historical evidence; their speedups are not
+relabelled as results for the new kernel.

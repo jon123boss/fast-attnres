@@ -31,6 +31,12 @@ _REPORTS = (
 )
 
 
+@pytest.fixture(autouse=True)
+def measured_checkout(historical_release_root, monkeypatch):
+    from scripts import compiled_step_sweep
+    monkeypatch.setattr(compiled_step_sweep, "PROJECT_ROOT", historical_release_root)
+
+
 def _drop_worker(payload: dict) -> None:
     payload.pop("worker", None)
 

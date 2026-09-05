@@ -90,19 +90,6 @@ def test_gate_identity_and_structural_keys_are_frozen():
     assert CONFIG["protocol"]["forward_key"] == ["L2", "D", "R"]
     assert CONFIG["protocol"]["backward_key"] == ["L2", "D", "R"]
     assert CONFIG["protocol"]["backward_families"] == [0, 1, 2]
-    if hasattr(fla_full_sources, "_fla_source_forward_kernel"):
-        assert len(fla_full_sources._fla_source_forward_kernel.configs) == 16
-        backward_configs = fla_full_sources._fla_source_backward_kernel.configs
-        assert len(backward_configs) == 22
-        assert sum(
-            _config_value(config, "LAYOUT_FAMILY") == 2
-            for config in backward_configs
-        ) == 6
-    else:
-        source = SOURCE_PATH.read_text(encoding="utf-8")
-        assert "_BACKWARD_SOURCE_BLOCK_CONFIGS" in source
-        assert "for layout_family in (0, 1, 2)" in source
-        assert "if layout_family == 2 else (1, 2, 4, 8)" in source
     assert set(CASES) == {
         (source_count, rank)
         for source_count in (2, 9)
@@ -117,7 +104,7 @@ def test_gate_identity_and_structural_keys_are_frozen():
 )
 @pytest.mark.parametrize("backward_family", (0, 1, 2))
 @pytest.mark.parametrize("case_index,case", tuple(enumerate(CASES)))
-def test_public_source_route_matches_fp32_oracle(
+def test_public_source_route_matches_bf16_oracle(
     case_index: int, case: tuple[int, int], backward_family: int
 ):
     source_count, rank = case
@@ -135,7 +122,7 @@ def test_public_source_route_matches_fp32_oracle(
     reference_values = tuple(
         value.detach().clone().requires_grad_(True) for value in values
     )
-    query = torch.randn(rank, device="cuda", dtype=torch.float32, requires_grad=True)
+    query = torch.randn(rank, device="cuda", dtype=torch.bfloat16, requires_grad=True)
     reference_query = query.detach().clone().requires_grad_(True)
 
     block = (

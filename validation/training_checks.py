@@ -12,8 +12,17 @@ from torch.nn import functional as F
 from torch.utils.checkpoint import checkpoint
 
 from benchmarks.model import TrainingConfig, make_model, training_step
+from .oracle import oracle
 
 PROTOCOL = json.loads(Path(__file__).with_name("protocol.json").read_text())
+
+
+def _oracle_backend(values, query, *, eps=2**-23, scale=1.0):
+    """Run the frozen BF16 test oracle without using a package reference path."""
+
+    if isinstance(values, (list, tuple)):
+        values = torch.stack(tuple(values), dim=0)
+    return oracle(values, query, eps=eps, scale=scale)
 
 
 def _close(actual, expected, name):
@@ -56,14 +65,14 @@ def _case(config, variant, mode):
     rank = shape["width"] if variant == "standard" else config.get("rank", 16)
     cfg = TrainingConfig(**shape, variant=variant, mode=mode, rank=rank)
     model = make_model(cfg, backend="kernel").cuda()
-    reference = make_model(cfg, backend="reference").cuda()
-    reference.load_state_dict(model.state_dict())
+    oracle_model = make_model(cfg, backend=_oracle_backend).cuda()
+    oracle_model.load_state_dict(model.state_dict())
     assert all(torch.count_nonzero(q).item() for q in model.queries)
     tokens = torch.randint(cfg.vocab, (cfg.batch, cfg.sequence), device="cuda")
     targets = torch.randint_like(tokens, cfg.vocab)
     eager = lambda x, y: _loss(model, x, y)
-    ref = lambda x, y: _loss(reference, x, y)
-    expected = _output_and_grads(ref, reference, tokens, targets)
+    oracle_loss = lambda x, y: _loss(oracle_model, x, y)
+    expected = _output_and_grads(oracle_loss, oracle_model, tokens, targets)
     metrics = {"eager": _parity(_output_and_grads(eager, model, tokens, targets), expected)}
     compiled = torch.compile(eager, fullgraph=True, dynamic=False)
     metrics["compiled"] = _parity(_output_and_grads(compiled, model, tokens, targets), expected)
@@ -71,7 +80,7 @@ def _case(config, variant, mode):
     before = dict(counters["stats"])
     tokens.copy_(tokens.roll(1, dims=1))
     targets.copy_(targets.roll(1, dims=1))
-    expected = _output_and_grads(ref, reference, tokens, targets)
+    expected = _output_and_grads(oracle_loss, oracle_model, tokens, targets)
     metrics["changed_input"] = _parity(_output_and_grads(compiled, model, tokens, targets), expected)
     if dict(counters["stats"]) != before:
         raise AssertionError("unexpected recompilation on changed input")
@@ -80,14 +89,14 @@ def _case(config, variant, mode):
 
     # Compare complete accumulated optimizer steps, including every parameter.
     optimizer = torch.optim.AdamW(model.parameters(), lr=1e-3, fused=True)
-    ref_optimizer = torch.optim.AdamW(reference.parameters(), lr=1e-3, fused=True)
+    oracle_optimizer = torch.optim.AdamW(oracle_model.parameters(), lr=1e-3, fused=True)
     micro_tokens = torch.stack((tokens, tokens.roll(1, dims=0)))
     micro_targets = torch.stack((targets, targets.roll(1, dims=0)))
-    for current, opt in ((model, optimizer), (reference, ref_optimizer)):
+    for current, opt in ((model, optimizer), (oracle_model, oracle_optimizer)):
         with torch.autocast("cuda", dtype=torch.bfloat16):
             training_step(current, opt, micro_tokens, micro_targets, accumulation=2)
     metrics["optimizer_max_abs"] = {
-        n: _close(p, dict(reference.named_parameters())[n], "updated " + n)
+        n: _close(p, dict(oracle_model.named_parameters())[n], "updated " + n)
         for n, p in model.named_parameters()
     }
     # Save/resume must reproduce the next step with identical data and state.

@@ -1,0 +1,657 @@
+"""Executable NCCL/DDP BF16 resume qualification.
+
+Launch this module with ``torchrun``.  It intentionally keeps one local
+uncached public-operator model per rank: the check is collective-gradient and
+save/load/continue consistency, rather than a comparison against another
+operator implementation.
+"""
+
+from __future__ import annotations
+
+import argparse
+import io
+from contextlib import nullcontext
+import gc
+import json
+import os
+import platform
+import sys
+import time
+import traceback
+from collections.abc import Callable, Mapping, Sequence
+from dataclasses import asdict, fields
+from pathlib import Path
+from typing import Any
+
+import torch
+import torch.distributed as dist
+from torch import Tensor
+from torch.nn import functional as F
+from torch.nn.parallel import DistributedDataParallel
+
+if __package__ in {None, ""}:  # Allow ``python benchmarks/bf16_qualification_distributed.py``.
+    _SOURCE_ROOT = Path(__file__).resolve().parents[1]
+    sys.path.insert(0, str(_SOURCE_ROOT))
+    sys.path.insert(0, str(_SOURCE_ROOT / "src"))
+
+from attnres import attnres
+from benchmarks.bf16_model import Config, Model
+
+TOLERANCE = {"rtol": 0.05, "atol": 0.05}
+SMALL_DEFAULT = {
+    "layers": 2,
+    "width": 64,
+    "heads": 4,
+    "ffn": 128,
+    "vocab": 257,
+    "context": 16,
+    "block_count": 2,
+    "rank": 16,
+    "mode": "block",
+}
+PRIMARY_DEFAULT = {
+    "layers": 24,
+    "width": 1536,
+    "heads": 24,
+    "ffn": 4224,
+    "vocab": 100277,
+    "context": 2048,
+    "block_count": 8,
+    "mode": "block",
+    "activation_checkpointing": False,
+}
+
+
+def _jsonable(value: Any) -> Any:
+    if isinstance(value, (str, int, float, bool)) or value is None:
+        return value
+    if isinstance(value, Path):
+        return str(value)
+    if isinstance(value, torch.dtype):
+        return str(value)
+    if isinstance(value, Mapping):
+        return {str(key): _jsonable(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_jsonable(item) for item in value]
+    if isinstance(value, Tensor):
+        return {"shape": list(value.shape), "dtype": str(value.dtype)}
+    return str(value)
+
+
+def _save_checkpoint(checkpoint: Callable[[dict[str, Any]], Any] | None,
+                     report: dict[str, Any]) -> None:
+    if checkpoint is not None and _rank() == 0:
+        checkpoint(_jsonable(report))
+
+
+def _rank() -> int:
+    return int(os.environ.get("RANK", "0"))
+
+
+def _world_size() -> int:
+    return int(os.environ.get("WORLD_SIZE", "1"))
+
+
+def _config_from_spec(spec: Mapping[str, Any], *, require_rank: bool = False) -> Config:
+    raw = dict(spec)
+    allowed = {field.name for field in fields(Config)}
+    architecture = {key: value for key, value in raw.items() if key in allowed}
+    if require_rank and "rank" not in architecture and "primary_rank" not in raw:
+        raise ValueError("primary distributed qualification requires a supplied rank")
+    if "rank" not in architecture and "primary_rank" in raw:
+        architecture["rank"] = raw["primary_rank"]
+    return Config(**architecture)
+
+
+def _model_spec(config: Mapping[str, Any], name: str) -> dict[str, Any]:
+    if name == "small":
+        raw = config.get("small", config.get("small_model", SMALL_DEFAULT))
+        defaults = SMALL_DEFAULT
+    else:
+        raw = config.get("primary", config.get("primary_model", PRIMARY_DEFAULT))
+        defaults = PRIMARY_DEFAULT
+    if not isinstance(raw, Mapping):
+        raise TypeError(f"{name} model configuration must be a mapping")
+    result = {**defaults, **dict(raw)}
+    if name == "primary" and "rank" not in result:
+        for key in ("primary_rank", "rank"):
+            if key in config:
+                result["rank"] = config[key]
+                break
+    return result
+
+
+def _device_metadata(device: torch.device) -> dict[str, Any]:
+    import triton
+    properties = torch.cuda.get_device_properties(device)
+    return {
+        "torch": str(torch.__version__),
+        "triton": str(triton.__version__),
+        "cuda": torch.version.cuda,
+        "python": platform.python_version(),
+        "device": str(device),
+        "gpu": properties.name,
+        "capability": list(torch.cuda.get_device_capability(device)),
+        "memory_bytes": int(properties.total_memory),
+        "sms": int(properties.multi_processor_count),
+        "bf16_supported": bool(torch.cuda.is_bf16_supported()),
+    }
+
+
+def _clone_cpu(value: Any) -> Any:
+    if isinstance(value, Tensor):
+        return value.detach().to("cpu", copy=True)
+    if isinstance(value, Mapping):
+        return {key: _clone_cpu(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_clone_cpu(item) for item in value]
+    if isinstance(value, tuple):
+        return tuple(_clone_cpu(item) for item in value)
+    return value
+
+
+def _unwrap_model(model):
+    while hasattr(model, "module") or hasattr(model, "_orig_mod"):
+        model = model.module if hasattr(model, "module") else model._orig_mod
+    return model
+
+
+def _state_snapshot(model: DistributedDataParallel,
+                    optimizers: list[torch.optim.Optimizer]) -> dict[str, Any]:
+    return {
+        "model": _clone_cpu(_unwrap_model(model).state_dict()),
+        "optimizers": [_clone_cpu(optimizer.state_dict()) for optimizer in optimizers],
+    }
+
+
+def _tensor_chunks(actual: Tensor, expected: Tensor):
+    # Checkpoint tensors stay on CPU; only bounded comparison tiles visit the
+    # local rank's GPU. This avoids large CPU arithmetic temporaries per rank.
+    use_cuda = (actual.device.type == expected.device.type == "cpu"
+                and actual.is_contiguous() and expected.is_contiguous()
+                and actual.numel() >= 2**20 and torch.cuda.is_available())
+    if not use_cuda:
+        yield actual, expected
+        return
+    left, right = actual.view(-1), expected.view(-1)
+    for start in range(0, actual.numel(), 2**22):
+        yield left[start:start + 2**22].cuda(), right[start:start + 2**22].cuda()
+
+
+def _tree_equal(actual: Any, expected: Any) -> bool:
+    if isinstance(actual, Mapping) and isinstance(expected, Mapping):
+        return actual.keys() == expected.keys() and all(
+            _tree_equal(actual[key], expected[key]) for key in actual
+        )
+    if isinstance(actual, (list, tuple)) and isinstance(expected, (list, tuple)):
+        return len(actual) == len(expected) and all(
+            _tree_equal(left, right) for left, right in zip(actual, expected)
+        )
+    if isinstance(actual, Tensor) and isinstance(expected, Tensor):
+        return (actual.shape == expected.shape and actual.dtype == expected.dtype
+                and actual.layout == expected.layout and all(
+                    torch.equal(a, b) and bool(torch.isfinite(a).all())
+                    for a, b in _tensor_chunks(actual, expected)))
+    return actual == expected
+
+
+def _compare_tree(actual: Any, expected: Any, name: str) -> dict[str, Any]:
+    maximum = 0.0
+    tensor_count = 0
+
+    def visit(left: Any, right: Any, path: str) -> None:
+        nonlocal maximum, tensor_count
+        if isinstance(left, Mapping) and isinstance(right, Mapping):
+            if left.keys() != right.keys():
+                raise AssertionError(f"{name}:{path} keys differ")
+            for key in left:
+                visit(left[key], right[key], f"{path}.{key}")
+            return
+        if isinstance(left, (list, tuple)) and isinstance(right, (list, tuple)):
+            if len(left) != len(right):
+                raise AssertionError(f"{name}:{path} lengths differ")
+            for index, (left_item, right_item) in enumerate(zip(left, right)):
+                visit(left_item, right_item, f"{path}[{index}]")
+            return
+        if isinstance(left, Tensor) and isinstance(right, Tensor):
+            if left.shape != right.shape or left.dtype != right.dtype or left.layout != right.layout:
+                raise AssertionError(f"tensor metadata changed {name}:{path}")
+            for a, b in _tensor_chunks(left, right):
+                if not torch.isfinite(a).all().item() or not torch.isfinite(b).all().item():
+                    raise AssertionError(f"non-finite {name}:{path}")
+                if not torch.equal(a, b):
+                    torch.testing.assert_close(a, b, **TOLERANCE, msg=f"{name}:{path}")
+                    maximum = max(maximum, float((a.float() - b.float()).abs().max().item()))
+            tensor_count += 1
+            return
+        if left != right:
+            raise AssertionError(f"{name}:{path} values differ")
+
+    visit(actual, expected, "state")
+    return {"tensor_count": tensor_count, "max_abs": maximum}
+
+
+def _collective_exact(local_exact: bool, device: torch.device) -> bool:
+    """Require every rank to agree on an exact, non-arithmetic state check."""
+    flag = torch.tensor(int(local_exact), device=device, dtype=torch.int32)
+    dist.all_reduce(flag, op=dist.ReduceOp.MIN)
+    return bool(flag.item())
+
+
+def _restore_serialized_state(
+    model: DistributedDataParallel,
+    optimizers: list[torch.optim.Optimizer],
+    expected: Mapping[str, Any],
+    serialized: Mapping[str, Any],
+    device: torch.device,
+) -> dict[str, Any]:
+    """Restore a checkpoint and prove its exact state before any next update."""
+    serialized_exact = _tree_equal(serialized, expected)
+    if not _collective_exact(serialized_exact, device):
+        raise AssertionError("serialized model+optimizer checkpoint changed during round-trip")
+
+    _unwrap_model(model).load_state_dict(serialized["model"], strict=True)
+    for optimizer, state in zip(optimizers, serialized["optimizers"]):
+        optimizer.load_state_dict(state)
+    restored = _state_snapshot(model, optimizers)
+    restored_exact = _tree_equal(restored, expected)
+    if not _collective_exact(restored_exact, device):
+        raise AssertionError("serialized model+optimizer restoration diverged before next update")
+    from benchmarks.bf16_training import _state_tensors
+    return {
+        "serialized_exact": serialized_exact,
+        "restored_exact": restored_exact,
+        "exact": True,
+        # Exact finite equality already proves zero difference. Avoid another
+        # full checkpoint scan and large FP32 temporary allocations on CPU.
+        "state": {"tensor_count": sum(1 for _ in _state_tensors(restored)), "max_abs": 0.0},
+    }
+
+
+def _same_input_metrics(
+    resumed: Mapping[str, Any],
+    uninterrupted: Mapping[str, Any],
+    resumed_loss: Tensor,
+    uninterrupted_loss: Tensor,
+) -> dict[str, Any]:
+    """Record BF16 continuation parity without requiring bitwise NCCL arithmetic."""
+    state = _compare_tree(resumed, uninterrupted, "resume")
+    resumed_loss_cpu = resumed_loss.detach().cpu()
+    uninterrupted_loss_cpu = uninterrupted_loss.detach().cpu()
+    loss_max_abs = float(
+        (resumed_loss_cpu - uninterrupted_loss_cpu).abs().max().item()
+    )
+    loss_within_tolerance = bool(torch.allclose(
+        resumed_loss_cpu,
+        uninterrupted_loss_cpu,
+        rtol=TOLERANCE["rtol"],
+        atol=TOLERANCE["atol"],
+    ))
+    torch.testing.assert_close(
+        resumed_loss_cpu,
+        uninterrupted_loss_cpu,
+        **TOLERANCE,
+        msg="resume loss",
+    )
+    loss = {
+        "resumed": float(resumed_loss_cpu),
+        "uninterrupted": float(uninterrupted_loss_cpu),
+        "max_abs": loss_max_abs,
+        "within_bf16_tolerance": loss_within_tolerance,
+    }
+    return {
+        "same_inputs": True,
+        "exact": (
+            _tree_equal(resumed, uninterrupted)
+            and torch.equal(resumed_loss_cpu, uninterrupted_loss_cpu)
+        ),
+        "loss_max_abs": loss_max_abs,
+        "loss_within_bf16_tolerance": loss_within_tolerance,
+        "loss": loss,
+        "state": state,
+    }
+
+
+
+def _collective_gradients(model: DistributedDataParallel,
+                          device: torch.device) -> dict[str, Any]:
+    parameters = tuple(model.module.named_parameters())
+    finite = torch.ones((), device=device, dtype=torch.int32)
+    for _, parameter in parameters:
+        if (parameter.grad is None or parameter.grad.dtype != torch.bfloat16 or
+            not torch.isfinite(parameter.grad).all().item()):
+            finite.zero_()
+    dist.all_reduce(finite, op=dist.ReduceOp.MIN)
+    if int(finite.item()) != 1:
+        raise AssertionError("collective gradient contains a non-finite or missing value")
+
+    maximum = 0.0
+    mismatch = torch.zeros((), device=device, dtype=torch.int32)
+    for name, parameter in parameters:
+        reduced = parameter.grad.detach().float().clone()
+        dist.all_reduce(reduced, op=dist.ReduceOp.SUM)
+        mean = reduced / dist.get_world_size()
+        difference = (parameter.grad.float() - mean).abs()
+        mismatch.bitwise_or_((difference > TOLERANCE["atol"] + TOLERANCE["rtol"] * mean.abs()).any().int())
+        maximum = max(maximum, float(difference.max().item()))
+        del reduced, mean
+    dist.all_reduce(mismatch, op=dist.ReduceOp.MAX)
+    maximum_tensor = torch.tensor(maximum, device=device, dtype=torch.float32)
+    dist.all_reduce(maximum_tensor, op=dist.ReduceOp.MAX)
+    if mismatch.item():
+        raise AssertionError(f"collective gradient mismatch: max_abs={maximum_tensor.item()}")
+    return {
+        "parameters": len(parameters),
+        "finite": True,
+        "max_rank_mean_abs": float(maximum_tensor.item()),
+        "tolerance": dict(TOLERANCE),
+    }
+
+
+def _step(model: DistributedDataParallel, optimizers: list[torch.optim.Optimizer],
+          tokens: Tensor, targets: Tensor, accumulation: int,
+          device: torch.device) -> tuple[Tensor, dict[str, Any]]:
+    for optimizer in optimizers:
+        optimizer.zero_grad(set_to_none=True)
+    losses = []
+    for micro, (micro_tokens, micro_targets) in enumerate(zip(tokens.unbind(0), targets.unbind(0))):
+        with (model.no_sync() if micro + 1 < accumulation else nullcontext()):
+            logits = model(micro_tokens)
+            loss = F.cross_entropy(
+                logits.reshape(-1, logits.shape[-1]), micro_targets.reshape(-1)
+            )
+            finite = torch.isfinite(loss).all().int()
+            dist.all_reduce(finite, op=dist.ReduceOp.MIN)
+            if not finite.item():
+                raise AssertionError("nonfinite distributed BF16 loss")
+            (loss / accumulation).backward()
+        losses.append(loss.detach())
+    collective = _collective_gradients(model, device)
+    torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+    for optimizer in optimizers:
+        optimizer.step()
+    return torch.stack(losses).mean().detach(), collective
+
+
+def _case(config: Mapping[str, Any], name: str, seed: int,
+          device: torch.device) -> dict[str, Any]:
+    spec = _model_spec(config, name)
+    model_config = _config_from_spec(spec, require_rank=name == "primary")
+    batch = int(spec.get("batch", 2 if name == "small" else 4))
+    accumulation = int(spec.get("accumulation", 2 if name == "small" else 4))
+    if batch < 1 or accumulation < 1:
+        raise ValueError("batch and accumulation must be positive")
+    if name == "primary":
+        expected = {key: PRIMARY_DEFAULT[key] for key in (
+            "layers", "width", "heads", "ffn", "vocab", "context", "block_count",
+            "mode", "activation_checkpointing"
+        )}
+        actual = {key: getattr(model_config, key) for key in expected}
+        if actual != expected:
+            raise ValueError(f"primary configuration changed: expected {expected}, got {actual}")
+        if (batch != 4 or accumulation != 4 or model_config.rank not in (1536, 64) or
+            model_config.rope_theta != 500000. or model_config.attnres_eps != 2**-23 or
+            model_config.attnres_scale != 1.):
+            raise ValueError("primary qualification requires R1536/R64, batch4/accum4 and original arithmetic")
+    if not config.get("optimizer_source"):
+        raise ValueError("distributed qualification requires the original Muon+AdamW source")
+
+    def progress(phase):
+        print(json.dumps({"case": name, "rank": dist.get_rank(),
+                          "routing_rank": model_config.rank, "phase": phase,
+                          "monotonic_s": time.monotonic()}), flush=True)
+
+    progress("construct_model")
+    torch.manual_seed(seed)
+    model = Model(model_config, op=attnres).to(device).train()
+    compiled = torch.compile(model, fullgraph=True, dynamic=False,
+                             options={"triton.cudagraphs": False})
+    ddp = DistributedDataParallel(
+        compiled,
+        device_ids=[device.index],
+        output_device=device.index,
+        broadcast_buffers=True,
+    )
+    from benchmarks.bf16_training import _optimizers
+    optimizers = _optimizers(ddp, config)
+    expected_parameters = {id(p) for p in model.parameters()}
+    covered = [id(p) for optimizer in optimizers for group in optimizer.param_groups for p in group["params"]]
+    if (sorted(type(o).__name__ for o in optimizers) != ["AdamW", "Muon"] or
+        len(covered) != len(expected_parameters) or set(covered) != expected_parameters):
+        raise RuntimeError("Muon+AdamW must cover every model parameter exactly once")
+    torch.manual_seed(seed + 17 + 1009 * dist.get_rank())
+    step_tokens = torch.randint(
+        model_config.vocab,
+        (2, accumulation, batch, model_config.context),
+        device=device,
+    )
+    step_targets = torch.randint(
+        model_config.vocab,
+        (2, accumulation, batch, model_config.context),
+        device=device,
+    )
+
+    progress("first_update")
+    first_loss, first_collective = _step(
+        ddp, optimizers, step_tokens[0], step_targets[0], accumulation, device
+    )
+    progress("first_snapshot")
+    saved = _state_snapshot(ddp, optimizers)
+    progress("second_update")
+    uninterrupted_loss, uninterrupted_collective = _step(
+        ddp, optimizers, step_tokens[1], step_targets[1], accumulation, device
+    )
+    progress("second_snapshot")
+    uninterrupted = _state_snapshot(ddp, optimizers)
+
+    progress("serialize")
+    encoded = io.BytesIO()
+    torch.save(saved, encoded)
+    encoded.seek(0)
+    serialized = torch.load(encoded, map_location="cpu", weights_only=True)
+    del encoded
+    progress("restore")
+    restoration_metrics = _restore_serialized_state(
+        ddp, optimizers, saved, serialized, device
+    )
+    del saved, serialized
+    dist.barrier()
+    progress("resumed_update")
+    resumed_loss, resumed_collective = _step(
+        ddp, optimizers, step_tokens[1], step_targets[1], accumulation, device
+    )
+    progress("resumed_snapshot")
+    resumed = _state_snapshot(ddp, optimizers)
+    progress("compare_continuation")
+    resume_metrics = _same_input_metrics(
+        resumed, uninterrupted, resumed_loss, uninterrupted_loss
+    )
+
+    result = {
+        "name": name,
+        "status": "passed",
+        "operator": "attnres",
+        "cache": "uncached",
+        "schedule": model_config.mode,
+        "architecture": asdict(model_config),
+        "batch": batch,
+        "accumulation": accumulation,
+        "steps": 2,
+        "losses": [float(first_loss.cpu()), float(uninterrupted_loss.cpu())],
+        "collective_gradients": [
+            first_collective, uninterrupted_collective, resumed_collective
+        ],
+        "serialized_restore": restoration_metrics,
+        "optimizer_update_and_resume": resume_metrics,
+        "bf16_tolerance": dict(TOLERANCE),
+    }
+    del ddp, model, compiled, optimizers
+    gc.collect()
+    torch.cuda.empty_cache()
+    progress("complete")
+    return result
+
+
+def _initial_report(config: Mapping[str, Any]) -> dict[str, Any]:
+    return {
+        "kind": "bf16_distributed_qualification",
+        "status": "running",
+        "complete": False,
+        "passed": False,
+        "config": _jsonable(dict(config)),
+        "world_size": _world_size(),
+        "tolerance": dict(TOLERANCE),
+        "dtype": str(torch.bfloat16),
+        "operator": "attnres",
+        "cache": "uncached",
+        "cases": [],
+        "failures": [],
+    }
+
+
+def run_distributed_qualification(
+    config: Mapping[str, Any] | None = None,
+    checkpoint: Callable[[dict[str, Any]], Any] | None = None,
+) -> dict[str, Any]:
+    """Run small DDP and optional primary Block cases on an NCCL process group."""
+
+    config = dict(config or {})
+    report = _initial_report(config)
+    if not dist.is_available():
+        report.update(status="failed", complete=True)
+        report["failures"].append({"phase": "environment", "error": "torch.distributed is unavailable"})
+        _save_checkpoint(checkpoint, report)
+        return report
+    if not dist.is_initialized():
+        required = ("RANK", "WORLD_SIZE", "LOCAL_RANK")
+        if not all(name in os.environ for name in required):
+            report.update(status="failed", complete=True)
+            report["failures"].append({
+                "phase": "environment",
+                "error": "launch with torchrun and NCCL (RANK, WORLD_SIZE and LOCAL_RANK are required)",
+            })
+            _save_checkpoint(checkpoint, report)
+            return report
+        dist.init_process_group(backend="nccl")
+
+    rank = dist.get_rank()
+    world_size = dist.get_world_size()
+    report["world_size"] = world_size
+    local_rank = int(os.environ.get("LOCAL_RANK", rank))
+    if not torch.cuda.is_available():
+        local_failure = {"phase": "environment", "error": "NCCL qualification requires CUDA"}
+        gathered: list[Any] = [None] * world_size
+        dist.all_gather_object(gathered, local_failure)
+        if rank == 0:
+            report["failures"].extend(gathered)
+        report.update(status="failed", complete=True)
+        _save_checkpoint(checkpoint, report)
+        return report if rank == 0 else {"rank": rank, "status": "failed"}
+    expected_world_size = int(config.get("world_size", 8))
+    if world_size != expected_world_size:
+        local_failure = {
+            "phase": "environment",
+            "error": f"expected {expected_world_size} ranks, got {world_size}",
+        }
+        gathered = [None] * world_size
+        dist.all_gather_object(gathered, local_failure)
+        if rank == 0:
+            report["failures"].extend(gathered)
+        report.update(status="failed", complete=True)
+        _save_checkpoint(checkpoint, report)
+        return report if rank == 0 else {"rank": rank, "status": "failed"}
+
+    device = torch.device("cuda", local_rank)
+    torch.cuda.set_device(device)
+    runtime = {**_device_metadata(device), "rank": rank, "local_rank": local_rank}
+    runtimes = [None] * world_size
+    dist.all_gather_object(runtimes, runtime)
+    report["runtime"] = runtimes[0]
+    report["rank_runtimes"] = runtimes
+    expected_capability = {"H100": [9, 0], "B200": [10, 0]}.get(config.get("gpu"))
+    invalid = [row for row in runtimes if
+               row["capability"] != expected_capability or not row["bf16_supported"] or
+               row["torch"] != "2.13.0+cu130" or row["triton"] != "3.7.1" or row["cuda"] != "13.0"]
+    if invalid or sorted(row["local_rank"] for row in runtimes) != list(range(8)):
+        report["failures"].append({"phase": "environment", "error": "distributed runtime substitution", "runtimes": runtimes})
+        report.update(status="failed", complete=True)
+        _save_checkpoint(checkpoint, report)
+        return report if rank == 0 else {"rank": rank, "status": "failed"}
+    cases = [("small", "small", config)]
+    if bool(config.get("include_primary", False)):
+        ranks = config.get("primary_ranks")
+        if ranks is None:
+            cases.append(("primary", "primary", config))
+        else:
+            if (not isinstance(ranks, list) or not ranks or len(set(ranks)) != len(ranks)
+                or any(type(r) is not int or r not in (1536, 64) for r in ranks)):
+                raise ValueError("primary_ranks must be a unique subset of [1536, 64]")
+            for routing_rank in ranks:
+                primary = {**_model_spec(config, "primary"), "rank": routing_rank}
+                cases.append((f"primary_r{routing_rank}", "primary", {**config, "primary": primary}))
+
+    local_rows = []
+    for index, (label, name, case_config) in enumerate(cases):
+        try:
+            row = _case(case_config, name, int(config.get("seed", 20260827)) + index, device)
+            row["name"] = label
+        except Exception as error:  # noqa: BLE001 - retain every rank's case failure.
+            row = {"name": label, "status": "failed",
+                   "error": f"{type(error).__name__}: {error}", "traceback": traceback.format_exc()}
+        local_rows.append(row)
+        gathered = [None] * world_size
+        dist.all_gather_object(gathered, row)
+        if rank == 0:
+            failed = [item for item in gathered if item.get("status") != "passed"]
+            combined = {**gathered[0], "rank_results": gathered}
+            if failed:
+                combined["status"] = "failed"
+                report["failures"].extend({"case": label, "phase": "distributed", "rank": i,
+                                            "error": item.get("error"), "traceback": item.get("traceback")}
+                                           for i, item in enumerate(gathered) if item.get("status") != "passed")
+            report["cases"].append(combined)
+            _save_checkpoint(checkpoint, report)
+        dist.barrier()
+
+    if rank == 0:
+        report["status"] = "passed" if not report["failures"] else "failed"
+        report["complete"] = True
+        report["passed"] = not bool(report["failures"])
+        _save_checkpoint(checkpoint, report)
+        return _jsonable(report)
+
+    return {"rank": rank, "status": "complete", "cases": local_rows}
+
+
+def _file_checkpoint(path: Path) -> Callable[[dict[str, Any]], None]:
+    def save(report: dict[str, Any]) -> None:
+        temporary = path.with_name(path.name + ".tmp")
+        temporary.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n")
+        temporary.replace(path)
+
+    return save
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--config", type=Path)
+    parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--include-primary", action="store_true")
+    parser.add_argument("--primary-rank", "--rank", dest="primary_rank", type=int)
+    args = parser.parse_args(argv)
+    config = json.loads(args.config.read_text()) if args.config else {}
+    if args.include_primary:
+        config["include_primary"] = True
+    if args.primary_rank is not None:
+        config["primary_rank"] = args.primary_rank
+        config["include_primary"] = True
+    result = run_distributed_qualification(config, _file_checkpoint(args.output))
+    if _rank() == 0:
+        print(json.dumps({"status": result["status"], "failures": len(result["failures"])}))
+    if dist.is_initialized():
+        dist.destroy_process_group()
+    return 0 if result.get("passed", result.get("status") == "complete") else 1
+
+
+if __name__ == "__main__":  # pragma: no cover - exercised by torchrun remotely.
+    raise SystemExit(main())

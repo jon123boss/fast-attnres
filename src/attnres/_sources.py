@@ -7,8 +7,8 @@ from numbers import Real
 
 import torch
 
-
-_SUPPORTED_DTYPES = (torch.bfloat16, torch.float32)
+_EPS = 2**-23
+_SUPPORTED_DTYPE = torch.bfloat16
 _MAX_SOURCES = 129
 _MAX_WIDTH = 8192
 
@@ -58,8 +58,8 @@ def validate_sources(
         raise ValueError(f"query must have {query_ndim} dimensions")
     if any(int(size) < 1 for size in query.shape):
         raise ValueError("query dimensions must be positive")
-    if query.dtype not in _SUPPORTED_DTYPES:
-        raise TypeError("query must use BF16 or FP32 storage")
+    if query.dtype != _SUPPORTED_DTYPE:
+        raise TypeError("query must use BF16 storage")
 
     source_tuple = _normalize_sources(values, "values")
     if not 1 <= len(source_tuple) <= _MAX_SOURCES:
@@ -75,8 +75,8 @@ def validate_sources(
     width = int(first.shape[-1])
     if not 1 <= width <= _MAX_WIDTH:
         raise ValueError(f"supported value envelope is 1<=D<={_MAX_WIDTH}")
-    if first.dtype not in _SUPPORTED_DTYPES:
-        raise TypeError("values must use BF16 or FP32 storage")
+    if first.dtype != _SUPPORTED_DTYPE:
+        raise TypeError("values must use BF16 storage")
     if query.device != first.device:
         raise TypeError("query must be on the values device")
 
