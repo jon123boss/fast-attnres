@@ -485,7 +485,7 @@ def main():
     p.add_argument("--competitor", action="append", default=[])
     p.add_argument("--optimizer-source")
     p.add_argument("--gpus", type=int, choices=[1, 8], default=1)
-    p.add_argument("--timeout", type=int, choices=range(600, 3601), default=2400)
+    p.add_argument("--timeout", type=int, choices=range(600, 10801), default=2400)
     p.add_argument("--gpu", choices=["H100", "B200"], required=True)
     p.add_argument("--name", required=True)
     p.add_argument("--stage", choices=["baseline", "experiments", "confirmation", "reserve"], required=True)

@@ -232,3 +232,9 @@ and eight changed-input CUDA Graph replays, then verifies identical selected
 configurations without retuning in the warm process. `compile_warmup_s` includes
 compilation, correctness checks and warmup; it is not pure cold compilation time.
 The metadata policy follows the pinned [Triton 3.7.1 autotuner](https://github.com/triton-lang/triton/blob/v3.7.1/python/triton/runtime/autotuner.py).
+
+Jobs may request 600–10,800 seconds. Longer model jobs reserve their full bound
+before admission and retain the same stage and total caps; retries remain off.
+Completed cell reports from a timed-out parent remain usable, while unfinished
+cells remain incomplete. Select the first complete attempt, never the fastest
+retry. Modal supports these bounds via its [function timeout](https://modal.com/docs/guide/timeouts).
