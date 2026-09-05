@@ -44,6 +44,11 @@ if SNAPSHOT.is_dir():
 
 def _remote(job):
     faulthandler.enable()
+    allocator = job["config"].get("allocator_config")
+    if allocator is not None:
+        if allocator != "expandable_segments:True":
+            raise ValueError("unsupported diagnostic allocator configuration")
+        os.environ["PYTORCH_ALLOC_CONF"] = allocator
     os.environ["TRITON_CACHE_AUTOTUNING"] = "1" if job["config"].get("cache_autotuning", False) else "0"
     os.environ["TRITON_CACHE_DIR"] = "/tmp/attnres-triton"
     os.environ["TORCHINDUCTOR_CACHE_DIR"] = "/tmp/attnres-inductor"
@@ -96,6 +101,7 @@ def _remote(job):
         nonlocal sequence, cached_results
         sequence += 1
         report["elapsed_s"] = time.monotonic() - started
+        report["allocator_config"] = os.environ.get("PYTORCH_ALLOC_CONF", "default")
         report["compiler_cache"] = {
             "reuse_enabled": cache_enabled, "loaded": cache_loaded,
             "input_archive_sha256": cache_input_sha256,
