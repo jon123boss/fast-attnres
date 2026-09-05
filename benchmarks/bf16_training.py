@@ -325,8 +325,62 @@ def _release_arm_references(*objects):
         pass
 
 
+
+def _state_tensors(value):
+    if isinstance(value, torch.Tensor):
+        yield value
+    elif isinstance(value, Mapping):
+        for item in value.values():
+            yield from _state_tensors(item)
+    elif isinstance(value, (tuple, list)):
+        for item in value:
+            yield from _state_tensors(item)
+
+
+@torch.no_grad()
+def _move_model(model, device):
+    # Parameters keep their identity, so optimizer references stay valid.
+    # Replacing gradient tensors also releases any fused-gradient base storage.
+    for parameter in model.parameters():
+        gradient, parameter.grad = parameter.grad, None
+        parameter.data = parameter.detach().to(device)
+        if gradient is not None:
+            parameter.grad = gradient.detach().to(device)
+    for buffer in model.buffers():
+        buffer.data = buffer.detach().to(device)
+
+
+def _offload_arm(arm):
+    """Park inactive comparison state on CPU outside the timed update."""
+    started = time.perf_counter()
+    arm["optimizer_states_cpu"] = _cpu_optimizer_state(arm["optimizers"])
+    for optimizer in arm["optimizers"]:
+        optimizer.state.clear()
+    _move_model(arm["model"], "cpu")
+    arm["residency_transfer_s"] = arm.get("residency_transfer_s", 0.) + time.perf_counter() - started
+
+
+def _activate_arm(arm):
+    started = time.perf_counter()
+    _move_model(arm["model"], "cuda")
+    for optimizer, state in zip(arm["optimizers"], arm["optimizer_states_cpu"]):
+        optimizer.load_state_dict(state)
+    torch.cuda.synchronize()
+    del arm["optimizer_states_cpu"]
+    arm["residency_transfer_s"] = arm.get("residency_transfer_s", 0.) + time.perf_counter() - started
+
+
 def _discard_qualified_arm(arm):
-    references = [arm.pop(key, None) for key in ("model", "optimizers", "step")]
+    # Compiler closures can retain parameters after a failed arm is removed.
+    # Park their storage before releasing the ordinary Python references.
+    try:
+        for optimizer in arm.get("optimizers", ()):
+            optimizer.state.clear()
+        if arm.get("model") is not None:
+            _move_model(arm["model"], "cpu")
+    except Exception:
+        pass  # Preserve the original device/transfer error.
+    references = [arm.pop(key, None) for key in ("model", "optimizers", "step", "optimizer_states_cpu")]
     _release_arm_references(*references)
 
 
@@ -444,6 +498,7 @@ def _public_arm(arm, status):
         "round_ids": list(range(len(arm.get("samples_ms", ())))),
         "wall_ms": list(arm.get("wall_ms", ())),
         "compile_warmup_s": arm["compile_warmup_s"],
+        "residency_transfer_s": arm.get("residency_transfer_s", 0.),
         "qualification": arm["qualification"],
         "optimizer": arm["optimizer"],
     }
@@ -514,7 +569,7 @@ def training_case(case, backends, config, seed, checkpoint, runtime=None):
         "memory_measurement": (
             "peak_allocated_bytes is per-arm incremental allocation from the pre-arm "
             "global baseline and includes persistent model/optimizer allocation; "
-            "peak_allocated_bytes_global_total is the global allocator total"
+            "peak_allocated_bytes_global_total is the global allocator total; inactive comparison arms reside on CPU"
         ),
         "arms": failures,
     }
@@ -567,6 +622,8 @@ def training_case(case, backends, config, seed, checkpoint, runtime=None):
     import hashlib
     record["input_sha256"] = hashlib.sha256(host_tokens.numpy().tobytes()).hexdigest()
     record["round_order"] = []
+    record["arm_residency"] = "one_gpu_arm"
+    record["comparison_overhead"] = "inactive model/gradient/optimizer state transfers outside CUDA-event step timing; reported separately"
     tokens = torch.empty((accumulation, batch, sequence), device="cuda", dtype=torch.long)
     targets = torch.empty_like(tokens)
     arms = {}
@@ -597,11 +654,10 @@ def training_case(case, backends, config, seed, checkpoint, runtime=None):
             if reason:
                 raise Ineligible(reason)
             print(f"training arm {name} mode={model_config.mode} rank={model_config.rank} seed={seed}", flush=True)
-            # Reset after the previous arm remains resident. This makes the
-            # subsequent peak a delta above the resident-arm global baseline.
+            # Inactive comparison state is on CPU, so this measures one arm.
             torch.cuda.synchronize()
             # Release unused blocks from previous compilation/qualification.
-            # Live arms remain resident; this runs outside all timing rounds.
+            # This runs outside all timing rounds.
             torch.cuda.empty_cache()
             arm_baseline = int(torch.cuda.memory_allocated())
             torch.cuda.reset_peak_memory_stats()
@@ -753,8 +809,11 @@ def training_case(case, backends, config, seed, checkpoint, runtime=None):
                 baseline_gradients = gradients
                 baseline_model_update = model_update
                 baseline_optimizer_update = optimizer_update
+            _offload_arm(arms[name])
             committed = True
         except Exception as exc:
+            if name in arms:
+                _discard_qualified_arm(arms.pop(name))
             failures[name] = _failure_record(
                 phase,
                 exc,
@@ -788,6 +847,7 @@ def training_case(case, backends, config, seed, checkpoint, runtime=None):
 
     begin = torch.cuda.Event(enable_timing=True)
     end = torch.cuda.Event(enable_timing=True)
+    active_name = None
     for iteration in range(config.get("rounds", 120)):
         names = list(arms)
         if not names:
@@ -800,8 +860,16 @@ def training_case(case, backends, config, seed, checkpoint, runtime=None):
             arm = arms.get(name)
             if arm is None:
                 continue
-            started = time.perf_counter()
+            phase = "residency"
             try:
+                if active_name != name:
+                    if active_name in arms:
+                        _offload_arm(arms[active_name])
+                    active_name = None
+                    _activate_arm(arm)
+                    active_name = name
+                phase = "timing"
+                started = time.perf_counter()
                 begin.record()
                 loss = arm["step"](iteration)
                 end.record()
@@ -811,7 +879,12 @@ def training_case(case, backends, config, seed, checkpoint, runtime=None):
                 arm["samples_ms"].append(begin.elapsed_time(end))
                 arm["wall_ms"].append((time.perf_counter() - started) * 1000)
             except Exception as exc:
+                if phase == "residency":
+                    for failed in arms.values():
+                        _discard_qualified_arm(failed)
+                    raise RuntimeError("comparison-state transfer failed") from exc
                 failed_arm = arms.pop(name)
+                active_name = None
                 failures[name] = _failure_record(
                     "timing",
                     exc,
@@ -891,8 +964,13 @@ def run_training(config, checkpoint):
             actual_ids = {name: row.get("content_hash", row.get("sha256")) for name, row in identities.items()}
             if actual_ids != config["expected_identities"]:
                 raise RuntimeError("training inputs differ from frozen primary source identities")
+        from benchmarks.bf16_residency_check import qualify
+        residency_qualification = qualify(backends["candidate"], config)
+        gc.collect()
+        torch.cuda.empty_cache()
         report = {
             "kind": "training",
+            "residency_qualification": residency_qualification,
             "status": "running",
             "config": config,
             "runtime": runtime,

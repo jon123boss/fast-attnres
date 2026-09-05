@@ -197,7 +197,7 @@ def _training(config, root, checkpoint):
                     volume.commit()
                     time.sleep(10)
             result = json.loads(output.read_text()) if output.exists() else {}
-            for field in ("identities", "runtime", "dynamo"):
+            for field in ("identities", "runtime", "dynamo", "residency_qualification"):
                 if field in result:
                     if field == "identities" and field in report and report[field] != result[field]:
                         raise RuntimeError("source identities changed between isolated cells")
@@ -382,6 +382,8 @@ def reserve(job):
     rate = {"H100": .001097, "B200": .001736}[job["config"]["gpu"]] * job["gpu_count"]
     rate += job["cpu_cores"] * .0000131 + (job["memory_mib"] / 1024) * .00000222
     bound = (job["timeout_s"] + 300) * rate * 1.1
+    sys.path.insert(0, str(PROJECT))
+    from benchmarks.bf16_budget import accounted
     with ledger_path.open("r+") as stream:
         fcntl.flock(stream, fcntl.LOCK_EX)
         data = json.load(stream)
@@ -391,11 +393,11 @@ def reserve(job):
         if any(x.get("gpu_count", 1) > 1 or job["gpu_count"] > 1 or
                x["gpu"] == job["config"]["gpu"] for x in active):
             raise RuntimeError("GPU concurrency limit: reconcile the active job before admission")
-        committed = sum(x["reserved_usd"] for x in data["jobs"])
+        committed = float(sum(accounted(x, WORK) for x in data["jobs"]))
         if committed + bound > data["cap_usd"]:
             raise RuntimeError("campaign spending cap would be exceeded")
         stages = {"baseline": 80, "experiments": 220, "confirmation": 140, "reserve": 60}
-        spent = sum(x["reserved_usd"] for x in data["jobs"] if x["stage"] == job["stage"])
+        spent = float(sum(accounted(x, WORK) for x in data["jobs"] if x["stage"] == job["stage"]))
         if spent + bound > stages[job["stage"]]:
             raise RuntimeError("stage reservation cap would be exceeded")
         # Reservations are never automatically refunded, including failed jobs.

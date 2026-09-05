@@ -44,6 +44,12 @@ def _contract_errors(report, result, required_rounds):
         errors.append("result seed was not requested")
     if config.get("rounds") != 120 or required_rounds != 120 or config.get("warmups") != 10:
         errors.append("primary timing requires 10 warmups and 120 rounds")
+    residency = report.get("residency_qualification", {})
+    if (residency.get("status") != "passed" or residency.get("updates") != 8 or
+        residency.get("exact") is not True or residency.get("parameter_identities_preserved") is not True):
+        errors.append("missing exact comparison-state transfer qualification")
+    if result.get("arm_residency") != "one_gpu_arm":
+        errors.append("comparison residency policy changed or missing")
     if result.get("grad_clip") != 1.0 or result.get("loss_dtype") != "bfloat16":
         errors.append("loss precision or gradient clipping changed")
     if result.get("qualification_tolerances") != {"rtol": .05, "atol": .05}:

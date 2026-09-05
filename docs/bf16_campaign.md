@@ -245,3 +245,13 @@ Unused allocator blocks are released before constructing each model arm,
 outside timing. Allocated, reserved, and driver-free memory are recorded
 separately. A resource failure remains unresolved and cannot remove an eligible
 alternative from a strongest-alternative claim.
+
+The final comparison keeps only one model arm's parameters, gradients, and
+optimizer state on GPU. Inactive comparison state resides on CPU; no residual
+source state is reused. Transfers between comparison arms are bookkeeping
+outside the CUDA-event update and are reported as `residency_transfer_s`. Each
+timed update still includes its input copies and all training work listed above.
+Before model measurements, an eight-update check compares the transferred model
+and original Muon+AdamW state against an uninterrupted control, preserving
+Parameter identities and checking that transfers do not repeatedly recompile
+the model. These transfer costs are not production training latency.

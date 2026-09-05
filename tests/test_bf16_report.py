@@ -380,6 +380,8 @@ def _primary_report(gpu, mode, rank, seed):
         for name in ("release", "torch_compile", "fla", "liger", "legacy", "catswe", "hydra")})
     report["identities"]["optimizer"] = {
         "sha256": "optimizer-v1", "implementation": "Muon+AdamW(configured)"}
+    report["residency_qualification"] = {"status": "passed", "updates": 8, "exact": True,
+                                         "parameter_identities_preserved": True}
     result = report["results"][0]
     result["model"] = {**bf16_report.MODEL, "mode": mode, "rank": rank}
     result["case"]["model"] = dict(result["model"])
@@ -388,7 +390,7 @@ def _primary_report(gpu, mode, rank, seed):
                          "capability": {"H100": [9, 0], "B200": [10, 0]}[gpu], "cache_autotuning": True}
     result["input_sha256"] = "a" * 64
     result["round_order"] = [{"round": i, "input": i % 8, "backends": list(arms) if i % 2 == 0 else list(reversed(arms))} for i in range(120)]
-    result.update(grad_clip=1.0, loss_dtype="bfloat16",
+    result.update(grad_clip=1.0, loss_dtype="bfloat16", arm_residency="one_gpu_arm",
                   qualification_tolerances={"rtol": .05, "atol": .05},
                   requested_backends=list(bf16_report.BACKENDS))
     report["identities"]["training_fixture"] = {"sha256": "fixture-v1"}
@@ -489,3 +491,11 @@ def test_primary_rejects_unbalanced_backend_order():
     for row in result["round_order"]:
         row["backends"] = list(result["arms"])
     assert "backend pairs do not have balanced first/second exposure" in bf16_report._contract_errors(report, result, 120)
+
+
+@pytest.mark.parametrize("field", ["residency_qualification", "arm_residency"])
+def test_primary_requires_the_qualified_residency_policy(field):
+    report = _primary_report("H100", "full", 16, bf16_report.SEEDS[0])
+    result = report["results"][0]
+    (report if field == "residency_qualification" else result).pop(field)
+    assert bf16_report._contract_errors(report, result, 120)
