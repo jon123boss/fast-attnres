@@ -189,7 +189,9 @@ def _training(config, root, checkpoint):
             config_file.write_text(json.dumps(specification) + "\n")
             report["in_progress"] = {"case": case, "seed": seed}
             checkpoint(report)
-            command = [sys.executable, "-X", "faulthandler", "-m", "benchmarks.bf16_training",
+            entry = ("benchmarks.bf16_memory_check" if "activation_memory_budget" in config
+                     else "benchmarks.bf16_training")
+            command = [sys.executable, "-X", "faulthandler", "-m", entry,
                        "--config", str(config_file), "--output", str(output)]
             with (cell / "process.log").open("w") as log:
                 process = subprocess.Popen(command, stdout=log, stderr=subprocess.STDOUT)
