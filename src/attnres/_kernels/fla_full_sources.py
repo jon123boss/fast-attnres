@@ -26,6 +26,10 @@ source-list ABI:
 * the sliced key derivative is folded into one full-width value gradient
   before the BF16 store.
 
+Routing coordinates occupy the leading internal lanes, so masking follows the
+rank directly. Loads and stores map those lanes to the physical tail without
+copying or padding source tensors. Full-rank tiles retain their natural order.
+
 The same source kernels handle every supported width, rank, and physical
 layout. ``fixed_tail_sources.py`` supplies the PyTorch autograd boundary.
 """
@@ -316,8 +320,11 @@ if triton is not None:
         source_count64 = tl.cast(sources, tl.int64)
         d_offsets = tl.arange(0, BLOCK_D).to(tl.int64)
         d_mask = d_offsets < D
-        key_mask = d_mask & (d_offsets >= D - R)
-        key_offsets = d_offsets - (D - R)
+        physical_offsets = d_offsets if R == D else tl.where(
+            d_offsets < R, D - R + d_offsets, d_offsets - R
+        )
+        key_mask = d_mask & (d_offsets < R)
+        key_offsets = d_offsets
         row_valid = row < count64
         eps_f32 = tl.cast(eps, tl.float32)
         scale_f32 = tl.cast(scale, tl.float32)
@@ -344,13 +351,13 @@ if triton is not None:
                 FEATURE_STRIDES,
                 L2,
             )
-            value_ptr = value_base[:, None] + d_offsets[None, :] * value_stride[:, None]
+            value_ptr = value_base[:, None] + physical_offsets[None, :] * value_stride[:, None]
             value = tl.load(
                 value_ptr,
                 mask=source_mask[:, None] & row_valid & d_mask[None, :],
                 other=0.0,
             ).to(tl.float32)
-            inverse_rms = tl.rsqrt(tl.sum(tl.where(d_offsets[None, :] >= D - R, value * value, 0.0), axis=1) / R + eps_f32)
+            inverse_rms = tl.rsqrt(tl.sum(tl.where((R == D) | (d_offsets[None, :] < R), value * value, 0.0), axis=1) / R + eps_f32)
             saved_score = (
                 tl.sum(value * query_value[None, :], axis=1)
                 * inverse_rms
@@ -379,14 +386,14 @@ if triton is not None:
         tl.store(saved_lse + row, running_max + tl.log(running_denom), mask=row_valid)
         if CHECKPOINT:
             tl.store(
-                saved_mixed + row * D + d_offsets,
+                saved_mixed + row * D + physical_offsets,
                 mixed,
                 mask=row_valid & d_mask,
             )
         output_ptr = (
             output
             + row * tl.cast(OUTPUT_ROW_STRIDE, tl.int64)
-            + d_offsets * tl.cast(OUTPUT_D_STRIDE, tl.int64)
+            + physical_offsets * tl.cast(OUTPUT_D_STRIDE, tl.int64)
         )
         tl.store(output_ptr, mixed, mask=row_valid & d_mask)
 
@@ -437,8 +444,11 @@ if triton is not None:
         source_count64 = tl.cast(sources, tl.int64)
         d_offsets = tl.arange(0, BLOCK_D).to(tl.int64)
         d_mask = d_offsets < D
-        key_mask = d_mask & (d_offsets >= D - R)
-        key_offsets = d_offsets - (D - R)
+        physical_offsets = d_offsets if R == D else tl.where(
+            d_offsets < R, D - R + d_offsets, d_offsets - R
+        )
+        key_mask = d_mask & (d_offsets < R)
+        key_offsets = d_offsets
         row_valid = row < count64
         scale_f32 = tl.cast(scale, tl.float32)
         query_value = tl.load(
@@ -450,12 +460,12 @@ if triton is not None:
             grad = tl.load(
                 grad_output
                 + row * tl.cast(GRAD_OUTPUT_ROW_STRIDE, tl.int64)
-                + d_offsets * tl.cast(GRAD_OUTPUT_D_STRIDE, tl.int64),
+                + physical_offsets * tl.cast(GRAD_OUTPUT_D_STRIDE, tl.int64),
                 mask=row_valid & d_mask,
                 other=0.0,
             ).to(tl.float32)
             mixed = tl.load(
-                saved_mixed + row * D + d_offsets,
+                saved_mixed + row * D + physical_offsets,
                 mask=row_valid & d_mask,
                 other=0.0,
             ).to(tl.float32)
@@ -479,7 +489,7 @@ if triton is not None:
                 )
                 value_ptr = (
                     value_base[:, None]
-                    + d_offsets[None, :] * value_stride[:, None]
+                    + physical_offsets[None, :] * value_stride[:, None]
                 )
                 value = tl.load(
                     value_ptr,
@@ -499,7 +509,7 @@ if triton is not None:
             grad = tl.load(
                 grad_output
                 + row * tl.cast(GRAD_OUTPUT_ROW_STRIDE, tl.int64)
-                + d_offsets * tl.cast(GRAD_OUTPUT_D_STRIDE, tl.int64),
+                + physical_offsets * tl.cast(GRAD_OUTPUT_D_STRIDE, tl.int64),
                 mask=row_valid & d_mask,
                 other=0.0,
             ).to(tl.float32)
@@ -529,7 +539,7 @@ if triton is not None:
                 GRAD_VALUE_FEATURE_STRIDES,
                 L2,
             )
-            value_ptr = value_base[:, None] + d_offsets[None, :] * value_stride[:, None]
+            value_ptr = value_base[:, None] + physical_offsets[None, :] * value_stride[:, None]
             value = tl.load(
                 value_ptr,
                 mask=source_mask[:, None] & row_valid & d_mask[None, :],
@@ -551,7 +561,7 @@ if triton is not None:
             dweight = tl.sum(value * grad[None, :], axis=1)
             dscore = probability * (dweight - delta)
             scaled_dscore = dscore * scale_f32
-            normalized_key = tl.where(d_offsets[None, :] >= D - R, value * inverse_rms[:, None], 0.0)
+            normalized_key = tl.where((R == D) | (d_offsets[None, :] < R), value * inverse_rms[:, None], 0.0)
             grad_query += tl.sum(
                 scaled_dscore[:, None] * normalized_key,
                 axis=0,
@@ -564,7 +574,7 @@ if triton is not None:
             grad_value = probability[:, None] * grad[None, :] + grad_key
             grad_ptr = (
                 grad_value_base[:, None]
-                + d_offsets[None, :] * grad_value_stride[:, None]
+                + physical_offsets[None, :] * grad_value_stride[:, None]
             )
             tl.store(
                 grad_ptr,
