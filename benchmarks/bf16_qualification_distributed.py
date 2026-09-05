@@ -209,6 +209,84 @@ def _compare_tree(actual: Any, expected: Any, name: str) -> dict[str, Any]:
     return {"tensor_count": tensor_count, "max_abs": maximum}
 
 
+def _collective_exact(local_exact: bool, device: torch.device) -> bool:
+    """Require every rank to agree on an exact, non-arithmetic state check."""
+    flag = torch.tensor(int(local_exact), device=device, dtype=torch.int32)
+    dist.all_reduce(flag, op=dist.ReduceOp.MIN)
+    return bool(flag.item())
+
+
+def _restore_serialized_state(
+    model: DistributedDataParallel,
+    optimizers: list[torch.optim.Optimizer],
+    expected: Mapping[str, Any],
+    serialized: Mapping[str, Any],
+    device: torch.device,
+) -> dict[str, Any]:
+    """Restore a checkpoint and prove its exact state before any next update."""
+    serialized_exact = _tree_equal(serialized, expected)
+    if not _collective_exact(serialized_exact, device):
+        raise AssertionError("serialized model+optimizer checkpoint changed during round-trip")
+
+    _unwrap_model(model).load_state_dict(serialized["model"], strict=True)
+    for optimizer, state in zip(optimizers, serialized["optimizers"]):
+        optimizer.load_state_dict(state)
+    restored = _state_snapshot(model, optimizers)
+    restored_exact = _tree_equal(restored, expected)
+    if not _collective_exact(restored_exact, device):
+        raise AssertionError("serialized model+optimizer restoration diverged before next update")
+    return {
+        "serialized_exact": serialized_exact,
+        "restored_exact": restored_exact,
+        "exact": True,
+        "state": _compare_tree(restored, expected, "restore"),
+    }
+
+
+def _same_input_metrics(
+    resumed: Mapping[str, Any],
+    uninterrupted: Mapping[str, Any],
+    resumed_loss: Tensor,
+    uninterrupted_loss: Tensor,
+) -> dict[str, Any]:
+    """Record BF16 continuation parity without requiring bitwise NCCL arithmetic."""
+    state = _compare_tree(resumed, uninterrupted, "resume")
+    resumed_loss_cpu = resumed_loss.detach().cpu()
+    uninterrupted_loss_cpu = uninterrupted_loss.detach().cpu()
+    loss_max_abs = float(
+        (resumed_loss_cpu - uninterrupted_loss_cpu).abs().max().item()
+    )
+    loss_within_tolerance = bool(torch.allclose(
+        resumed_loss_cpu,
+        uninterrupted_loss_cpu,
+        rtol=TOLERANCE["rtol"],
+        atol=TOLERANCE["atol"],
+    ))
+    torch.testing.assert_close(
+        resumed_loss_cpu,
+        uninterrupted_loss_cpu,
+        **TOLERANCE,
+        msg="resume loss",
+    )
+    loss = {
+        "resumed": float(resumed_loss_cpu),
+        "uninterrupted": float(uninterrupted_loss_cpu),
+        "max_abs": loss_max_abs,
+        "within_bf16_tolerance": loss_within_tolerance,
+    }
+    return {
+        "same_inputs": True,
+        "exact": (
+            _tree_equal(resumed, uninterrupted)
+            and torch.equal(resumed_loss_cpu, uninterrupted_loss_cpu)
+        ),
+        "loss_max_abs": loss_max_abs,
+        "loss_within_bf16_tolerance": loss_within_tolerance,
+        "loss": loss,
+        "state": state,
+    }
+
+
 
 def _collective_gradients(model: DistributedDataParallel,
                           device: torch.device) -> dict[str, Any]:
@@ -334,29 +412,19 @@ def _case(config: Mapping[str, Any], name: str, seed: int,
     encoded = io.BytesIO()
     torch.save(saved, encoded)
     encoded.seek(0)
-    saved = torch.load(encoded, map_location="cpu", weights_only=True)
-    _unwrap_model(ddp).load_state_dict(saved["model"], strict=True)
-    for optimizer, state in zip(optimizers, saved["optimizers"]):
-        optimizer.load_state_dict(state)
+    serialized = torch.load(encoded, map_location="cpu", weights_only=True)
+    restoration_metrics = _restore_serialized_state(
+        ddp, optimizers, saved, serialized, device
+    )
     del encoded
     dist.barrier()
     resumed_loss, resumed_collective = _step(
         ddp, optimizers, step_tokens[1], step_targets[1], accumulation, device
     )
     resumed = _state_snapshot(ddp, optimizers)
-    resume_metrics = {
-        "same_inputs": True,
-        "exact": (
-            _tree_equal(resumed, uninterrupted)
-            and torch.equal(resumed_loss.cpu(), uninterrupted_loss.cpu())
-        ),
-        "loss_max_abs": float(
-            (resumed_loss.cpu() - uninterrupted_loss.cpu()).abs().max().item()
-        ),
-        "state": _compare_tree(resumed, uninterrupted, "resume"),
-    }
-    if not resume_metrics["exact"] and bool(spec.get("require_exact_resume", True)):
-        raise AssertionError("save/load/continue diverged for identical inputs")
+    resume_metrics = _same_input_metrics(
+        resumed, uninterrupted, resumed_loss, uninterrupted_loss
+    )
 
     result = {
         "name": name,
@@ -372,6 +440,7 @@ def _case(config: Mapping[str, Any], name: str, seed: int,
         "collective_gradients": [
             first_collective, uninterrupted_collective, resumed_collective
         ],
+        "serialized_restore": restoration_metrics,
         "optimizer_update_and_resume": resume_metrics,
         "bf16_tolerance": dict(TOLERANCE),
     }

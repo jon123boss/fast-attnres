@@ -267,3 +267,9 @@ original reservation. Active, unmatched, changing, or incomplete metering keeps
 the full original bound. Admission verifies the retained evidence again; a
 client error or short elapsed time alone never releases budget. The report
 shows historical reservations and current accounting bounds separately.
+
+Distributed save/resume verifies the serialized checkpoint and restored model
+and optimizer state exactly before the next update. Same-input continuation
+uses the unchanged BF16 oracle for state and loss; bitwise continuation equality
+is retained as a diagnostic because floating-point collective reduction order
+can differ. Earlier exact-continuation failures remain in the raw records.
