@@ -1,5 +1,9 @@
 # Release artifacts
 
+This page describes the v1.0.0 release workflow and its historical evidence.
+The CUDA BF16 continuation remains an unpublished draft; its current
+measurement and reproduction instructions are in the [campaign runbook](bf16_campaign.md).
+
 The release workflow builds four assets from the tagged source tree:
 
 * the installable wheel;

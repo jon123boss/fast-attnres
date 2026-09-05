@@ -226,6 +226,10 @@ def run_operator(config, checkpoint):
               "results": [], "status": "running"}
     checkpoint(report)
     for case in config["cases"]:
+        # Shapes are independent experiments. Clear Dynamo's per-code-object
+        # specialization limit between them; retain the disk compiler cache.
+        # This runs before qualification, warmup, capture and timing.
+        torch.compiler.reset()
         for seed in config["seeds"]:
             report["in_progress"] = {"case": case, "seed": seed}
             checkpoint(report)
