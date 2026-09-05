@@ -88,6 +88,28 @@ def test_original_distributed_contract_remains_frozen():
     assert distributed.PRIMARY_DEFAULT["activation_checkpointing"] is False
 
 
+def test_chunked_comparison_checks_every_element_and_keeps_oracle(monkeypatch):
+    monkeypatch.setattr(distributed, "_tensor_chunks", lambda a, b: zip(a.split(2), b.split(2)))
+    expected = torch.ones(5, dtype=torch.bfloat16)
+    actual = expected.clone()
+    actual[-1] += .03125
+    assert not distributed._tree_equal(actual, expected)
+    assert distributed._compare_tree(actual, expected, "chunked") == {
+        "tensor_count": 1, "max_abs": .03125}
+    actual[-1] = 4.
+    with pytest.raises(AssertionError):
+        distributed._compare_tree(actual, expected, "chunked")
+    actual[-1] = float("nan")
+    assert not distributed._tree_equal(actual, actual.clone())
+
+
+def test_checkpoint_clone_owns_cpu_storage():
+    original = torch.ones(3, dtype=torch.bfloat16)
+    snapshot = distributed._clone_cpu(original)
+    original.zero_()
+    assert torch.equal(snapshot, torch.ones_like(snapshot))
+
+
 def test_restore_rejects_optimizer_that_did_not_load(monkeypatch):
     model, optimizer = _optimizer_state()
     wrapped = SimpleNamespace(module=model)

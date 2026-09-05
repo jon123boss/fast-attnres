@@ -140,7 +140,7 @@ def _device_metadata(device: torch.device) -> dict[str, Any]:
 
 def _clone_cpu(value: Any) -> Any:
     if isinstance(value, Tensor):
-        return value.detach().cpu().clone()
+        return value.detach().to("cpu", copy=True)
     if isinstance(value, Mapping):
         return {key: _clone_cpu(item) for key, item in value.items()}
     if isinstance(value, list):
@@ -164,6 +164,20 @@ def _state_snapshot(model: DistributedDataParallel,
     }
 
 
+def _tensor_chunks(actual: Tensor, expected: Tensor):
+    # Checkpoint tensors stay on CPU; only bounded comparison tiles visit the
+    # local rank's GPU. This avoids large CPU arithmetic temporaries per rank.
+    use_cuda = (actual.device.type == expected.device.type == "cpu"
+                and actual.is_contiguous() and expected.is_contiguous()
+                and actual.numel() >= 2**20 and torch.cuda.is_available())
+    if not use_cuda:
+        yield actual, expected
+        return
+    left, right = actual.view(-1), expected.view(-1)
+    for start in range(0, actual.numel(), 2**22):
+        yield left[start:start + 2**22].cuda(), right[start:start + 2**22].cuda()
+
+
 def _tree_equal(actual: Any, expected: Any) -> bool:
     if isinstance(actual, Mapping) and isinstance(expected, Mapping):
         return actual.keys() == expected.keys() and all(
@@ -174,8 +188,10 @@ def _tree_equal(actual: Any, expected: Any) -> bool:
             _tree_equal(left, right) for left, right in zip(actual, expected)
         )
     if isinstance(actual, Tensor) and isinstance(expected, Tensor):
-        return (actual.dtype == expected.dtype and actual.layout == expected.layout
-                and torch.equal(actual, expected) and bool(torch.isfinite(actual).all()))
+        return (actual.shape == expected.shape and actual.dtype == expected.dtype
+                and actual.layout == expected.layout and all(
+                    torch.equal(a, b) and bool(torch.isfinite(a).all())
+                    for a, b in _tensor_chunks(actual, expected)))
     return actual == expected
 
 
@@ -198,14 +214,15 @@ def _compare_tree(actual: Any, expected: Any, name: str) -> dict[str, Any]:
                 visit(left_item, right_item, f"{path}[{index}]")
             return
         if isinstance(left, Tensor) and isinstance(right, Tensor):
-            if _tree_equal(left, right):
-                tensor_count += 1
-                return
-            if not torch.isfinite(left).all().item() or not torch.isfinite(right).all().item():
-                raise AssertionError(f"non-finite {name}:{path}")
-            torch.testing.assert_close(left, right, **TOLERANCE, msg=f"{name}:{path}")
+            if left.shape != right.shape or left.dtype != right.dtype or left.layout != right.layout:
+                raise AssertionError(f"tensor metadata changed {name}:{path}")
+            for a, b in _tensor_chunks(left, right):
+                if not torch.isfinite(a).all().item() or not torch.isfinite(b).all().item():
+                    raise AssertionError(f"non-finite {name}:{path}")
+                if not torch.equal(a, b):
+                    torch.testing.assert_close(a, b, **TOLERANCE, msg=f"{name}:{path}")
+                    maximum = max(maximum, float((a.float() - b.float()).abs().max().item()))
             tensor_count += 1
-            maximum = max(maximum, float((left.float() - right.float()).abs().max().item()))
             return
         if left != right:
             raise AssertionError(f"{name}:{path} values differ")

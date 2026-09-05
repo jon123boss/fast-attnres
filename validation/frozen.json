@@ -16,7 +16,7 @@
   "benchmarks/bf16_model.py": "5bee20cfd28475a120fef70560643cb150a7ce4eaf10ed2093108bc6b4757892",
   "benchmarks/bf16_primary.py": "7099f8cc58489938daed9b864830f915cb12be2864e4f6532b34046396fa5f5e",
   "benchmarks/bf16_qualification.py": "76969b170fe6baf96f5f69e9c97a61737289cf53c72b46cc22261684321eaf98",
-  "benchmarks/bf16_qualification_distributed.py": "81ed7390324c25f66692af0f93b3ecfb22766ba94d0fb7b7e1596996ac96559a",
+  "benchmarks/bf16_qualification_distributed.py": "cb3f1c6fc9d639ae5328527f5a923f37e0dfdbaf9c714d6f222f251de265539e",
   "benchmarks/bf16_report.py": "bf52415d7b75040634202915952f9ecf3578107f5ce1cb32bcdf6f7519700173",
   "benchmarks/bf16_resident_diagnostic.py": "89b1777c9b598893aad4fcdff36566448205f32ed330104c59e5ae441be5d937",
   "benchmarks/bf16_training.py": "d7a1dd612172c08a1964ef94abb79b712dd4ef2b9e51573d358c64c7d6b11037",
