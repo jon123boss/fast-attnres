@@ -353,9 +353,11 @@ if triton is not None:
     ):
         """Select a source base while retaining its physical feature stride."""
 
-        pointer = values[0]
-        row_stride = tl.cast(row_strides[0], tl.int64)
-        feature_stride = tl.cast(feature_strides[0], tl.int64)
+        # Preserve the source tile even when the selector has one pointer.
+        offsets = tl.full(source.shape, 0, tl.int64)
+        pointer = values[0] + offsets
+        row_stride = offsets + tl.cast(row_strides[0], tl.int64)
+        feature_stride = offsets + tl.cast(feature_strides[0], tl.int64)
         for source_index in tl.static_range(1, L2):
             selected = source == source_index
             pointer = tl.where(selected, values[source_index], pointer)

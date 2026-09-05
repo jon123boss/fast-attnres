@@ -466,46 +466,43 @@ def run_distributed_qualification(
         report.update(status="failed", complete=True)
         _save_checkpoint(checkpoint, report)
         return report if rank == 0 else {"rank": rank, "status": "failed"}
-    names = ["small"]
+    cases = [("small", "small", config)]
     if bool(config.get("include_primary", False)):
-        names.append("primary")
+        ranks = config.get("primary_ranks")
+        if ranks is None:
+            cases.append(("primary", "primary", config))
+        else:
+            if (not isinstance(ranks, list) or not ranks or len(set(ranks)) != len(ranks)
+                or any(type(r) is not int or r not in (1536, 64) for r in ranks)):
+                raise ValueError("primary_ranks must be a unique subset of [1536, 64]")
+            for routing_rank in ranks:
+                primary = {**_model_spec(config, "primary"), "rank": routing_rank}
+                cases.append((f"primary_r{routing_rank}", "primary", {**config, "primary": primary}))
 
     local_rows = []
-    for index, name in enumerate(names):
+    for index, (label, name, case_config) in enumerate(cases):
         try:
-            row = _case(config, name, int(config.get("seed", 20260827)) + index, device)
-        except Exception as error:  # noqa: BLE001 - record every rank's case failure.
-            row = {
-                "name": name,
-                "status": "failed",
-                "error": f"{type(error).__name__}: {error}",
-                "traceback": traceback.format_exc(),
-            }
+            row = _case(case_config, name, int(config.get("seed", 20260827)) + index, device)
+            row["name"] = label
+        except Exception as error:  # noqa: BLE001 - retain every rank's case failure.
+            row = {"name": label, "status": "failed",
+                   "error": f"{type(error).__name__}: {error}", "traceback": traceback.format_exc()}
         local_rows.append(row)
-        # All ranks execute the same case order.  This barrier keeps the
-        # single-model memory release synchronized before the next case.
+        gathered = [None] * world_size
+        dist.all_gather_object(gathered, row)
+        if rank == 0:
+            failed = [item for item in gathered if item.get("status") != "passed"]
+            combined = {**gathered[0], "rank_results": gathered}
+            if failed:
+                combined["status"] = "failed"
+                report["failures"].extend({"case": label, "phase": "distributed", "rank": i,
+                                            "error": item.get("error"), "traceback": item.get("traceback")}
+                                           for i, item in enumerate(gathered) if item.get("status") != "passed")
+            report["cases"].append(combined)
+            _save_checkpoint(checkpoint, report)
         dist.barrier()
 
-    gathered_rows: list[Any] = [None] * world_size
-    dist.all_gather_object(gathered_rows, local_rows)
     if rank == 0:
-        for index, name in enumerate(names):
-            rows = [items[index] for items in gathered_rows]
-            failed = [row for row in rows if row.get("status") != "passed"]
-            if failed:
-                row = {"name": name, "status": "failed", "rank_results": rows}
-                report["failures"].extend({
-                    "case": name,
-                    "phase": "distributed",
-                    "rank": rank_result,
-                    "error": rank_result.get("error", "distributed case failed"),
-                    "traceback": rank_result.get("traceback"),
-                } for rank_result in failed)
-            else:
-                row = dict(rows[0])
-                row["rank_results"] = rows
-            report["cases"].append(row)
-            _save_checkpoint(checkpoint, report)
         report["status"] = "passed" if not report["failures"] else "failed"
         report["complete"] = True
         report["passed"] = not bool(report["failures"])
