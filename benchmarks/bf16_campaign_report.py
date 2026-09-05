@@ -69,6 +69,20 @@ def render(summary, ledger, *, summary_link="primary-summary.json", ledger_link=
                      f"{number(row.get('ratio'))} | {interval(row)} | {text(row.get('nonregression_pass'))} |")
     if not cells:
         lines.append("| No completed comparisons | | | | | | unknown |")
+    lines += ["", "## Operator, setup and memory", "",
+              "Each pair is candidate / strongest correct alternative. Setup includes compilation, correctness qualification and warmup; it is not a cold-compilation-only measurement. Memory is global peak allocated GPU memory in decimal GB. Transfer totals between inactive comparison models remain separate in the JSON.", "",
+              "| Configuration | Operator ms | Setup s | Peak allocated GB |",
+              "| --- | ---: | ---: | ---: |"]
+    for row in sorted(cells, key=lambda x: x.get("cell", "")):
+        metadata = row.get("measurements", {})
+        pair = [metadata.get(name, {}) for name in (summary.get("candidate_name", "candidate"),
+                                                   row.get("strongest_correct_alternative"))]
+        fields = []
+        for key, divisor in (("operator_mean_ms", 1), ("compile_qualification_warmup_s", 1),
+                             ("peak_allocated_bytes_global_total", 1e9)):
+            fields.append(" / ".join(number(arm[key] / divisor) if type(arm.get(key)) in (int, float)
+                                      else "unknown" for arm in pair))
+        lines.append("| " + " | ".join([text(row.get("cell")), *fields]) + " |")
     gates = rows(summary, "adjacent_ranks")
     failed = [row for row in gates if row.get("pass") is not True]
     lines += ["", "## Adjacent ranks", "",

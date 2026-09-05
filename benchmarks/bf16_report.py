@@ -265,6 +265,15 @@ def summarize(paths, *, candidate="candidate", required_rounds=120, contract=Non
         cells.append({"cell": label, "strongest_correct_alternative": strongest,
                       "candidate_ms": float(np.mean(eligible[candidate]["samples_ms"])),
                       "alternative_ms": float(np.mean(alternatives[strongest]["samples_ms"]))})
+        operator = (result.get("operator_qualification", {}).get("result") or {}).get("arms", {})
+        cells[-1]["measurements"] = {
+            name: {"operator_mean_ms": (float(np.mean(operator[name]["samples_ms"]))
+                                       if operator.get(name, {}).get("samples_ms") else None),
+                   "compile_qualification_warmup_s": arm.get("compile_warmup_s"),
+                   "peak_allocated_bytes_global_total": arm.get("peak_allocated_bytes_global_total"),
+                   "peak_allocated_bytes_incremental": arm.get("peak_allocated_bytes_incremental"),
+                   "comparison_state_transfer_s": arm.get("residency_transfer_s")}
+            for name, arm in eligible.items()}
 
     adjacent = []
     for gpu in ("H100", "B200"):
@@ -289,7 +298,7 @@ def summarize(paths, *, candidate="candidate", required_rounds=120, contract=Non
     monotonic = [{"comparison": n, **intervals[n],
                   "pass": intervals[n]["ci95_simultaneous"][1] <= 1.005} for n in adjacent]
     gain = math.exp(np.mean([math.log(1 / cell["ratio"]) for cell in cells])) if cells else None
-    return {"inputs": inputs, "candidate_identity": next(iter(identities)),
+    return {"inputs": inputs, "candidate_name": candidate, "candidate_identity": next(iter(identities)),
             "contract": contract, "input_identities": input_identities,
             "confidence_family": "all reported backend and adjacent-rank contrasts; seeds unpooled",
             "geometric_mean_speedup_observed_cells": gain, "cells": cells,
