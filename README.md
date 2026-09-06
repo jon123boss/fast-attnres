@@ -135,7 +135,7 @@ compiled replay, optimizer updates, and save/resume. See
 [`docs/validation.md`](docs/validation.md).
 
 The primary timing campaign uses L24/D1536/H24/FFN4224, vocabulary 100277,
-context 2048, batch 4, accumulation 4, and eight Blocks. It uses BF16
+context 1024, batch 4, accumulation 4, and eight Blocks. It uses BF16
 cross-entropy, gradient clipping 1.0, the original Muon plus AdamW implementation,
 no activation checkpointing, three seeds, and 120 paired timing rounds. Reports
 retain failed, incomplete, and inconclusive results alongside verified gains.

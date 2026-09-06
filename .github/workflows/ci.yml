@@ -240,11 +240,16 @@ jobs:
           package_file = Path(attnres.__file__).resolve()
           assert install_dir in package_file.parents, package_file
           assert importlib.metadata.version("fast-attnres") == "1.0.0"
-          required_exports = {"attnres", "reference_attnres", "LearnedQuery", "__version__"}
+          required_exports = {"attnres", "LearnedQuery", "__version__"}
           assert required_exports <= set(attnres.__all__)
           values = torch.randn(2, 1, 4)
           query = torch.randn(4)
-          assert attnres.attnres(values, query).shape == (1, 4)
+          try:
+              attnres.attnres(values, query)
+          except RuntimeError as error:
+              assert "CUDA" in str(error), error
+          else:
+              raise AssertionError("CPU execution unexpectedly succeeded")
           PY
             )
           done

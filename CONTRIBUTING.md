@@ -66,7 +66,7 @@ establish a universal performance guarantee.
 Development screens may use a small configuration search and stop after the
 first failure. Restore the production search and run the declared confirmation
 matrix before publishing its performance claims. See the [runbook](docs/bf16_campaign.md)
-for single-GPU admission, stage budgets, immutable snapshots, and reproduction.
+for GPU admission, stage budgets, immutable snapshots, and reproduction.
 
 ## Pull requests
 

@@ -9,6 +9,19 @@ import json
 from pathlib import Path
 
 
+def check_concurrency(job, rows):
+    """Development is exclusive; independent final matrix jobs share eight slots."""
+    if job["gpu_count"] != 1:
+        raise ValueError("each measurement job requires exactly one GPU")
+    active = [row for row in rows if row.get("slot_held")
+              or row["status"] in ("reserved", "running")]
+    if active and (not job.get("matrix_sweep")
+                   or any(not row.get("matrix_sweep") for row in active)):
+        raise RuntimeError("development GPU jobs must run alone")
+    if len(active) >= 8:
+        raise RuntimeError("final matrix GPU concurrency limit is eight")
+
+
 def money(value):
     result = Decimal(str(value))
     if not result.is_finite() or result < 0:

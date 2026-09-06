@@ -14,7 +14,7 @@
     "heads": 24,
     "ffn": 4224,
     "vocab": 100277,
-    "context": 2048,
+    "context": 1024,
     "block_count": 8,
     "activation_checkpointing": false,
     "rope_theta": 500000.0,
@@ -24,7 +24,7 @@
     "attnres_scale": 1.0
   },
   "batch": 4,
-  "sequence": 2048,
+  "sequence": 1024,
   "accumulation": 4,
   "ranks": [
     1536,
@@ -51,7 +51,7 @@
     "rtol": 0.05
   },
   "monotonic_ratio_upper_bound": 1.005,
-  "note": "Original research model does not activation-checkpoint layers. Checkpointing is qualified separately; earlier activation-checkpointed screens are not primary confirmation. Gradient clipping at 1.0 and BF16 cross-entropy match the original loop arithmetic; data/I/O logging and scheduler host updates are excluded, and pinned input copies are included.",
+  "note": "Final matrix uses context 1024 on both GPUs and every arm, as authorized on 2026-09-06; earlier context-2048 measurements remain historical. Original research model does not activation-checkpoint layers. Checkpointing is qualified separately; earlier activation-checkpointed screens are not primary confirmation. Gradient clipping at 1.0 and BF16 cross-entropy match the original loop arithmetic; data/I/O logging and scheduler host updates are excluded, and pinned input copies are included.",
   "grad_clip": 1.0,
   "loss_dtype": "bfloat16",
   "backends": [
@@ -93,7 +93,7 @@
     "query_scale": 0.05,
     "replays": 8,
     "rounds": 120,
-    "rows": 8192,
+    "rows": 4096,
     "sources": "maximum read source count for the schedule"
   },
   "comparison_residency": "resident_when_safe"

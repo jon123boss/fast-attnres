@@ -8,6 +8,28 @@ import re
 import pytest
 
 
+def test_parallel_bf16_cache_writers_use_distinct_paths(tmp_path):
+    source = Path(__file__).parents[1] / "benchmarks/bf16_modal.py"
+    function = next(node for node in ast.parse(source.read_text()).body
+                    if isinstance(node, ast.FunctionDef) and node.name == "_compiler_cache_paths")
+    namespace = {}
+    exec(compile(ast.Module(body=[function], type_ignores=[]), str(source), "exec"), namespace)
+    paths = namespace["_compiler_cache_paths"]
+    assert paths(tmp_path, "first")[0] is None
+    old = tmp_path / "artifacts.tar.gz"
+    old.write_bytes(b"legacy cache")
+    first_in, first_out = paths(tmp_path, "first")
+    second_in, second_out = paths(tmp_path, "second")
+    assert first_in == second_in == old
+    assert first_out != second_out
+    first_out.parent.mkdir()
+    first_out.with_suffix(".pending").write_bytes(b"incomplete")
+    assert paths(tmp_path, "third")[0] == old
+    first_out.write_bytes(b"completed cache")
+    os.utime(first_out, ns=(old.stat().st_mtime_ns + 1_000_000,) * 2)
+    assert paths(tmp_path, "third")[0] == first_out
+
+
 def test_bf16_cache_backup_detects_completed_changes_and_ignores_temporary_files(tmp_path):
     source = Path(__file__).parents[1] / "benchmarks/bf16_modal.py"
     functions = [node for node in ast.parse(source.read_text()).body

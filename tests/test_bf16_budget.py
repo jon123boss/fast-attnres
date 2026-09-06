@@ -5,7 +5,27 @@ from decimal import Decimal
 
 import pytest
 
-from benchmarks.bf16_budget import accounted, reconciliation_upper
+from benchmarks.bf16_budget import accounted, check_concurrency, reconciliation_upper
+
+
+def test_final_matrix_has_eight_slots_and_development_remains_exclusive():
+    sweep = {"gpu_count": 1, "matrix_sweep": True}
+    active = [{"status": "running", "matrix_sweep": True} for _ in range(7)]
+    check_concurrency(sweep, active)
+    with pytest.raises(RuntimeError, match="eight"):
+        check_concurrency(sweep, active + [active[0]])
+    with pytest.raises(RuntimeError, match="alone"):
+        check_concurrency({"gpu_count": 1}, active)
+    with pytest.raises(RuntimeError, match="alone"):
+        check_concurrency(sweep, [{"status": "running"}])
+    with pytest.raises(ValueError, match="exactly one"):
+        check_concurrency({"gpu_count": 8}, [])
+    # Report completion alone does not release a still-running container.
+    active.append({"status": "complete", "matrix_sweep": True, "slot_held": True})
+    with pytest.raises(RuntimeError, match="eight"):
+        check_concurrency(sweep, active)
+    active[-1]["slot_held"] = False
+    check_concurrency(sweep, active)
 
 
 def fixture():

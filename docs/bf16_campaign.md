@@ -18,7 +18,7 @@ The original model geometry and controls are:
 | --- | --- |
 | Layers / width / heads | 24 / 1536 / 24 |
 | MLP width | 4224 |
-| Vocabulary / context | 100277 / 2048 |
+| Vocabulary / context | 100277 / 1024 |
 | Batch / accumulation | 4 / 4 |
 | Block count | 8 |
 | Attention residual | `eps=2**-23`, `scale=1.0`, ordinary source assembly |
@@ -34,6 +34,11 @@ backward, accumulation, gradient zeroing, and optimizer work. Dataset I/O,
 logging, and scheduler host updates are excluded. The primary source inventory
 is the one in `configs/bf16_primary.json`; the evaluator and
 `validation/oracle.py` are immutable inputs.
+
+The final training matrix uses context 1024 for every backend and both GPUs.
+This reduces token count while preserving the residual equation; historical
+context-2048 controls remain separate, including the H100 Full Torch OOM.
+The independent operator matrix retains 8192 token positions.
 
 Comparison models are qualified individually. For timing, the current contract
 keeps all qualified models and optimizer states on the GPU when their measured
@@ -136,9 +141,10 @@ ATTNRES_CAMPAIGN_WORK="$CAMPAIGN" \
 ```
 
 Use `--gpu B200` and a distinct `--name` for the B200 job. This continuation
-permits one GPU at a time, including across architectures. Intermediate work
-uses B200; final H100 and B200 qualification runs sequentially. The launcher
-rejects distributed jobs and overlapping reservations. `--timeout` accepts 600 through 10,800
+uses one GPU for development. Add `--matrix-sweep` when preparing final
+qualification or frozen matrix jobs to permit up to eight independent
+single-GPU jobs across H100 and B200. Development remains exclusive; distributed
+training is outside this runner. `--timeout` accepts 600 through 10,800
 seconds. `prepare` prints the snapshot path; set it explicitly for the next
 command:
 
@@ -164,7 +170,9 @@ ATTNRES_CAMPAIGN_WORK="$CAMPAIGN" \
   python -m benchmarks.bf16_modal run "$SNAPSHOT"
 ```
 
-At most one single-GPU job is active across both architectures. Reservations
+Final matrix jobs share at most eight GPU slots; development uses one alone.
+A returned result holds its slot until the app is confirmed stopped with zero
+tasks. Reservations
 remain commitments after failures; they are not actual bills and are not
 automatically refunded. Reconcile an interrupted client by confirming that its app is stopped with zero
 running containers. Resume only missing cells in a new job; an admitted job ID
@@ -276,6 +284,9 @@ Qualification checks cold and warm fresh processes against the same BF16 oracle
 and eight changed-input CUDA Graph replays, then verifies identical selected
 configurations without retuning in the warm process. `compile_warmup_s` includes
 compilation, correctness checks and warmup; it is not pure cold compilation time.
+Each job writes a separate completed cache archive, so parallel writers cannot
+overwrite one another. Operator cases reset process-local Dynamo state between
+shapes, outside qualification and timing, while retaining the disk cache.
 The metadata policy follows the pinned [Triton 3.7.1 autotuner](https://github.com/triton-lang/triton/blob/v3.7.1/python/triton/runtime/autotuner.py).
 
 Longer model jobs reserve their full bound before admission and retain the

@@ -18,7 +18,7 @@ EXPECTED_MODEL = {
     "heads": 24,
     "ffn": 4224,
     "vocab": 100277,
-    "context": 2048,
+    "context": 1024,
     "block_count": 8,
     "activation_checkpointing": False,
 }
@@ -48,7 +48,7 @@ def _training_report(
                 "case": {
                     "model": model,
                     "batch": 4,
-                    "sequence": 2048,
+                    "sequence": 1024,
                     "accumulation": 4,
                 },
                 "seed": seed,
@@ -399,7 +399,7 @@ def _primary_report(gpu, mode, rank, seed):
     report["config"]["expected_identities"] = expected
     report["config"]["primary_contract_sha256"] = contract_digest({"identities": expected})
     result["operator_qualification"] = {"replays": 8, "result": {
-        "seed": seed, "case": {"shape": [49 if mode == "full" else 9, 8192, 1536, rank],
+        "seed": seed, "case": {"shape": [49 if mode == "full" else 9, 4096, 1536, rank],
                                 "query_scale": .05},
         "arms": {name: {"status": "passed", "samples_ms": [1.] * 120} for name in arms}}}
     for name, arm in arms.items():

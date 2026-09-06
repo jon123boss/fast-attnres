@@ -18,7 +18,7 @@ FAMILIES = {**{name: "fla" for name in BACKENDS if name.startswith("fla_")},
             "legacy_uncached": "legacy", "catswe_phase1": "catswe",
             "hydra_2p": "hydra", "hydra_2p8": "hydra"}
 MODEL = {"layers": 24, "width": 1536, "heads": 24, "ffn": 4224,
-         "vocab": 100277, "context": 2048, "block_count": 8,
+         "vocab": 100277, "context": 1024, "block_count": 8,
          "activation_checkpointing": False, "rope_theta": 500000.,
          "norm_pos": "before", "qk_norm": True,
          "attnres_eps": 2**-23, "attnres_scale": 1.0}
@@ -105,7 +105,7 @@ def _contract_errors(report, result, required_rounds):
     operator = gate.get("result") or {}
     model = result.get("model", {})
     sources = 2 * model.get("layers", 0) + 1 if model.get("mode") == "full" else model.get("block_count", 0) + 1
-    expected_shape = [sources, 8192, 1536, model.get("rank")]
+    expected_shape = [sources, 4096, 1536, model.get("rank")]
     if (gate.get("replays") != 8 or operator.get("case", {}).get("shape") != expected_shape or
         operator.get("case", {}).get("query_scale") != .05 or operator.get("seed") != result["seed"]):
         errors.append("missing nonzero-query operator qualification")
@@ -222,10 +222,10 @@ def summarize(paths, *, candidate="candidate", required_rounds=120, contract=Non
             case = result["case"]
             model = case["model"]
             expected = {"layers": 24, "width": 1536, "heads": 24, "ffn": 4224,
-                        "vocab": 100277, "context": 2048, "block_count": 8,
+                        "vocab": 100277, "context": 1024, "block_count": 8,
                         "activation_checkpointing": False}
             if any(model.get(k) != v for k, v in expected.items()) or any(
-                case.get(k) != v for k, v in {"batch": 4, "sequence": 2048, "accumulation": 4}.items()
+                case.get(k) != v for k, v in {"batch": 4, "sequence": 1024, "accumulation": 4}.items()
             ):
                 failures.append({"path": str(path), "status": "coverage_only", "case": case})
                 continue

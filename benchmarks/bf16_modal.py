@@ -58,6 +58,14 @@ def _compiler_cache_stamp(roots):
     return tuple(entries)
 
 
+def _compiler_cache_paths(root, job_id):
+    """Read a completed archive; concurrent jobs never share an output path."""
+    candidates = [path for path in (root / "artifacts.tar.gz", *root.glob("*/artifacts.tar.gz"))
+                  if path.is_file()]
+    latest = max(candidates, key=lambda path: path.stat().st_mtime_ns, default=None)
+    return latest, root / job_id / "artifacts.tar.gz"
+
+
 def _remote(job):
     faulthandler.enable()
     allocator = job["config"].get("allocator_config")
@@ -88,7 +96,7 @@ def _remote(job):
     cache_enabled = job["config"].get("reuse_compiler_cache", False)
     cache_loaded = False
     cache_input_sha256 = None
-    cache_archive = cache_root / "artifacts.tar.gz"
+    cache_input, cache_archive = _compiler_cache_paths(cache_root, job["id"])
     local_cache_roots = [Path("/tmp") / f"attnres-{name}" for name in ("triton", "inductor")]
     saved_cache_stamp = None
     def save_compiler_cache():
@@ -108,8 +116,8 @@ def _remote(job):
                 for source in local_cache_roots:
                     if source.exists():
                         archive.add(source, arcname=source.name, filter=completed_file)
-            cache_root.mkdir(parents=True, exist_ok=True)
-            pending = cache_root / "artifacts.pending"
+            cache_archive.parent.mkdir(parents=True, exist_ok=True)
+            pending = cache_archive.with_suffix(".pending")
             shutil.copyfile(local_archive, pending)
             pending.replace(cache_archive)
             saved_cache_stamp = stamp
@@ -137,10 +145,10 @@ def _remote(job):
         volume.commit()
     try:
         checkpoint({"status": "running", "phase": "load_compiler_cache", "config": job["config"]})
-        if cache_enabled and cache_archive.exists():
-            with cache_archive.open("rb") as stream:
+        if cache_enabled and cache_input is not None:
+            with cache_input.open("rb") as stream:
                 cache_input_sha256 = hashlib.file_digest(stream, "sha256").hexdigest()
-            with tarfile.open(cache_archive, "r:gz") as archive:
+            with tarfile.open(cache_input, "r:gz") as archive:
                 archive.extractall("/tmp", filter="data")
             cache_loaded = True
             saved_cache_stamp = _compiler_cache_stamp(local_cache_roots)
@@ -310,7 +318,11 @@ def _git_origin(root):
 def prepare(args):
     config = json.loads(Path(args.config).read_text())
     if args.gpus != 1 or config.get("kind") == "distributed":
-        raise ValueError("this campaign permits one GPU at a time")
+        raise ValueError("each measurement job requires exactly one GPU")
+    if args.matrix_sweep and not (config.get("kind") == "qualification"
+            or config.get("primary_contract_sha256")
+            or config.get("scope") in ("primary_operator_confirmation", "broader_operator_confirmation")):
+        raise ValueError("parallel admission is reserved for final qualification and frozen matrices")
     stamp = dt.datetime.now(dt.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     job_id = f"{stamp}-{args.gpu.lower()}-{args.name}"
     snapshot = WORK / "snapshots" / job_id
@@ -346,6 +358,7 @@ def prepare(args):
         hashes["optimizer"] = _digest(snapshot / "optimizer")
     verify_primary(snapshot, config)
     job = {"id": job_id, "config": config, "hashes": hashes, "origins": origins,
+           "matrix_sweep": args.matrix_sweep,
            "stage": args.stage, "timeout_s": args.timeout, "gpu_count": args.gpus,
            "cpu_cores": 8,
            "memory_mib": 65536}
@@ -355,23 +368,19 @@ def prepare(args):
 
 
 def reserve(job):
-    if job["gpu_count"] != 1:
-        raise ValueError("this campaign permits one GPU at a time")
     ledger_path = WORK / "ledger.json"
     # 300 seconds startup allowance in addition to the full execution timeout.
     rate = {"H100": .001097, "B200": .001736}[job["config"]["gpu"]] * job["gpu_count"]
     rate += job["cpu_cores"] * .0000131 + (job["memory_mib"] / 1024) * .00000222
     bound = (job["timeout_s"] + 300) * rate * 1.1
     sys.path.insert(0, str(PROJECT))
-    from benchmarks.bf16_budget import accounted
+    from benchmarks.bf16_budget import accounted, check_concurrency
     with ledger_path.open("r+") as stream:
         fcntl.flock(stream, fcntl.LOCK_EX)
         data = json.load(stream)
         if any(x["id"] == job["id"] for x in data["jobs"]):
             raise RuntimeError("job already admitted; retrieve durable evidence instead of rerunning")
-        active = [x for x in data["jobs"] if x["status"] in ("reserved", "running")]
-        if active:
-            raise RuntimeError("GPU concurrency limit: reconcile the active job before admission")
+        check_concurrency(job, data["jobs"])
         committed = float(sum(accounted(x, WORK) for x in data["jobs"]))
         if committed + bound > data["cap_usd"]:
             raise RuntimeError("campaign spending cap would be exceeded")
@@ -383,6 +392,7 @@ def reserve(job):
         data["jobs"].append({"id": job["id"], "stage": job["stage"],
             "gpu": job["config"]["gpu"], "reserved_usd": bound,
             "gpu_count": job["gpu_count"],
+            "matrix_sweep": job.get("matrix_sweep", False), "slot_held": True,
             "status": "reserved", "created_utc": dt.datetime.now(dt.timezone.utc).isoformat()})
         stream.seek(0); json.dump(data, stream, indent=2); stream.write("\n"); stream.truncate()
     return bound
@@ -422,6 +432,20 @@ def run(snapshot):
             update_job(job["id"], status=report["status"], elapsed_s=report.get("elapsed_s"),
                        completed_utc=dt.datetime.now(dt.timezone.utc).isoformat())
             print(json.dumps({"job": job["id"], "status": report["status"]}), flush=True)
+        # Returning a report precedes container shutdown. Keep its GPU slot
+        # until the service confirms that the app has no remaining tasks.
+        deadline = time.monotonic() + 180
+        while True:
+            apps = json.loads(subprocess.check_output(
+                [sys.executable, "-m", "modal", "app", "list", "--json"], text=True))
+            state = next((row for row in apps if row["app_id"] == app.app_id), None)
+            if state and state["state"] == "stopped" and str(state["tasks"]) == "0":
+                (result_dir / "shutdown.json").write_text(json.dumps(state, indent=2) + "\n")
+                update_job(job["id"], slot_held=False, shutdown_confirmed=True)
+                break
+            if time.monotonic() >= deadline:
+                raise RuntimeError("GPU shutdown unconfirmed; slot remains reserved")
+            time.sleep(5)
     except BaseException as exc:
         failure = {"error": f"{type(exc).__name__}: {exc}", "traceback": traceback.format_exc(),
                    "reconciliation_required": True}
@@ -467,6 +491,8 @@ def main():
     p.add_argument("--competitor", action="append", default=[])
     p.add_argument("--optimizer-source")
     p.add_argument("--gpus", type=int, choices=[1], default=1)
+    p.add_argument("--matrix-sweep", action="store_true",
+                   help="allow up to eight independent final-validation jobs; development remains exclusive")
     p.add_argument("--timeout", type=int, choices=range(600, 10801), default=2400)
     p.add_argument("--gpu", choices=["H100", "B200"], required=True)
     p.add_argument("--name", required=True)

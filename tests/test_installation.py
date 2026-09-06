@@ -66,7 +66,7 @@ if device == "cuda":
     compiled = torch.compile(call, fullgraph=True, dynamic=False)
     for shift in (0.0, 0.2):
         sources = tuple((torch.randn(5, 17, dtype=torch.bfloat16) + shift).requires_grad_() for _ in range(3))
-        query = torch.randn(5, requires_grad=True)
+        query = torch.randn(5, dtype=torch.bfloat16, requires_grad=True)
         check(sources, query, compiled)
     stream = torch.cuda.Stream()
     stream.wait_stream(torch.cuda.current_stream())
