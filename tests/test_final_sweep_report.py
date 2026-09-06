@@ -109,3 +109,47 @@ def test_rejects_statistics_that_do_not_match_observations():
     altered["statistics"]["kernel_rank_256_over_rank_1024"]["ratio"] = .5
     with pytest.raises(ValueError, match="statistics mismatch"):
         recompute(altered, vectors, 17)
+
+
+def test_phase_join_preserves_all_workloads_and_rejects_protocol_changes():
+    from benchmarks.final_sweep_report import combined_contract
+    headline = dict(cells=[dict(name='headline_full'), dict(name='screen_full')],
+                    runtime=dict(torch='2.13.0+cu130'), identities=dict(model='old'))
+    screen = copy.deepcopy(headline)
+    screen['cells'] = screen['cells'][1:]
+    screen['identities'] = dict(model='corrected')
+    screen['candidate_package_sha256'] = 'cleaned'
+    assert combined_contract(screen, headline) == headline
+    screen['runtime']['torch'] = 'other'
+    with pytest.raises(ValueError, match='protocols differ'):
+        combined_contract(screen, headline)
+    screen['runtime'] = headline['runtime']
+    screen['cells'] = []
+    with pytest.raises(ValueError, match='planned matrix'):
+        combined_contract(screen, headline)
+
+
+@pytest.mark.parametrize('change', ['exit', 'seed', 'source', 'summary'])
+def test_headline_transition_rejects_incomplete_or_rebound_evidence(tmp_path, change):
+    import json
+    from benchmarks.final_sweep_report import phase_records
+    cell = dict(name='headline_full', seeds=[1, 2, 3])
+    records = [dict(name=f'headline_full-{seed}', sha256=f'report-{seed}') for seed in cell['seeds']]
+    plan = dict(selected=[r['name'] for r in records], manifest_sha256='frozen')
+    transition = dict(plan, signal='SIGTERM', records=records)
+    summary = dict(status='running', results=copy.deepcopy(records))
+    (tmp_path/'exit-code.txt').write_text('143\n')
+    (tmp_path/'headline-transition-plan.json').write_text(json.dumps(plan))
+    (tmp_path/'headline-complete.json').write_text(json.dumps(transition))
+    assert phase_records(tmp_path, summary, dict(cells=[cell]), 'frozen', True) == ([cell], records)
+    if change == 'exit':
+        (tmp_path/'exit-code.txt').write_text('2\n')
+    elif change == 'seed':
+        transition['records'] = records[:-1]
+    elif change == 'source':
+        transition['manifest_sha256'] = 'different'
+    else:
+        summary['results'][0]['sha256'] = 'different'
+    (tmp_path/'headline-complete.json').write_text(json.dumps(transition))
+    with pytest.raises(ValueError):
+        phase_records(tmp_path, summary, dict(cells=[cell]), 'frozen', True)

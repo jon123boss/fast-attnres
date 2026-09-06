@@ -221,21 +221,58 @@ def project_cells(model, vectors, statistics, cell, gpu, source):
     return results
 
 
-def audit_device(directory, gpu, source_dir):
+def phase_records(directory, summary, contract, source_digest, headline_only):
+    """Accept either a complete sweep or the deliberately completed headline phase."""
+    if not headline_only:
+        require(summary["status"] == "complete", "device sweep unfinished")
+        return contract["cells"], summary["results"]
+    cell = contract["cells"][0]
+    require(cell["name"] == "headline_full", "unexpected headline phase")
+    names = [f"headline_full-{seed}" for seed in cell["seeds"]]
+    plan = read(directory / "headline-transition-plan.json")
+    transition = read(directory / "headline-complete.json")
+    require((directory / "exit-code.txt").read_text().strip() == "143",
+            "headline worker has not exited at the planned boundary")
+    require(plan["selected"] == transition["selected"] == names
+            and plan["manifest_sha256"] == transition["manifest_sha256"] == source_digest
+            and transition["signal"] == "SIGTERM", "headline transition identity changed")
+    records = transition["records"]
+    require([r["name"] for r in records] == names
+            and summary["results"][:len(names)] == records, "headline seed evidence incomplete")
+    return [cell], records
+
+
+def combined_contract(screen, headline):
+    """Keep every workload and seed while retaining independent phase identities."""
+    require(screen["cells"] == headline["cells"][1:], "screen phase changed the planned matrix")
+    varying = {"cells", "identities", "candidate_package_sha256"}
+    require({k: v for k, v in screen.items() if k not in varying}
+            == {k: v for k, v in headline.items() if k not in varying},
+            "phase measurement protocols differ")
+    return headline
+
+
+def audit_device(directory, gpu, source_dir, *, headline_only=False):
     """Verify a completed device before releasing it; this needs no GPU."""
     directory, source_dir = Path(directory), Path(source_dir)
     source, contract = read(source_dir / "manifest.json"), read(source_dir / "contract.json")
     for name, sha in source["files"].items():
         require(digest(source_dir / name) == sha, f"snapshot differs: {name}")
+    from .bf16_primary import package_digest
+    package_sha = package_digest(source_dir / "runner/src/attnres")
+    if "candidate_package_sha256" in contract:
+        require(package_sha == contract["candidate_package_sha256"], "package identity changed")
     source_digest = digest(source_dir / "manifest.json")
     summary = read(directory / "summary.json")
-    require(summary["status"] == "complete" and summary["gpu"] == gpu, "device sweep unfinished")
+    require(summary["gpu"] == gpu, "device identity changed")
     require(summary["commit"] == source["commit"] and summary["runtime"] == contract["runtime"],
             "device source/runtime differs")
-    expected = [(cell, seed) for cell in contract["cells"] for seed in cell["seeds"]]
-    require(len(summary["results"]) == len(expected), "incomplete final matrix")
+    selected, descriptors = phase_records(
+        directory, summary, contract, source_digest, headline_only)
+    expected = [(cell, seed) for cell in selected for seed in cell["seeds"]]
+    require(len(descriptors) == len(expected), "incomplete final matrix")
     cells, records = [], []
-    for descriptor, (cell, seed) in zip(summary["results"], expected):
+    for descriptor, (cell, seed) in zip(descriptors, expected):
         name = f"{cell['name']}-{seed}"
         require(descriptor["name"] == name, "cell order changed")
         path = directory / "results" / (name + ".json")
@@ -248,6 +285,8 @@ def audit_device(directory, gpu, source_dir):
         projected = project_cells(model, vectors, statistics, cell, gpu, str(path))
         cells.extend(projected)
         records.append({"gpu": gpu, "cell": cell["name"], "seed": seed,
+                        "source_commit": source["commit"], "source_manifest_sha256": source_digest,
+                        "candidate_package_sha256": package_sha,
                         "sha256": descriptor["sha256"], "statistics": statistics,
                         "means_ms": {k: mean(v) for k, v in vectors.items()},
                         "comparator_failures": model["comparator_failures"]})
@@ -292,10 +331,27 @@ def main():
     parser.add_argument("--source", type=Path, required=True)
     parser.add_argument("--h100", type=Path)
     parser.add_argument("--b200", type=Path)
+    parser.add_argument("--headline-source", type=Path)
+    parser.add_argument("--headline-h100", type=Path)
+    parser.add_argument("--headline-b200", type=Path)
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
+    contract = read(args.source / "contract.json")
+    headline_source = args.headline_source or args.source
+    if args.headline_source:
+        contract = combined_contract(contract, read(args.headline_source / "contract.json"))
+    require(bool(args.headline_source) == bool(args.headline_h100 or args.headline_b200),
+            "supply the headline source and its device evidence together")
     cells, records = [], []
-    for gpu, directory in (("H100", args.h100), ("B200", args.b200)):
+    for gpu, directory, headline_directory in (
+            ("H100", args.h100, args.headline_h100), ("B200", args.b200, args.headline_b200)):
+        if args.headline_source:
+            require(bool(directory) == bool(headline_directory), "device is missing a phase")
+        if headline_directory:
+            device_cells, device_records = audit_device(
+                headline_directory, gpu, headline_source, headline_only=True)
+            cells.extend(device_cells)
+            records.extend(device_records)
         if directory:
             device_cells, device_records = audit_device(directory, gpu, args.source)
             cells.extend(device_cells)
@@ -307,14 +363,14 @@ def main():
     sweep.write_table(sweep.table_rows(cells), args.output / "results.csv", args.output / "results.md")
     rank_rows = []
     for gpu in dict.fromkeys(r["gpu"] for r in records):
-        rows = rank_comparisons(records, read(args.source / "contract.json"), gpu)
+        rows = rank_comparisons(records, contract, gpu)
         rank_rows.extend(rows)
         render_rank_comparison(rows, args.output, gpu)
     (args.output / "rank_comparison.json").write_text(json.dumps(rank_rows, indent=2) + "\n")
     if args.h100 and args.b200:
         sweep.render_sweep([c for c in cells if c.phase == "screen"], args.output)
-        projection = headline_projection(records, read(args.source / "contract.json"),
-                                         digest(args.source / "manifest.json"))
+        projection = headline_projection(records, contract,
+                                         digest(headline_source / "manifest.json"))
         path = args.output / "hero_projection.json"
         path.write_text(json.dumps(projection, indent=2) + "\n")
         hero.render_hero(hero.load_projection(path), args.output)
