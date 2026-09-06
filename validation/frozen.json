@@ -98,7 +98,7 @@
   "tests/test_row_layout.py": "200c28106abb01e7a15930317266be6691fddc444eb3c06493e51754383a7bdc",
   "tests/test_selected_fla_block_codegen_probe.py": "ff9a0247ef76bfe9675c4d782472aefad2caa88d85cac41a0d3f4124378ec1db",
   "tests/test_softmax_stats.py": "f5acfff34f1884109630c28d2c8ba889c3282f6de9743da4893fb8e04ef1e15d",
-  "tests/test_training.py": "8354b532c50d5e99276d03333d23b6ba807eee351ea72ba44cb2e642796b7e18",
+  "tests/test_training.py": "524d809210ca3b82a13722a619974fcaefcd870afadf4de0d688d50f3cc79cb1",
   "tests/test_training_graph.py": "822ce88d100ef904b194aeb3015070f5518a225f9b9cc3175ea0c5a0f2d03ff0",
   "validation/REVISIONS.md": "2ea767f06d196847f629d1cae04d3ec5e69171df7941dd0edae57a6a0b142e90",
   "validation/block_checks.py": "ec93378a37ab1f532b54bcc2872273012d41dd3267d8ef96a9227ca9f638bd7f",

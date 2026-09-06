@@ -151,8 +151,8 @@ def test_native_source_list_preserves_order_and_all_gradients(mode, variant, ran
         native.accepts_source_list = True
     config = _tiny_config(variant=variant, mode=mode, rank=rank)
     torch.manual_seed(17)
-    reference = make_model(config, backend=stacked)
-    candidate = make_model(config, backend=native)
+    reference = make_model(config, backend=stacked).to(torch.bfloat16)
+    candidate = make_model(config, backend=native).to(torch.bfloat16)
     candidate.load_state_dict(reference.state_dict())
     tokens = torch.randint(config.vocab, (config.batch, config.sequence))
     expected, actual = reference(tokens), candidate(tokens)
