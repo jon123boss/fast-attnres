@@ -200,10 +200,11 @@ class CausalAttnResLM(nn.Module):
         # the model so it is allocated before compilation/capture and follows
         # the model through ``to(device)``.  It is non-persistent because it is
         # a parameter-free constant and must not alter state matching.
+        # Residual reads cast queries to BF16 even with FP32 master parameters.
         if getattr(backend, "accepts_rms_weight", False) is True:
             self.register_buffer(
                 "_backend_rms_weight",
-                torch.ones((config.rank,), dtype=torch.float32),
+                torch.ones((config.rank,), dtype=torch.bfloat16),
                 persistent=False,
             )
         else:

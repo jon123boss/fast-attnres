@@ -84,6 +84,7 @@ def test_model_backend_rms_weight_is_preallocated_reused_and_nonpersistent():
     seen: list[torch.Tensor] = []
 
     def backend(values, query, *, rms_weight):
+        assert rms_weight.dtype == query.dtype == torch.bfloat16
         seen.append(rms_weight)
         packed = values if isinstance(values, torch.Tensor) else torch.stack(values, dim=0)
         return oracle(packed, query)
@@ -93,7 +94,7 @@ def test_model_backend_rms_weight_is_preallocated_reused_and_nonpersistent():
     model = make_model(config, backend=backend)
 
     assert model._backend_rms_weight.shape == (config.rank,)
-    assert model._backend_rms_weight.dtype == torch.float32
+    assert model._backend_rms_weight.dtype == torch.bfloat16
     assert "_backend_rms_weight" not in model.state_dict()
 
     model(torch.randint(config.vocab, (config.batch, config.sequence)))
