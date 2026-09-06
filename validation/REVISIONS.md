@@ -1,5 +1,20 @@
 # Evaluator revisions
 
+2026-09-06: Final delivery cleanup removes the unused historical selected-FLA
+code-generation probe, its Modal wrapper, and their exclusive tests/runbook.
+Immutable campaign snapshots retain their original copies and hashes. README
+preparation preserves the existing layout and records the final sweep method.
+The current frozen manifest follows these removals and documentation edits;
+production kernels, reference arithmetic, tolerances, and timings are unchanged.
+
+2026-09-06: The user's latest reference instruction supersedes the earlier
+all-intermediate-BF16 experiment below. Restore main's training reference:
+BF16 inputs/outputs and FP32 internal accumulation, explicitly outside autocast;
+normalize each key before its query dot product. Separate value/key promotions
+preserve main's autograd rounding boundaries. Keep the BF16 public operator
+contract and .05/.05 tolerance. Original failed reports remain unchanged;
+new qualification uses the restored reference and identifies its exact source.
+
 2026-09-06: At the user's explicit request, removed the promoted reference and
 its precision override. The active independent reference now uses BF16 tensors
 throughout normalization, scoring, softmax, mixing, and autograd. The historical

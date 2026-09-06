@@ -6,6 +6,8 @@
 [![Triton 3.7.1](https://img.shields.io/badge/tested-Triton_3.7.1-654FF0.svg)](https://github.com/triton-lang/triton/releases/tag/v3.7.1)
 [![License: MIT](https://img.shields.io/badge/license-MIT-2E7D32.svg)](LICENSE)
 
+<!-- Final asset: ![Full AttnRes training on H100 SXM and B200](results/final_sweep/compiled_step_hero.svg) -->
+
 **Fast Attention Residuals** (`Fast-AttnRes`) makes
 [Attention Residuals](https://arxiv.org/abs/2603.15031) a single PyTorch
 operation: pass ordered full-width residual sources and one learned query, get
@@ -28,10 +30,37 @@ Start with the [standard quickstart](#quickstart-standard-attnres), choose a
 
 ## Training performance
 
-H100 and B200 measurements are being refreshed for the existing headline and
-competitor plots, using standard (`R=D`) and sliced (`R=D/4`) routing.
-See [benchmark results](docs/benchmark_results.md) for the workload scope and
-archived measurements. Updated plots will follow the completed measurements.
+The final H100/B200 sweep is in progress. Figures and measurements will be
+added after qualification and evidence checks finish.
+
+The figures measure complete BF16 CUDA Graph training steps on H100 SXM and
+B200, including forward, backward, and the optimizer update. Full and Block
+use the same per-read Fast-AttnRes backend.
+
+The 24-layer headline uses three seeds with 120 paired rounds each. The
+8-layer comparisons use one seed with 40 paired rounds per configuration.
+See the [benchmark protocol](docs/benchmark_results.md) for workloads and
+archived evidence. Final reports will include source versions, confidence
+intervals, and reproduction commands.
+
+### Compiled BF16 training steps
+
+Comparators are native FLA Triton checkpoint 1, Liger 0.8.2, and Catswe phase 1.
+Unsupported and failed arms remain labelled. Quarter-rank comparisons against
+standard FLA compare different routing equations.
+
+<!-- Final asset: ![H100 compiled BF16 training steps](results/final_sweep/compiled_step_sweep_h100.svg) -->
+
+<!-- Final asset: ![B200 compiled BF16 training steps](results/final_sweep/compiled_step_sweep_b200.svg) -->
+
+### Quarter-rank routing
+
+These figures compare our `R=D/4` kernel with our `R=D` kernel on each workload.
+Values and outputs retain width `D`; only the routing rank changes.
+
+<!-- Final asset: ![H100 quarter-rank versus full-rank routing](results/final_sweep/rank_comparison_h100.svg) -->
+
+<!-- Final asset: ![B200 quarter-rank versus full-rank routing](results/final_sweep/rank_comparison_b200.svg) -->
 
 ## Install
 
@@ -39,7 +68,7 @@ Install the checkout with the pinned CUDA runtime:
 
 ```bash
 python -m pip install --index-url https://download.pytorch.org/whl/cu130 torch==2.13.0
-python -m pip install -e ".[cuda,test,benchmark]"
+python -m pip install -e ".[cuda]"
 ```
 
 The pinned runtime is Python 3.11, PyTorch 2.13.0 with CUDA 13.0, and Triton 3.7.1.
@@ -53,9 +82,9 @@ from attnres import attnres
 values = torch.randn(8, 2, 1024, device="cuda", dtype=torch.bfloat16, requires_grad=True)
 source_list = tuple(values.unbind(0))
 query = torch.randn(1024, device="cuda", dtype=torch.bfloat16, requires_grad=True)
-output = attnres(values, query, eps=2**-23, scale=1.0)
+read = torch.compile(attnres, fullgraph=True, dynamic=False)
+output = read(source_list, query)
 output.square().mean().backward()
-compiled = torch.compile(attnres, fullgraph=True)
 ```
 
 The public signature is `attnres(values, query, *, eps=2**-23, scale=1.0)`.
@@ -110,7 +139,7 @@ query = torch.randn(rank, device="cuda", dtype=torch.bfloat16)
 output = attnres(source_list, query)  # [..., D], BF16
 ```
 
-For a trainable static query, use `LearnedQuery(rank)` from `attnres.modules`:
+For a trainable static query, use `LearnedQuery(rank)`:
 
 ```python
 from attnres import LearnedQuery
