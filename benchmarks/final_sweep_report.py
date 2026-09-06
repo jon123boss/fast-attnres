@@ -39,24 +39,45 @@ def paired_vectors(model, seed, rounds):
     for row in model["raw_samples"]:
         groups[row["arm"]].append(row)
     require(groups, "no timed arms")
+    active = [name for name, entry in model["compile"].items() if entry["status"] == "ok"]
+    require(set(groups) == set(active), "timed arms differ from compiled arms")
     vectors = {}
+    failed_at = {}
     for arm, rows in groups.items():
         require([r["sample_index"] for r in rows] == list(range(rounds)), f"unpaired {arm}")
+        backend = ("fla_triton_compile" if arm.startswith("fla_triton_compile_")
+                   else "catswe_phase1" if arm.startswith("catswe_phase1_")
+                   else arm.split("_", 1)[0])
         for row in rows:
+            require(row["backend"] == backend and row["rank"] == int(arm.rsplit("_", 1)[1]),
+                    f"wrong backend/rank identity: {arm}")
             require(row["input_hash"] == sweep._logical_input_hash(
                 seed, row["sample_index"], model["config"]), "wrong input identity")
         if any(r["status"] != "ok" for r in rows):
+            require(not arm.startswith("kernel_"), f"candidate timing failed: {arm}")
             require(any(f.get("arm") == arm for f in model["comparator_failures"]),
                     f"unexplained timing failure: {arm}")
+            failed = [r["sample_index"] for r in rows if r["status"] == "failed"]
+            first = failed[0] if failed else -1
+            require(len(failed) <= 1 and all(
+                r["status"] == ("ok" if i < first else "failed" if i == first
+                                else "skipped_due_to_failure")
+                for i, r in enumerate(rows)), f"invalid failure transition: {arm}")
+            require(all(r["ms"] is None for r in rows if r["status"] != "ok"),
+                    f"failed arm has timings: {arm}")
+            failed_at[arm] = first
             continue
         require(all(r["timing_method"] == "cuda_graph" and r["replay_count"] == 1
                     and math.isfinite(r["ms"]) and r["ms"] > 0 for r in rows),
                 f"invalid timings: {arm}")
         vectors[arm] = [r["ms"] for r in rows]
-    for index in range(rounds):
-        order = [r["order_index"] for r in model["raw_samples"]
-                 if r["sample_index"] == index and r["order_index"] is not None]
-        require(order == list(range(len(order))), "invalid interleaved arm order")
+    for index, scheduled in enumerate(sweep._balanced_schedule(active, rounds, seed)):
+        rows = [r for r in model["raw_samples"] if r["sample_index"] == index]
+        present = [name for name in scheduled if failed_at.get(name, rounds) >= index]
+        skipped = [name for name in active if name not in present]
+        require([r["arm"] for r in rows] == present + skipped, "incorrect paired arm schedule")
+        require([r["order_index"] for r in rows] == list(range(len(present)))
+                + [None] * len(skipped), "invalid interleaved arm order")
     return vectors
 
 
@@ -194,7 +215,7 @@ def project_cells(model, vectors, statistics, cell, gpu, source):
         results.append(sweep.CellResult(source, gpu, "release" if cell["rounds"] == 120 else "screen",
             geometry["mode"], None if full else events // geometry["block_count"],
             events + 1 if full else geometry["block_count"] + 1, width, rank,
-            "R=D" if rank == width else "R<D", cell["warmups"], cell["rounds"],
+            "R=D" if rank == width else "R=D/4", cell["warmups"], cell["rounds"],
             "OK", "", tuple(arms)))
     return results
 
@@ -203,9 +224,13 @@ def audit_device(directory, gpu, source_dir):
     """Verify a completed device before releasing it; this needs no GPU."""
     directory, source_dir = Path(directory), Path(source_dir)
     source, contract = read(source_dir / "manifest.json"), read(source_dir / "contract.json")
+    for name, sha in source["files"].items():
+        require(digest(source_dir / name) == sha, f"snapshot differs: {name}")
     source_digest = digest(source_dir / "manifest.json")
     summary = read(directory / "summary.json")
     require(summary["status"] == "complete" and summary["gpu"] == gpu, "device sweep unfinished")
+    require(summary["commit"] == source["commit"] and summary["runtime"] == contract["runtime"],
+            "device source/runtime differs")
     expected = [(cell, seed) for cell in contract["cells"] for seed in cell["seeds"]]
     require(len(summary["results"]) == len(expected), "incomplete final matrix")
     cells, records = [], []
@@ -215,6 +240,8 @@ def audit_device(directory, gpu, source_dir):
         path = directory / "results" / (name + ".json")
         require(digest(path) == descriptor["sha256"], f"report hash mismatch: {path}")
         report = read(path)
+        require(descriptor["status"] == report["status"] and report["status"] in
+                {"complete", "incomplete"}, "report status mismatch")
         model, vectors, statistics = audit_report(
             report, cell, seed, gpu, source, source_digest, contract)
         projected = project_cells(model, vectors, statistics, cell, gpu, str(path))
