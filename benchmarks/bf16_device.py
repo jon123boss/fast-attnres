@@ -225,6 +225,19 @@ def run_operator(config, checkpoint):
               "identities": identities, "import_failures": import_failures,
               "results": [], "status": "running"}
     checkpoint(report)
+    for name in config.get("scalar_checks", []):
+        from validation.softmax_checks import run_equal_logit_checks
+        try:
+            checks = run_equal_logit_checks(backends[name])
+            report.setdefault("scalar_checks", {})[name] = checks
+        except Exception as exc:
+            report.setdefault("scalar_checks", {})[name] = {
+                "status": "failed", "error": f"{type(exc).__name__}: {exc}",
+                "traceback": traceback.format_exc()}
+            report["status"] = "failed"
+            checkpoint(report)
+            return report
+        checkpoint(report)
     for case in config["cases"]:
         # Shapes are independent experiments. Clear Dynamo's per-code-object
         # specialization limit between them; retain the disk compiler cache.

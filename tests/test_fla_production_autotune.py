@@ -95,7 +95,7 @@ def test_fake_saved_mixed_rank_is_stable_across_block_source_counts():
         assert outputs[0].shape == (rows, width)
         assert outputs[2].shape == (source_count, rows)
         assert outputs[3].shape == (source_count, rows)
-        assert outputs[4].shape == (rows,)
+        assert outputs[4].shape == (2, rows)
 
     assert all(len(shape) == 2 for shape in shapes)
     assert shapes[:2] == [(0, width), (0, width)]

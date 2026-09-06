@@ -311,7 +311,7 @@ if triton is not None:
         saved_mixed,
         saved_inv_rms,
         saved_logit,
-        saved_lse,
+        softmax_stats,
         count,
         sources,
         eps,
@@ -416,7 +416,9 @@ if triton is not None:
             running_max = new_max
 
         mixed = running_output / running_denom
-        tl.store(saved_lse + row, running_max + tl.log(running_denom), mask=row_valid)
+        # Keep the small normalization term separate from a large logit offset.
+        tl.store(softmax_stats + row, running_max, mask=row_valid)
+        tl.store(softmax_stats + count64 + row, 1.0 / running_denom, mask=row_valid)
         if CHECKPOINT:
             tl.store(
                 saved_mixed + row * D + physical_offsets,
@@ -446,7 +448,7 @@ if triton is not None:
         grad_output,
         saved_inv_rms,
         saved_logit,
-        saved_lse,
+        softmax_stats,
         grad_values,
         grad_query_partial,
         count,
@@ -499,6 +501,8 @@ if triton is not None:
             mask=key_mask,
             other=0.0,
         ).to(tl.float32)
+        maximum = tl.load(softmax_stats + row, mask=row_valid, other=0.0)
+        inv_denom = tl.load(softmax_stats + count64 + row, mask=row_valid, other=0.0)
         if CHECKPOINT:
             grad = tl.load(
                 grad_output
@@ -545,8 +549,7 @@ if triton is not None:
                     mask=source_mask & row_valid,
                     other=0.0,
                 ).to(tl.float32)
-                lse = tl.load(saved_lse + row, mask=row_valid, other=0.0).to(tl.float32)
-                probability = tl.exp(saved_score - lse)
+                probability = tl.exp(saved_score - maximum) * inv_denom
                 probability = tl.where(source_mask & row_valid, probability, 0.0)
                 mixed += tl.sum(probability[:, None] * value, axis=0)
             grad = tl.load(
@@ -558,7 +561,6 @@ if triton is not None:
             ).to(tl.float32)
 
         delta = tl.sum(tl.where(d_mask, grad * mixed, 0.0), axis=0)
-        lse = tl.load(saved_lse + row, mask=row_valid, other=0.0).to(tl.float32)
         grad_query = tl.zeros((BLOCK_D,), tl.float32)
         for source_base in tl.range(
             0, L2 if EXACT_SOURCES else sources, BL, num_stages=PIPELINE_STAGES
@@ -599,7 +601,7 @@ if triton is not None:
                 mask=source_mask & row_valid,
                 other=0.0,
             ).to(tl.float32)
-            probability = tl.exp(saved_score - lse)
+            probability = tl.exp(saved_score - maximum) * inv_denom
             probability = tl.where(source_mask & row_valid, probability, 0.0)
             dweight = tl.sum(value * grad[None, :], axis=1)
             dscore = probability * (dweight - delta)
@@ -774,7 +776,7 @@ def _launch_standard_forward(
         (len(source_tuple), count), device=first.device, dtype=torch.float32
     )
     saved_logit = torch.empty_like(saved_inv_rms)
-    saved_lse = torch.empty((count,), device=first.device, dtype=torch.float32)
+    softmax_stats = torch.empty((2, count), device=first.device, dtype=torch.float32)
     _fla_standard_forward_kernel[(count,)](
         pointers,
         query,
@@ -782,7 +784,7 @@ def _launch_standard_forward(
         saved_mixed,
         saved_inv_rms,
         saved_logit,
-        saved_lse,
+        softmax_stats,
         count,
         len(source_tuple),
         float(eps),
@@ -803,7 +805,7 @@ def _launch_standard_forward(
         OUTPUT_ROW_STRIDE=0 if output.ndim <= 1 else int(output.stride(-2)),
         OUTPUT_D_STRIDE=int(output.stride(-1)),
     )
-    return [output, saved_mixed, saved_inv_rms, saved_logit, saved_lse]
+    return [output, saved_mixed, saved_inv_rms, saved_logit, softmax_stats]
 
 
 def _launch_standard_backward(
@@ -813,7 +815,7 @@ def _launch_standard_backward(
     grad_output: torch.Tensor,
     saved_inv_rms: torch.Tensor,
     saved_logit: torch.Tensor,
-    saved_lse: torch.Tensor,
+    softmax_stats: torch.Tensor,
     count: int,
     width: int,
     rank: int,
@@ -851,7 +853,7 @@ def _launch_standard_backward(
         grad_output_prepared,
         saved_inv_rms,
         saved_logit,
-        saved_lse,
+        softmax_stats,
         grad_pointers,
         grad_query_partial,
         count,
@@ -920,7 +922,7 @@ def backward(
     grad_output: torch.Tensor,
     saved_inv_rms: torch.Tensor,
     saved_logit: torch.Tensor,
-    saved_lse: torch.Tensor,
+    softmax_stats: torch.Tensor,
     scale: float,
 ) -> list[torch.Tensor]:
     """Launch source-tiled dV/dQ and return per-source plus query gradients."""
@@ -936,7 +938,7 @@ def backward(
         grad_output,
         saved_inv_rms,
         saved_logit,
-        saved_lse,
+        softmax_stats,
         count,
         width,
         rank,

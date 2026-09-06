@@ -63,13 +63,13 @@ def _launch_source_forward(sources: Sequence[torch.Tensor], query: torch.Tensor,
 def _launch_source_backward(sources: Sequence[torch.Tensor], query: torch.Tensor,
                             saved_output_fp32: torch.Tensor, grad_output: torch.Tensor,
                             saved_key_inv_rms: torch.Tensor, saved_logit: torch.Tensor,
-                            saved_lse: torch.Tensor, scale: float) -> list[torch.Tensor]:
+                            softmax_stats: torch.Tensor, scale: float) -> list[torch.Tensor]:
     _validate_bf16_cuda_sources(sources, query)
     from . import fla_full_sources
 
     return fla_full_sources.backward(
         sources, query, saved_output_fp32, grad_output,
-        saved_key_inv_rms, saved_logit, saved_lse, scale,
+        saved_key_inv_rms, saved_logit, softmax_stats, scale,
     )
 
 
@@ -88,7 +88,7 @@ if _custom_op is not None:
         sources: list[torch.Tensor], query: torch.Tensor,
         saved_output_fp32: torch.Tensor, grad_output: torch.Tensor,
         saved_key_inv_rms: torch.Tensor, saved_logit: torch.Tensor,
-        saved_lse: torch.Tensor, scale: float,
+        softmax_stats: torch.Tensor, scale: float,
     ) -> list[torch.Tensor]:
         return _launch_source_backward(
             sources,
@@ -97,7 +97,7 @@ if _custom_op is not None:
             grad_output,
             saved_key_inv_rms,
             saved_logit,
-            saved_lse,
+            softmax_stats,
             scale,
         )
 
@@ -121,17 +121,17 @@ if _custom_op is not None:
             first.new_empty(mixed_shape, dtype=torch.float32),
             stats,
             first.new_empty(stats.shape, dtype=torch.float32),
-            first.new_empty((rows,), dtype=torch.float32),
+            first.new_empty((2, rows), dtype=torch.float32),
         )
 
     def _source_backward_fake(
         sources: list[torch.Tensor], query: torch.Tensor,
         saved_output_fp32: torch.Tensor, grad_output: torch.Tensor,
         saved_key_inv_rms: torch.Tensor, saved_logit: torch.Tensor,
-        saved_lse: torch.Tensor, scale: float
+        softmax_stats: torch.Tensor, scale: float
     ) -> list[torch.Tensor]:
         del saved_output_fp32, grad_output, saved_key_inv_rms, saved_logit
-        del saved_lse, scale
+        del softmax_stats, scale
         return [source.new_empty(source.shape) for source in sources] + [
             query.new_empty(query.shape)
         ]
@@ -144,11 +144,11 @@ if _custom_op is not None:
 
     def _source_setup_context(ctx: Any, inputs: tuple[Any, ...], output: tuple[Any, ...]) -> None:
         sources, query, _eps, scale = inputs
-        _output, saved_output_fp32, saved_key_inv_rms, saved_logit, saved_lse = output
+        _output, saved_output_fp32, saved_key_inv_rms, saved_logit, softmax_stats = output
         ctx.mark_non_differentiable(*output[1:])
         ctx.set_materialize_grads(False)
         ctx.save_for_backward(*sources, query, saved_output_fp32, saved_key_inv_rms,
-                              saved_logit, saved_lse)
+                              saved_logit, softmax_stats)
         ctx.source_count = len(sources)
         ctx.scale = scale
 
@@ -156,7 +156,7 @@ if _custom_op is not None:
                          _grad_saved_output_fp32: torch.Tensor | None = None,
                          _grad_saved_key_inv_rms: torch.Tensor | None = None,
                          _grad_saved_logit: torch.Tensor | None = None,
-                         _grad_saved_lse: torch.Tensor | None = None) -> tuple[Any, None, None, None]:
+                         _grad_softmax_stats: torch.Tensor | None = None) -> tuple[Any, None, None, None]:
         if grad_output is None:
             return [None] * ctx.source_count, None, None, None
         saved = ctx.saved_tensors
@@ -166,10 +166,10 @@ if _custom_op is not None:
         saved_output_fp32 = saved[source_count + 1]
         saved_key_inv_rms = saved[source_count + 2]
         saved_logit = saved[source_count + 3]
-        saved_lse = saved[source_count + 4]
+        softmax_stats = saved[source_count + 4]
         gradients = _fixed_tail_sources_backward_custom_op(
             sources, query, saved_output_fp32, grad_output, saved_key_inv_rms,
-            saved_logit, saved_lse, float(ctx.scale))
+            saved_logit, softmax_stats, float(ctx.scale))
         return gradients[:source_count], gradients[source_count], None, None
 
     if _register_autograd is not None:

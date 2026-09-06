@@ -1,5 +1,15 @@
 # Evaluator revisions
 
+2026-09-06: Added opt-in equal-logit correctness checks before operator timing.
+They cover finite scales +/-2**24, packed and source-list inputs, saved and
+recomputed backward, and two changed-upstream CUDA Graph replays. Outputs and
+value/query gradients must match their analytical answers exactly. Existing
+operator timing, seeds, oracle, and tolerances are unchanged. Both runtime
+adapters now save maximum and inverse softmax denominator separately, retaining
+the raw routing logit for the RMS derivative. Previous timing artifacts remain
+results for their recorded source hashes; the changed kernels require new GPU
+qualification.
+
 2026-09-06: Synchronized the evaluation and provenance prose with the already
 configured, user-authorized context-1024 primary workload and allowance for up
 to eight independent single-GPU final jobs. Development remains exclusive to

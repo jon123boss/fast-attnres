@@ -249,7 +249,7 @@ if triton is not None:
         saved_output_fp32,
         saved_key_inv_rms,
         saved_logit,
-        saved_lse,
+        softmax_stats,
         n_tokens,
         n_sources,
         eps,
@@ -466,8 +466,8 @@ if triton is not None:
             )
             running_max = new_max
 
-        lse = running_max + tl.log(running_denom)
-        tl.store(saved_lse + token, lse)
+        tl.store(softmax_stats + token, running_max)
+        tl.store(softmax_stats + n_tokens + token, 1.0 / running_denom)
         normalized_output = running_output / running_denom
         tl.store(
             saved_output_fp32 + token * D + d_offsets, normalized_output, mask=d_mask
@@ -495,7 +495,7 @@ if triton is not None:
         grad_output,
         saved_key_inv_rms,
         saved_logit,
-        saved_lse,
+        softmax_stats,
         grad_values,
         grad_query_token,
         n_tokens,
@@ -606,7 +606,8 @@ if triton is not None:
             saved_output_fp32 + token * D + d_offsets, mask=d_mask, other=0.0
         ).to(tl.float32)
         delta = tl.sum(tl.where(d_mask, grad * mixed, 0.0), axis=0)
-        lse = tl.load(saved_lse + token).to(tl.float32)
+        maximum = tl.load(softmax_stats + token).to(tl.float32)
+        inv_denom = tl.load(softmax_stats + n_tokens + token).to(tl.float32)
 
         for source_block in range(tl.cdiv(n_sources, SOURCE_TILE)):
             if LIST_SOURCES:
@@ -721,7 +722,7 @@ if triton is not None:
                     other=1.0,
                 ).to(tl.float32)
                 key = tail * key_inv_rms[:, None]
-            probability = tl.where(source_mask, tl.exp(logit - lse), 0.0)
+            probability = tl.where(source_mask, tl.exp(logit - maximum) * inv_denom, 0.0)
             dlogit = probability * (dweight - delta)
             if FUSE_KEY_WITH_VALUE and R < D and BLOCK_R != BLOCK_D:
                 scaled_dlogit = dlogit * scale_f32
@@ -920,7 +921,7 @@ if triton is not None and _triton_op is not None and _wrap_triton is not None:
             (sources, count), device=values.device, dtype=torch.float32
         )
         saved_logit = torch.empty_like(saved_key_inv_rms)
-        saved_lse = torch.empty((count,), device=values.device, dtype=torch.float32)
+        softmax_stats = torch.empty((2, count), device=values.device, dtype=torch.float32)
         block_d = _next_power_of_two(width)
         block_r = _next_power_of_two(rank)
         _wrap_triton(_packed_online_forward_kernel)[(count,)](
@@ -930,7 +931,7 @@ if triton is not None and _triton_op is not None and _wrap_triton is not None:
             saved_output_fp32,
             saved_key_inv_rms,
             saved_logit,
-            saved_lse,
+            softmax_stats,
             count,
             sources,
             float(eps),
@@ -956,7 +957,7 @@ if triton is not None and _triton_op is not None and _wrap_triton is not None:
             num_warps=NUM_WARPS,
             num_stages=NUM_STAGES,
         )
-        return output, saved_output_fp32, saved_key_inv_rms, saved_logit, saved_lse
+        return output, saved_output_fp32, saved_key_inv_rms, saved_logit, softmax_stats
 
     @_triton_op("attnres::_fixed_tail_backward", mutates_args={})
     def _fixed_tail_backward_triton_op(
@@ -966,7 +967,7 @@ if triton is not None and _triton_op is not None and _wrap_triton is not None:
         grad_output: torch.Tensor,
         saved_key_inv_rms: torch.Tensor,
         saved_logit: torch.Tensor,
-        saved_lse: torch.Tensor,
+        softmax_stats: torch.Tensor,
         scale: float,
     ) -> tuple[torch.Tensor, torch.Tensor]:
         sources, width, rank = _validate_inputs(values, query)
@@ -990,7 +991,7 @@ if triton is not None and _triton_op is not None and _wrap_triton is not None:
             grad_output,
             saved_key_inv_rms,
             saved_logit,
-            saved_lse,
+            softmax_stats,
             grad_values,
             grad_query_token,
             count,
@@ -1036,11 +1037,11 @@ if triton is not None and _triton_op is not None and _wrap_triton is not None:
         ctx: Any, inputs: tuple[Any, ...], output: tuple[Any, ...]
     ) -> None:
         values, query, _eps, scale = inputs
-        _output, saved_output_fp32, saved_key_inv_rms, saved_logit, saved_lse = output
+        _output, saved_output_fp32, saved_key_inv_rms, saved_logit, softmax_stats = output
         ctx.mark_non_differentiable(*output[1:])
         ctx.set_materialize_grads(False)
         ctx.save_for_backward(
-            values, query, saved_output_fp32, saved_key_inv_rms, saved_logit, saved_lse
+            values, query, saved_output_fp32, saved_key_inv_rms, saved_logit, softmax_stats
         )
         ctx.scale = scale
 
@@ -1050,7 +1051,7 @@ if triton is not None and _triton_op is not None and _wrap_triton is not None:
         _grad_saved_output: torch.Tensor | None = None,
         _grad_saved_key_inv_rms: torch.Tensor | None = None,
         _grad_saved_logit: torch.Tensor | None = None,
-        _grad_saved_lse: torch.Tensor | None = None,
+        _grad_softmax_stats: torch.Tensor | None = None,
     ) -> tuple[torch.Tensor | None, torch.Tensor | None, None, None]:
         if grad_output is None:
             return None, None, None, None
@@ -1060,7 +1061,7 @@ if triton is not None and _triton_op is not None and _wrap_triton is not None:
             saved_output_fp32,
             saved_key_inv_rms,
             saved_logit,
-            saved_lse,
+            softmax_stats,
         ) = ctx.saved_tensors
         grad_output = _prepare_grad_output(grad_output, values)
         grad_values, grad_query = _fixed_tail_backward_triton_op(
@@ -1070,7 +1071,7 @@ if triton is not None and _triton_op is not None and _wrap_triton is not None:
             grad_output,
             saved_key_inv_rms,
             saved_logit,
-            saved_lse,
+            softmax_stats,
             float(ctx.scale),
         )
         return (
@@ -1124,7 +1125,7 @@ def fused_attnres(
         _saved_output,
         _saved_key_inv_rms,
         _saved_logit,
-        _saved_lse,
+        _softmax_stats,
     ) = _fixed_tail_forward_with_aux_triton_op(
         kernel_values,
         kernel_query,
