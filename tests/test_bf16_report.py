@@ -11,7 +11,7 @@ from benchmarks import bf16_report
 
 def test_final_sweep_local_identities_match_current_sources():
     import hashlib
-    from benchmarks.bf16_primary import package_digest
+    from benchmarks.source_identity import package_digest
 
     root = Path(__file__).resolve().parents[1]
     contract = json.loads((root / "configs/bf16_final_sweep.json").read_text())
@@ -405,7 +405,7 @@ def _primary_report(gpu, mode, rank, seed):
                   qualification_tolerances={"rtol": .05, "atol": .05},
                   requested_backends=list(bf16_report.BACKENDS))
     report["identities"]["training_fixture"] = {"sha256": "fixture-v1"}
-    from benchmarks.bf16_primary import contract_digest
+    from benchmarks.source_identity import contract_digest
     expected = {name: row.get("content_hash", row.get("sha256")) for name, row in report["identities"].items()}
     report["config"]["expected_identities"] = expected
     report["config"]["primary_contract_sha256"] = contract_digest({"identities": expected})

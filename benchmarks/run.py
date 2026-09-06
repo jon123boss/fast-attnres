@@ -228,7 +228,7 @@ def _project_ops() -> tuple[Callable[..., Any], Callable[..., Any]]:
     source = str(PROJECT_ROOT / "src")
     if source not in sys.path: sys.path.insert(0, source)
     module = importlib.import_module("attnres")
-    from benchmarks.bf16_device import bf16_torch
+    from validation.oracle import oracle as bf16_torch
     return module.attnres, bf16_torch
 
 
@@ -2771,7 +2771,7 @@ def _model_timings(
             make_model_with_canonical_state,
             training_step,
         )
-        from .bf16_device import bf16_torch
+        from validation.oracle import oracle as bf16_torch
         if not callable(training_step): raise TypeError("benchmarks.model.training_step must be callable")
     except Exception as exc: return {"status": "incomplete", "reason": "benchmarks.model unavailable", "failures": [_failure("model_import", error=_exception(exc))]}
     model_data = _model_config(protocol, config, scope)

@@ -32,7 +32,9 @@ inputs/outputs and FP32 internal accumulation with autocast disabled.
 
 The final sweep calls separately supplied native FLA Triton checkpoint 1,
 Liger 0.8.2, and Catswe phase 1 implementations. Earlier
-[campaign adapters](benchmarks/bf16_competitors.py) cover additional alternatives.
+campaign adapters for additional alternatives remain in the original source
+snapshots; the [historical campaign guide](docs/bf16_campaign.md) describes
+restoration and reporting.
 Each report records exact source hashes, adapter
 changes, runtime, shape restrictions, and correctness failures. A faster
 incorrect result does not enter the timing comparison.

@@ -160,9 +160,9 @@
   "identities": {
     "validation/oracle.py": "17b5592e9d112441fd953b164dd8c24b9f000174d73f14385dee16faf8aefb05",
     "benchmarks/model.py": "c12d194d22c246603f4443ae4c685486d07187ab1475a0f9a4a3ff55c622bc53",
-    "benchmarks/run.py": "7103e064f376ae69694951f60bfb208cd6181b888b323f15b93e09020f96944f",
+    "benchmarks/run.py": "5f1507126a6a55c2bbaca40e0ff6fad85d83a58ec320c8572ef565db53561f99",
     "benchmarks/training_graph.py": "b35e04997c5e2653087814b046d72b2bb5945017ed621ba880b53bb7d9f1524f",
-    "benchmarks/bf16_device.py": "3b48dab8afcb6aca62a9a8cfbe7a679c63eda97331f70ba1322f87b70907646e"
+    "benchmarks/bf16_device.py": "b4b4588afade0486e4da3a4a3e94e250ccf38dd67d1f2bf878e702c1bb467b6f"
   },
   "candidate_package_sha256": "2a8838d1471c8eb45899c423f7bfae0c334c922d151a6c0de7f680e226900bb2"
 }

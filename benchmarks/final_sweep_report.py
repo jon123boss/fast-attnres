@@ -258,7 +258,7 @@ def audit_device(directory, gpu, source_dir, *, headline_only=False):
     source, contract = read(source_dir / "manifest.json"), read(source_dir / "contract.json")
     for name, sha in source["files"].items():
         require(digest(source_dir / name) == sha, f"snapshot differs: {name}")
-    from .bf16_primary import package_digest
+    from .source_identity import package_digest
     package_sha = package_digest(source_dir / "runner/src/attnres")
     if "candidate_package_sha256" in contract:
         require(package_sha == contract["candidate_package_sha256"], "package identity changed")

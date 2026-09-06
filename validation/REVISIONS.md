@@ -1,5 +1,14 @@
 # Evaluator revisions
 
+2026-09-06: Retire the earlier campaign launcher, budget/cache workers, training
+orchestration, and standalone diagnostics from active code. Their exact source
+remains in the immutable final78 snapshot. Keep operator/profile/replay checks
+unchanged; move comparison and digest helpers without changing their bodies.
+The current runner imports the same reference directly. The current final-sweep
+contract and frozen manifest bind this cleanup; measured snapshots retain their
+original contracts, source bytes, and failures. No kernel, arithmetic, tolerance,
+optimizer, sampling schedule, or timing boundary changes.
+
 2026-09-06: Final delivery cleanup removes the unused historical selected-FLA
 code-generation probe, its Modal wrapper, and their exclusive tests/runbook.
 Immutable campaign snapshots retain their original copies and hashes. README

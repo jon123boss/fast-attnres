@@ -206,7 +206,7 @@ def summarize(paths, *, candidate="candidate", required_rounds=120, contract=Non
         if report.get("kind") != "training":
             raise ValueError("complete-step summary accepts training reports only")
         gpu = report["config"]["gpu"]
-        from benchmarks.bf16_primary import contract_digest
+        from benchmarks.source_identity import contract_digest
         if contract and report["config"].get("primary_contract_sha256") != contract_digest(contract):
             admission_failures.append({"path": str(path), "reason": "execution contract digest mismatch"})
         if contract and report["config"].get("comparison_residency", "one_gpu_arm") != contract.get("comparison_residency", "one_gpu_arm"):

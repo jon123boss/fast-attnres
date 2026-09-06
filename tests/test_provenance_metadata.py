@@ -56,7 +56,7 @@ def test_provenance_covers_kernel_and_license_identities(historical_release_root
     assert "configs/bf16_primary.json" in provenance
     assert "v1.0.0/results/compiled_step" in provenance
     assert "5e02dd3a7651f5f2797eb8b12bbec401826031e1" in provenance
-    from benchmarks.bf16_primary import package_digest
+    from benchmarks.source_identity import package_digest
     final = json.loads((ROOT / "configs/bf16_final_sweep.json").read_text())
     assert final["candidate_package_sha256"] == package_digest(ROOT / "src/attnres")
     assert "configs/bf16_final_sweep.json" in provenance

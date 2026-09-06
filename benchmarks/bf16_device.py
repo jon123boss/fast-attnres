@@ -1,53 +1,15 @@
-"""GPU measurements for the BF16 campaign; no cloud or account operations."""
+"""Operator qualification and changed-input replay checks for cache validation."""
 from __future__ import annotations
 
-import gc
-import hashlib
-import json
 import os
-from pathlib import Path
-import platform
 import sys
 import time
 import traceback
 
 import torch
 
-from benchmarks.baseline import load_baseline
-from validation.oracle import oracle
-
-
-def source_digest(root):
-    files = sorted(Path(root).rglob("*.py"))
-    hashes = {str(p.relative_to(root)): hashlib.sha256(p.read_bytes()).hexdigest()
-              for p in files if "__pycache__" not in p.parts}
-    digest = hashlib.sha256(json.dumps(hashes, sort_keys=True).encode()).hexdigest()
-    return {"sha256": digest, "files": hashes}
-
-
-def metadata():
-    import triton
-    p = torch.cuda.get_device_properties(0)
-    return {"torch": str(torch.__version__), "triton": str(triton.__version__),
-            "cuda": torch.version.cuda, "python": platform.python_version(),
-            "gpu": p.name, "capability": list(torch.cuda.get_device_capability()),
-            "memory_bytes": p.total_memory, "sms": p.multi_processor_count,
-            "cache_autotuning": bool(triton.knobs.autotuning.cache)}
-
-
-def bf16_torch(values, query, *, eps=2**-23, scale=1.0):
-    """Validation/benchmark fixture with BF16 PyTorch arithmetic."""
-    return oracle(values, query, eps=eps, scale=scale)
-
-
-def compare(actual, expected):
-    if not torch.isfinite(actual).all() or not torch.isfinite(expected).all():
-        raise AssertionError("nonfinite output or gradient")
-    torch.testing.assert_close(actual, expected, rtol=0.05, atol=0.05)
-    difference = (actual.detach().float() - expected.detach().float()).abs()
-    return {"max_abs": float(difference.max()),
-            "relative_l2": float(torch.linalg.vector_norm(difference) /
-                                 torch.linalg.vector_norm(expected.detach().float()).clamp_min(1e-20))}
+from validation.comparison import compare
+from validation.oracle import oracle as bf16_torch
 
 
 def _profile_operator(op, values, query, params, upstream):
@@ -210,82 +172,3 @@ def _operator_case(case, backends, *, seed, warmups, rounds, replays):
                 result["arms"][name]["profile"] = {"error": f"{type(exc).__name__}: {exc}",
                                                      "timing_eligible": False}
     return result
-
-
-def run_operator(config, checkpoint):
-    """Run an immutable case list and checkpoint each result through the caller."""
-    actual = metadata()
-    if not actual["torch"].startswith("2.13.0") or actual["triton"] != "3.7.1":
-        raise RuntimeError(f"unqualified runtime: {actual}")
-    expected_capability = {"H100": [9, 0], "B200": [10, 0]}[config["gpu"]]
-    if actual["capability"] != expected_capability or config["gpu"] not in actual["gpu"]:
-        raise RuntimeError(f"GPU substitution: {actual}")
-    backends, identities = {}, {}
-    for name, root in config["sources"].items():
-        baseline = load_baseline(root)
-        backends[name] = baseline.attnres
-        identities[name] = baseline.metadata
-    from benchmarks.bf16_competitors import load_all
-    competitors, competitor_identities, import_failures = load_all(config.get("competitors", {}))
-    backends.update(competitors)
-    identities.update(competitor_identities)
-    if config.get("torch_baseline", False):
-        backends["torch_compile"] = torch.compile(bf16_torch, fullgraph=True, dynamic=False)
-    report = {"kind": "operator", "config": config, "runtime": actual,
-              "identities": identities, "import_failures": import_failures,
-              "results": [], "status": "running"}
-    if config.get("shared_backward"):
-        if config.get("scope") or config.get("primary_contract_sha256"):
-            raise ValueError("shared backward tuning is for attribution experiments only")
-        from benchmarks.bf16_kernel_export import share_identical_backward
-        report["shared_backward"] = share_identical_backward(backends, config["shared_backward"])
-    checkpoint(report)
-    for name in config.get("layout_checks", []):
-        from validation.layout_checks import run_layout_checks
-        try:
-            report.setdefault("layout_checks", {})[name] = run_layout_checks(backends[name])
-        except Exception as exc:
-            report.setdefault("layout_checks", {})[name] = {
-                "status": "failed", "error": f"{type(exc).__name__}: {exc}",
-                "traceback": traceback.format_exc()}
-            report["status"] = "failed"
-            checkpoint(report)
-            return report
-        checkpoint(report)
-    for name in config.get("scalar_checks", []):
-        from validation.softmax_checks import run_equal_logit_checks
-        try:
-            checks = run_equal_logit_checks(backends[name], config.get("scalar_cases", {}).get(name))
-            report.setdefault("scalar_checks", {})[name] = checks
-        except Exception as exc:
-            report.setdefault("scalar_checks", {})[name] = {
-                "status": "failed", "error": f"{type(exc).__name__}: {exc}",
-                "traceback": traceback.format_exc()}
-            report["status"] = "failed"
-            checkpoint(report)
-            return report
-        checkpoint(report)
-    for case in config["cases"]:
-        # Shapes are independent experiments. Clear Dynamo's per-code-object
-        # specialization limit between them; retain the disk compiler cache.
-        # This runs before qualification, warmup, capture and timing.
-        torch.compiler.reset()
-        for seed in config["seeds"]:
-            report["in_progress"] = {"case": case, "seed": seed}
-            checkpoint(report)
-            report["results"].append(operator_case(case, backends, seed=seed,
-                warmups=config.get("warmups", 5), rounds=config.get("rounds", 40),
-                replays=config.get("replays", 8)))
-            report.pop("in_progress", None)
-            if config.get("stop_on_failure", False) and any(
-                arm["status"] != "passed" for arm in report["results"][-1]["arms"].values()
-            ):
-                report.update(status="failed", stopped_after={"case": case, "seed": seed})
-                checkpoint(report)
-                return report
-            checkpoint(report)
-            gc.collect()
-            torch.cuda.empty_cache()
-    report["status"] = "complete"
-    checkpoint(report)
-    return report

@@ -42,7 +42,7 @@ def fill_case(values, query, upstream, kind, iteration):
 
 def check_routing(operator, *, rows, width, rank, kind, replays=8, compiled=False):
     """Check real input leaves against the BF16 reference, including changed replay."""
-    from benchmarks.bf16_device import compare
+    from .comparison import compare
 
     torch.manual_seed(20260906)
     stream = torch.cuda.Stream()
