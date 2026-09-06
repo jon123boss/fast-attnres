@@ -242,8 +242,8 @@ jobs:
           assert importlib.metadata.version("fast-attnres") == "1.0.0"
           required_exports = {"attnres", "LearnedQuery", "__version__"}
           assert required_exports <= set(attnres.__all__)
-          values = torch.randn(2, 1, 4)
-          query = torch.randn(4)
+          values = torch.randn(2, 1, 4, dtype=torch.bfloat16)
+          query = torch.randn(4, dtype=torch.bfloat16)
           try:
               attnres.attnres(values, query)
           except RuntimeError as error:
