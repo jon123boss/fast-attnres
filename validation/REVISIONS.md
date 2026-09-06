@@ -1,5 +1,11 @@
 # Evaluator revisions
 
+2026-09-06: Updated the frozen Torch control source identity after adding the
+compiler export helper. The launcher caught the stale identity before GPU
+admission. A CPU check now verifies all three locally available primary source
+identities against the current files. No numerical code, workload, timing,
+statistical threshold, or historical evidence changed.
+
 2026-09-06: Added opt-in selected-kernel compiler exports after timing and profiling.
 The exporter observes one ordinary launch, restores its temporary hooks even on
 failure, and records the actual selected binary, IR, constants, registers and

@@ -9,6 +9,20 @@ import pytest
 from benchmarks import bf16_report
 
 
+def test_primary_local_identities_match_current_sources():
+    import hashlib
+    from benchmarks.bf16_primary import CONTRACT, fixture_digest, package_digest
+
+    root = CONTRACT.parent.parent
+    expected = json.loads(CONTRACT.read_text())["identities"]
+    assert expected["candidate"] == package_digest(root / "src/attnres")
+    assert expected["training_fixture"] == fixture_digest(root)
+    assert expected["torch_compile"] == hashlib.sha256(b"".join(
+        (root / name).read_bytes()
+        for name in ("benchmarks/bf16_device.py", "validation/oracle.py")
+    )).hexdigest()
+
+
 GPUS = ("H100", "B200")
 MODES = ("full", "block")
 

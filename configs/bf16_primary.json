@@ -85,7 +85,7 @@
     "hydra": "128859bb5c81d082f5df036c54d947cab2feff7976a56da9d7a904143b8e10c3",
     "hilda": "1bfc85d6460035d24c565f5fa3d8273de5de708111ff6fb41634353a475685a4",
     "optimizer": "5d5ba904e41829b416cb7a0718201a86d945b26b79ca1ca32dab331e2da6fcce",
-    "torch_compile": "d593da148041cefa018e3f7e583192871b531a1a056c19b3083d0b54f9cd56f6",
+    "torch_compile": "2a904b4bbf1d9cdb8b9b91d910b42b7ca71e5d1d48fd059345d567fe9467581b",
     "training_fixture": "f11dd114cfc24d1408ee133ed4c13400992cd473c1a3b30952cded0723a60bec"
   },
   "status": "frozen before final primary measurements",
