@@ -388,8 +388,8 @@ if triton is not None:
             ).to(tl.float32)
             inverse_rms = tl.rsqrt(tl.sum(tl.where((R == D) | key_mask[None, :], value * value, 0.0), axis=1) / R + eps_f32)
             saved_score = (
-                tl.sum((value * inverse_rms[:, None]) * query_value[None, :],
-                       axis=1)
+                tl.sum(value * query_value[None, :], axis=1)
+                * inverse_rms
                 * scale_f32
             )
             tile_scores = tl.where(source_mask & row_valid, saved_score, -float("inf"))

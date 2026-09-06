@@ -380,14 +380,14 @@ validation/source_checks.py: 5b641b63c67f543ed87bfe90f3555cef5ac2ebec4951869d5dc
 2026-09-06: Added independent nonuniform routing checks for the already admitted S4/N4096/D2048/R768 and S4/N32768/D256/R16 geometries: negative scale with nondefault epsilon, zero/tiny keys, zero scale, unequal large finite logits, changed source/query/upstream replay, and a separate GPU Inductor fullgraph boundary. Zero-key checks use the nonzero analytic routing derivative and exact zero query derivative. Three CPU tests verify the fixture premises; GPU results are pending. Documented existing FP32 range limits without changing accepted inputs, clamping, equations, .05/.05 tolerances, or timing. No production source or historical contract changed.
 
 2026-09-06: The final sweep retains the three-seed headline phase at 48f3caf and seals the four smaller workloads separately after correcting native adapter unit-weight dtypes: BF16 for FLA, FP32 for Liger, allocated before capture and preserved by model casts. This does not change the BF16 reference, tolerances, timing boundary, or vendor kernels. Remove the unreferenced _is_row_affine wrapper and unused private query_ndim option; all remaining kernel-module AST nodes and supported validation results are unchanged. Each phase retains its measured source identity and raw reports.
-# 2026-09-06: Normalize routing keys before the query product
+# 2026-09-06: User-authorized normalization-rounding disposition
 
-The shared forward kernel now applies inverse RMS to each key coordinate before
-the query dot product, matching the independent reference's operation order.
-The frozen H100 D=2048/S=9 full-rank model gate reproduced two out-of-tolerance
-logits while main and native FLA passed. With the same weights, inputs and every
-failing launch choice held fixed, normalize-before-dot passed outputs, loss and
-all 107 parameter-gradient comparisons at the unchanged BF16 tolerances.
-This arithmetic change requires fresh performance measurements; prior reports
-remain attached to their original sources. Full, Block and sliced ranks use the
-same implementation, with no shape-specific numerical exception.
+The measured production kernel is retained. An isolated normalize-before-dot
+experiment resolved H100's two failing D=2048/S=9 logits at fixed launch choices,
+but was not promoted after the user instructed us to ignore normalization-order
+numerical differences and finish. The original failed H100 and B200 reports
+remain unchanged. A separate continuation explicitly records accepted initial
+logit discrepancies, including their count and maximum error, while retaining
+strict finite-value, loss, all-gradient and complete-training-state checks.
+The reference and its nominal BF16 tolerances are unchanged. No kernel dispatch,
+shape exception, training input or timing statistic is changed.
