@@ -42,22 +42,6 @@ if SNAPSHOT.is_dir():
     image = image.add_local_dir(str(SNAPSHOT), "/job", copy=True)
 
 
-def _completed_cache_path(path):
-    return not any(part in ("locks", "__pycache__") or part.endswith((".lock", ".tmp"))
-                   or part.startswith("tmp.") for part in Path(path).parts)
-
-
-def _compiler_cache_stamp(roots):
-    """Detect backup changes; the compilers still validate their own cache keys."""
-    entries = []
-    for root in roots:
-        for path in sorted(root.rglob("*")):
-            if path.is_file() and _completed_cache_path(path):
-                stat = path.stat()
-                entries.append((str(path), stat.st_size, stat.st_mtime_ns))
-    return tuple(entries)
-
-
 def _compiler_cache_paths(root, job_id):
     """Read a completed archive; concurrent jobs never share an output path."""
     candidates = [path for path in (root / "artifacts.tar.gz", *root.glob("*/artifacts.tar.gz"))
@@ -78,6 +62,7 @@ def _remote(job):
     os.environ["TORCHINDUCTOR_CACHE_DIR"] = "/tmp/attnres-inductor"
     sys.path[:0] = ["/job/runner", "/job/runner/src"]
     from benchmarks.bf16_device import run_operator, source_digest
+    from benchmarks.bf16_cache import compiler_cache_stamp, save_compiler_cache
     root = Path("/evidence") / job["id"]
     root.mkdir(parents=True, exist_ok=True)
     marker = root / "started.json"
@@ -99,28 +84,13 @@ def _remote(job):
     cache_input, cache_archive = _compiler_cache_paths(cache_root, job["id"])
     local_cache_roots = [Path("/tmp") / f"attnres-{name}" for name in ("triton", "inductor")]
     saved_cache_stamp = None
-    def save_compiler_cache():
+    def backup_compiler_cache():
         nonlocal saved_cache_stamp
         if not cache_enabled:
             return
         try:
-            stamp = _compiler_cache_stamp(local_cache_roots)
-            if stamp == saved_cache_stamp:
-                return
-            local_archive = Path("/tmp/compiler-artifacts.tar.gz")
-            def completed_file(info):
-                if not _completed_cache_path(info.name):
-                    return None
-                return info if info.isfile() or info.isdir() else None
-            with tarfile.open(local_archive, "w:gz", compresslevel=1) as archive:
-                for source in local_cache_roots:
-                    if source.exists():
-                        archive.add(source, arcname=source.name, filter=completed_file)
-            cache_archive.parent.mkdir(parents=True, exist_ok=True)
-            pending = cache_archive.with_suffix(".pending")
-            shutil.copyfile(local_archive, pending)
-            pending.replace(cache_archive)
-            saved_cache_stamp = stamp
+            saved_cache_stamp = save_compiler_cache(
+                local_cache_roots, cache_archive, saved_cache_stamp)
         except Exception:
             (root / "compiler-cache-error.txt").write_text(traceback.format_exc())
 
@@ -151,7 +121,7 @@ def _remote(job):
             with tarfile.open(cache_input, "r:gz") as archive:
                 archive.extractall("/tmp", filter="data")
             cache_loaded = True
-            saved_cache_stamp = _compiler_cache_stamp(local_cache_roots)
+            saved_cache_stamp = compiler_cache_stamp(local_cache_roots)
         for label, expected in job["hashes"].items():
             actual = source_digest(Path("/job") / label)["sha256"]
             if actual != expected:
@@ -185,7 +155,7 @@ def _remote(job):
             return json.loads(json.dumps(run_diagnostic(config, checkpoint), default=str))
         if config.get("optimizer_source"):
             config["optimizer_source"] = "/job/optimizer"
-        return _training(config, root, checkpoint)
+        return _training(config, root, checkpoint, cache_archive if cache_enabled else None)
     except Exception as exc:
         failure = {"status": "failed", "job": job,
                    "error": f"{type(exc).__name__}: {exc}", "traceback": traceback.format_exc()}
@@ -193,11 +163,11 @@ def _remote(job):
         return failure
     finally:
         # Preserve compilation work even when a later measurement fails.
-        save_compiler_cache()
+        backup_compiler_cache()
         volume.commit()
 
 
-def _training(config, root, checkpoint):
+def _training(config, root, checkpoint, cache_archive=None):
     """Isolate compiler state per cell while retaining paired arms together."""
     import subprocess
     report = {"kind": "training", "status": "running", "config": config,
@@ -217,9 +187,11 @@ def _training(config, root, checkpoint):
             entry = ("benchmarks.bf16_resident_diagnostic" if config.get("resident_diagnostic") else
                      "benchmarks.bf16_timing_diagnostic" if config.get("gc_diagnostic") else
                      "benchmarks.bf16_memory_check" if "activation_memory_budget" in config else
-                     "benchmarks.bf16_training")
+                     "benchmarks.bf16_training_worker")
             command = [sys.executable, "-X", "faulthandler", "-m", entry,
                        "--config", str(config_file), "--output", str(output)]
+            if cache_archive and entry == "benchmarks.bf16_training_worker":
+                command += ["--cache-archive", str(cache_archive), "--cache-volume", VOLUME_NAME]
             with (cell / "process.log").open("w") as log:
                 process = subprocess.Popen(command, stdout=log, stderr=subprocess.STDOUT)
                 modified = None
@@ -228,11 +200,14 @@ def _training(config, root, checkpoint):
                         modified = output.stat().st_mtime_ns
                         partial = json.loads(output.read_text())
                         report["in_progress"] = partial.get("in_progress", {"case": case, "seed": seed})
+                        if "compiler_backup_error" in partial:
+                            report["compiler_backup_error"] = partial["compiler_backup_error"]
                         checkpoint(report)
                     volume.commit()
                     time.sleep(10)
             result = json.loads(output.read_text()) if output.exists() else {}
-            for field in ("identities", "runtime", "dynamo", "residency_qualification"):
+            for field in ("identities", "runtime", "dynamo", "residency_qualification",
+                          "compiler_backup_error"):
                 if field in result:
                     if field == "identities" and field in report and report[field] != result[field]:
                         raise RuntimeError("source identities changed between isolated cells")

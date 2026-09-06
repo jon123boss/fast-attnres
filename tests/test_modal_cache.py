@@ -4,6 +4,7 @@ import hashlib
 import os
 from pathlib import Path
 import re
+import tarfile
 
 import pytest
 
@@ -31,13 +32,8 @@ def test_parallel_bf16_cache_writers_use_distinct_paths(tmp_path):
 
 
 def test_bf16_cache_backup_detects_completed_changes_and_ignores_temporary_files(tmp_path):
-    source = Path(__file__).parents[1] / "benchmarks/bf16_modal.py"
-    functions = [node for node in ast.parse(source.read_text()).body
-                 if isinstance(node, ast.FunctionDef)
-                 and node.name in {"_completed_cache_path", "_compiler_cache_stamp"}]
-    namespace = {"Path": Path}
-    exec(compile(ast.Module(body=functions, type_ignores=[]), str(source), "exec"), namespace)
-    stamp = lambda: namespace["_compiler_cache_stamp"]([tmp_path])
+    from benchmarks.bf16_cache import compiler_cache_stamp
+    stamp = lambda: compiler_cache_stamp([tmp_path])
     artifact = tmp_path / "kernel.cubin"
     artifact.write_bytes(b"first")
     before = stamp()
@@ -53,6 +49,81 @@ def test_bf16_cache_backup_detects_completed_changes_and_ignores_temporary_files
     before = stamp()
     artifact.unlink()
     assert stamp() != before
+
+
+def test_bf16_archive_survives_interrupted_replacement(tmp_path, monkeypatch):
+    from benchmarks import bf16_cache
+    root = tmp_path / "triton"
+    root.mkdir()
+    (root / "kernel.cubin").write_bytes(b"compiled")
+    (root / "kernel.tmp").write_bytes(b"unfinished")
+    destination = tmp_path / "saved/artifacts.tar.gz"
+    stamp = bf16_cache.save_compiler_cache([root], destination)
+    with tarfile.open(destination) as archive:
+        assert archive.extractfile("triton/kernel.cubin").read() == b"compiled"
+        assert "triton/kernel.tmp" not in archive.getnames()
+    previous = destination.read_bytes()
+    modified = destination.stat().st_mtime_ns
+    assert bf16_cache.save_compiler_cache([root], destination, stamp) == stamp
+    assert destination.stat().st_mtime_ns == modified
+    (root / "kernel.cubin").write_bytes(b"new compiled version")
+
+    def interrupted_copy(source, target):
+        target.write_bytes(b"partial upload")
+        raise OSError("interrupted")
+
+    monkeypatch.setattr(bf16_cache.shutil, "copyfile", interrupted_copy)
+    with pytest.raises(OSError, match="interrupted"):
+        bf16_cache.save_compiler_cache([root], destination, stamp)
+    assert destination.read_bytes() == previous
+    assert not list(destination.parent.glob("*.pending"))
+
+
+def test_training_cache_checkpoints_precede_timing_and_ignore_timing_updates(tmp_path, monkeypatch):
+    import json
+    from benchmarks.bf16_training_worker import training_checkpoint
+    roots = [tmp_path / name for name in ("triton", "inductor")]
+    for root, variable in zip(roots, ("TRITON_CACHE_DIR", "TORCHINDUCTOR_CACHE_DIR")):
+        root.mkdir()
+        monkeypatch.setenv(variable, str(root))
+    output, archive = tmp_path / "report.json", tmp_path / "cache/artifacts.tar.gz"
+    commits = []
+    checkpoint = training_checkpoint(output, archive, lambda: commits.append(archive.read_bytes()))
+    report = {"in_progress": {"seed": 7, "case": {"rank": 384}, "arms": {}}}
+    checkpoint(report)
+    assert not archive.exists()
+    (roots[0] / "kernel.cubin").write_bytes(b"qualified arm")
+    report["in_progress"]["arms"]["candidate"] = {"status": "qualified"}
+    checkpoint(report)
+    assert len(commits) == 1 and json.loads(output.read_text()) == report
+    previous = archive.read_bytes()
+    # Even a compiler-file change must not trigger a backup from timed updates.
+    (roots[0] / "kernel.cubin").write_bytes(b"later change")
+    report["in_progress"]["arms"]["candidate"] = {"status": "passed", "samples_ms": [1.]}
+    checkpoint(report)
+    assert len(commits) == 1 and archive.read_bytes() == previous
+    assert json.loads(output.read_text()) == report
+
+
+def test_training_backup_errors_are_retained_without_losing_results(tmp_path, monkeypatch):
+    import json
+    from benchmarks.bf16_training_worker import training_checkpoint
+    for variable in ("TRITON_CACHE_DIR", "TORCHINDUCTOR_CACHE_DIR"):
+        monkeypatch.setenv(variable, str(tmp_path / variable))
+        Path(os.environ[variable]).mkdir()
+    output = tmp_path / "report.json"
+
+    def failed_commit():
+        raise OSError("commit unavailable")
+
+    checkpoint = training_checkpoint(output, tmp_path / "cache/artifacts.tar.gz", failed_commit)
+    (Path(os.environ["TRITON_CACHE_DIR"]) / "kernel.cubin").write_bytes(b"compiled")
+    report = {"in_progress": {"seed": 7, "case": {},
+                              "arms": {"candidate": {"status": "qualified"}}}}
+    checkpoint(report)
+    saved = json.loads(output.read_text())
+    assert saved["compiler_backup_error"] == "OSError: commit unavailable"
+    assert saved["in_progress"] == report["in_progress"]
 
 
 @pytest.fixture

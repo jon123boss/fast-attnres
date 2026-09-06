@@ -69,6 +69,11 @@ may use up to eight independent single-GPU jobs. Distributed work is disabled.
 Reservations remain charged to the cap after failures. Resume only missing
 work and retain incremental evidence.
 
+Training jobs back up completed compiler artifacts after each arm qualifies,
+before timing resumes. Backups replace the previous archive atomically and
+skip unchanged caches; backup failures remain in the report. A timeout during
+an unfinished arm can still discard that arm's new compilations.
+
 Deliver a clean BF16 package, shared model integration, reproducible commands,
 raw results, confidence intervals, source identities, failure records, and a
 draft GitHub PR. Do not merge or publish a release. Unverified fastest-kernel,
