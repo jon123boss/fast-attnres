@@ -137,7 +137,7 @@ jobs:
                             "results/final_sweep/audit.json", "release-audit.json"}
           if not required_files <= names:
               raise SystemExit(f"final sweep evidence archive is incomplete: {required_files - names}")
-          if any(name.startswith("results/") and not name.startswith("results/final_sweep/") for name in names):
+          if any(name.startswith("results/") and not (name == "results/final_sweep" or name.startswith("results/final_sweep/")) for name in names):
               raise SystemExit("unrelated timing evidence entered the release archive")
           print("verified final sweep evidence archive")
           PY

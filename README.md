@@ -4,9 +4,9 @@
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-3776AB.svg)](https://www.python.org/)
 [![PyTorch 2.13](https://img.shields.io/badge/tested-PyTorch_2.13-EE4C2C.svg)](https://pytorch.org/)
 [![Triton 3.7.1](https://img.shields.io/badge/tested-Triton_3.7.1-654FF0.svg)](https://github.com/triton-lang/triton/releases/tag/v3.7.1)
-[![License: MIT](https://img.shields.io/badge/license-MIT-2E7D32.svg)](https://github.com/jon123boss/fast-attnres/blob/v2.0.0/LICENSE)
+[![License: MIT](https://img.shields.io/badge/license-MIT-2E7D32.svg)](https://github.com/jon123boss/fast-attnres/blob/v2.0.1/LICENSE)
 
-![Full AttnRes training on H100 SXM and B200](https://raw.githubusercontent.com/jon123boss/fast-attnres/v2.0.0/results/final_sweep/compiled_step_hero.png)
+![Full AttnRes training on H100 SXM and B200](https://raw.githubusercontent.com/jon123boss/fast-attnres/v2.0.1/results/final_sweep/compiled_step_hero.png)
 
 **Fast Attention Residuals** (`Fast-AttnRes`) makes
 [Attention Residuals](https://arxiv.org/abs/2603.15031) a single PyTorch
@@ -40,8 +40,8 @@ use the same per-read Fast-AttnRes backend.
 
 The 24-layer headline uses three seeds with 120 paired rounds each. The
 8-layer comparisons use one seed with 40 paired rounds per configuration.
-See the [benchmark protocol](https://github.com/jon123boss/fast-attnres/blob/v2.0.0/docs/benchmark_results.md) and
-[reproducible results](https://github.com/jon123boss/fast-attnres/blob/v2.0.0/results/final_sweep/README.md) for workloads, source
+See the [benchmark protocol](https://github.com/jon123boss/fast-attnres/blob/v2.0.1/docs/benchmark_results.md) and
+[reproducible results](https://github.com/jon123boss/fast-attnres/blob/v2.0.1/results/final_sweep/README.md) for workloads, source
 versions, confidence intervals, and reproduction commands.
 
 ### Compiled BF16 training steps
@@ -49,12 +49,12 @@ versions, confidence intervals, and reproduction commands.
 Comparators are native FLA Triton checkpoint 1, Liger 0.8.2, and Catswe phase 1.
 Unsupported and failed arms remain labelled. Quarter-rank comparisons against
 standard FLA compare different routing equations.
-The D2048 results retain [disclosed normalization-rounding deviations](https://github.com/jon123boss/fast-attnres/blob/v2.0.0/docs/benchmark_results.md).
+The D2048 results retain [disclosed normalization-rounding deviations](https://github.com/jon123boss/fast-attnres/blob/v2.0.1/docs/benchmark_results.md).
 On H100, standard D2048 is 0.28% slower than FLA, within the declared 1% parity band.
 
-![H100 compiled BF16 training steps](https://raw.githubusercontent.com/jon123boss/fast-attnres/v2.0.0/results/final_sweep/compiled_step_sweep_h100.png)
+![H100 compiled BF16 training steps](https://raw.githubusercontent.com/jon123boss/fast-attnres/v2.0.1/results/final_sweep/compiled_step_sweep_h100.png)
 
-![B200 compiled BF16 training steps](https://raw.githubusercontent.com/jon123boss/fast-attnres/v2.0.0/results/final_sweep/compiled_step_sweep_b200.png)
+![B200 compiled BF16 training steps](https://raw.githubusercontent.com/jon123boss/fast-attnres/v2.0.1/results/final_sweep/compiled_step_sweep_b200.png)
 
 ### Quarter-rank routing
 
@@ -62,9 +62,9 @@ These figures compare our `R=D/4` kernel with our `R=D` kernel on each workload.
 Values and outputs retain width `D`; only the routing rank changes.
 Quarter rank reduces step latency in all ten measured device/workload pairs.
 
-![H100 quarter-rank versus full-rank routing](https://raw.githubusercontent.com/jon123boss/fast-attnres/v2.0.0/results/final_sweep/rank_comparison_h100.png)
+![H100 quarter-rank versus full-rank routing](https://raw.githubusercontent.com/jon123boss/fast-attnres/v2.0.1/results/final_sweep/rank_comparison_h100.png)
 
-![B200 quarter-rank versus full-rank routing](https://raw.githubusercontent.com/jon123boss/fast-attnres/v2.0.0/results/final_sweep/rank_comparison_b200.png)
+![B200 quarter-rank versus full-rank routing](https://raw.githubusercontent.com/jon123boss/fast-attnres/v2.0.1/results/final_sweep/rank_comparison_b200.png)
 
 ## Install
 
@@ -72,7 +72,7 @@ Install the release with the pinned CUDA runtime:
 
 ```bash
 python -m pip install --index-url https://download.pytorch.org/whl/cu130 torch==2.13.0
-python -m pip install "fast-attnres[cuda]==2.0.0"
+python -m pip install "fast-attnres[cuda]==2.0.1"
 ```
 
 For development, clone the repository and run `python -m pip install -e ".[cuda]"`.
@@ -117,7 +117,7 @@ output    = sum_s p_s * v_s
 
 Normalization and softmax run independently at each carried batch or token
 position. The output is not normalized, source-count weighted, or source averaged.
-See [`docs/equation.md`](https://github.com/jon123boss/fast-attnres/blob/v2.0.0/docs/equation.md) for the complete contract.
+See [`docs/equation.md`](https://github.com/jon123boss/fast-attnres/blob/v2.0.1/docs/equation.md) for the complete contract.
 
 ## Full and Block schedules
 
@@ -170,7 +170,7 @@ independent BF16 PyTorch reference with FP32 internal accumulation at
 `rtol=0.05` and `atol=0.05`. Coverage
 includes packed/list sources, repeated reads, partial Blocks, changed inputs,
 non-contiguous layouts, shared sources, and compiled replay. See the
-[validation protocol](https://github.com/jon123boss/fast-attnres/blob/v2.0.0/docs/validation.md).
+[validation protocol](https://github.com/jon123boss/fast-attnres/blob/v2.0.1/docs/validation.md).
 
 Timing reports identify the exact source, device, runtime, workload, and
 measurement boundary. Failed, incomplete, and inconclusive comparisons remain
@@ -178,5 +178,5 @@ visible in the results.
 
 ## License
 
-Fast-AttnRes is released under the [MIT License](https://github.com/jon123boss/fast-attnres/blob/v2.0.0/LICENSE). FLA-derived source
-list attribution remains in [`NOTICE`](https://github.com/jon123boss/fast-attnres/blob/v2.0.0/NOTICE).
+Fast-AttnRes is released under the [MIT License](https://github.com/jon123boss/fast-attnres/blob/v2.0.1/LICENSE). FLA-derived source
+list attribution remains in [`NOTICE`](https://github.com/jon123boss/fast-attnres/blob/v2.0.1/NOTICE).

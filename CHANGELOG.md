@@ -3,7 +3,11 @@
 User-visible changes to `fast-attnres`. Performance results remain tied to
 their raw artifacts, source commits, and measurement conditions.
 
-## [2.0.0] - 2026-09-06
+## [2.0.1] - 2026-09-06
+
+This is the first published 2.x package. The 2.0.0 tag remains an unpublished
+release attempt: its archive guard incorrectly rejected the evidence directory
+entry. Version 2.0.1 corrects that packaging check; measured kernel code is unchanged.
 
 - Narrow the public operator to CUDA BF16 values, queries, and first-order
   gradients, with FP32 internal math and an independent BF16 validation reference.

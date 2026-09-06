@@ -1,6 +1,6 @@
 # Releasing Fast-AttnRes
 
-Version 2.0.0 ships the CUDA BF16 operator and the final H100/B200 sweep.
+Version 2.0.1 ships the CUDA BF16 operator and the final H100/B200 sweep.
 Version 1's CPU/FP32 execution and exported reference are removed. The
 [original release procedure](https://github.com/jon123boss/fast-attnres/blob/v1.0.0/docs/release.md)
 remains available with its historical evidence.
@@ -15,7 +15,7 @@ python -m pytest -m "not cuda" -q
 python scripts/verify_final_release.py --work /tmp/fast-attnres-release-audit
 SOURCE_DATE_EPOCH="$(git show -s --format=%ct HEAD)" \
   python scripts/build_release.py --output-dir dist/release
-python -m twine check dist/release/*.whl dist/release/fast_attnres-2.0.0.tar.gz
+python -m twine check dist/release/*.whl dist/release/fast_attnres-2.0.1.tar.gz
 (cd dist/release && shasum -a 256 -c SHA256SUMS)
 ```
 
@@ -28,9 +28,9 @@ manifests and the documented normalization-rounding exceptions remain intact.
 
 The deterministic builder produces exactly four assets:
 
-- `fast_attnres-2.0.0-py3-none-any.whl`: runtime package.
-- `fast_attnres-2.0.0.tar.gz`: source distribution.
-- `fast-attnres-2.0.0-evidence.tar.gz`: the final evidence directory, immutable
+- `fast_attnres-2.0.1-py3-none-any.whl`: runtime package.
+- `fast_attnres-2.0.1.tar.gz`: source distribution.
+- `fast-attnres-2.0.1-evidence.tar.gz`: the final evidence directory, immutable
   raw source/report bundle, release audit, attribution and reproduction guidance.
 - `SHA256SUMS`: hashes of those three payloads.
 
@@ -43,7 +43,7 @@ only and must never be used for a published release.
 ## Publish
 
 After the exact release commit passes CI on `main`, push its matching protected
-`v2.0.0` tag. The release workflow verifies the frozen contract and evidence,
+`v2.0.1` tag. The release workflow verifies the frozen contract and evidence,
 builds and checks the assets, and creates build-provenance attestations. Only
 the wheel and source distribution are sent to PyPI through the existing `pypi`
 environment and OIDC trusted publisher. All four assets are attached to the

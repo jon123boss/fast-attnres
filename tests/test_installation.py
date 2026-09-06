@@ -14,7 +14,7 @@ from pathlib import Path
 import torch
 import attnres
 from attnres import attnres as call
-assert attnres.__version__ == "2.0.0"
+assert attnres.__version__ == "2.0.1"
 assert Path(attnres.__file__).resolve().is_relative_to(Path(os.environ["ATTNRES_INSTALL_DIR"]).resolve())
 package_dir = Path(attnres.__file__).resolve().parent
 assert not hasattr(attnres, "prepare_block")

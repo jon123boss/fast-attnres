@@ -18,7 +18,7 @@ def test_citation_file_has_verified_public_identity():
     assert "title: Fast Attention Residuals" in citation
     assert "type: software" in citation
     assert "license: MIT" in citation
-    assert "version: 2.0.0" in citation
+    assert "version: 2.0.1" in citation
     assert "family-names: Su" in citation
     assert "given-names: Jonathan" in citation
     assert "2607.09694" in citation

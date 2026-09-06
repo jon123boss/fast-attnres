@@ -493,6 +493,34 @@ def test_release_workflow_separates_evidence_from_pypi_payloads() -> None:
     assert "configs/release_evidence.json" not in workflow
 
 
+def test_release_workflow_accepts_evidence_directory_and_rejects_other_results(tmp_path, monkeypatch):
+    """Exercise the actual archive-check script, including its directory entry."""
+    import textwrap
+
+    workflow = RELEASE_WORKFLOW.read_text(encoding="utf-8")
+    marker = '          required_files = {"results/final_sweep/manifest.json",'
+    start = workflow.index('          import os\n          import tarfile',
+                           workflow.index('(cd "$release_dir" && sha256sum -c SHA256SUMS)'))
+    end = workflow.index('          PY', workflow.index(marker))
+    script = textwrap.dedent(workflow[start:end])
+    evidence = tmp_path / "fast-attnres-2.0.1-evidence.tar.gz"
+    monkeypatch.setenv("RELEASE_DIR", str(tmp_path))
+    required = ["results/final_sweep/manifest.json", "results/final_sweep/evidence.tar.gz",
+                "results/final_sweep/audit.json", "release-audit.json"]
+    for extra in (None, "results/unrelated/report.json"):
+        with tarfile.open(evidence, "w:gz") as archive:
+            directory = tarfile.TarInfo("results/final_sweep")
+            directory.type = tarfile.DIRTYPE
+            archive.addfile(directory)
+            for name in required + ([extra] if extra else []):
+                archive.addfile(tarfile.TarInfo(name))
+        if extra:
+            with pytest.raises(SystemExit, match="unrelated timing evidence"):
+                exec(compile(script, str(RELEASE_WORKFLOW), "exec"), {})
+        else:
+            exec(compile(script, str(RELEASE_WORKFLOW), "exec"), {})
+
+
 def test_ci_evidence_job_validates_current_published_screen() -> None:
     workflow = CI_WORKFLOW.read_text(encoding="utf-8")
 

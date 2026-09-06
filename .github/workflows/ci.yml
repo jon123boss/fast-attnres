@@ -245,7 +245,7 @@ jobs:
           install_dir = Path(os.environ["ATTNRES_INSTALL_DIR"]).resolve()
           package_file = Path(attnres.__file__).resolve()
           assert install_dir in package_file.parents, package_file
-          assert importlib.metadata.version("fast-attnres") == "2.0.0"
+          assert importlib.metadata.version("fast-attnres") == "2.0.1"
           required_exports = {"attnres", "LearnedQuery", "__version__"}
           assert required_exports <= set(attnres.__all__)
           values = torch.randn(2, 1, 4, dtype=torch.bfloat16)

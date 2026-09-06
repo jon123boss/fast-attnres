@@ -1,9 +1,9 @@
 # Provenance
 
-Version 2.0.0 contains the CUDA BF16 operator merged in PR #1. Measurements
+Version 2.0.1 contains the CUDA BF16 operator merged in PR #1. Measurements
 apply to the exact source bytes recorded in each report. The release auditor
 compares every runtime source file with the final measured snapshot, allowing
-only the `__version__` literal to change from 1.0.0 to 2.0.0. Historical source
+only the `__version__` literal to change from 1.0.0 to 2.0.1. Historical source
 manifests are preserved; a release version is not a new GPU measurement.
 
 ## Source identity
