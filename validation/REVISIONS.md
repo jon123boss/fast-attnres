@@ -1,5 +1,16 @@
 # Evaluator revisions
 
+2026-09-06: Added opt-in incremental compiler persistence to the cloud transport.
+Compressed content-addressed files precede immutable manifests and durability
+callbacks. Restore combines complete compatible compiler groups and checks all
+payload hashes before exposing records. Namespaces include actual hardware,
+runtime build hashes and absolute compiler-cache roots. Qualified training arms
+publish synchronously outside timing; failed compilation preserves only atomic
+Triton entries. Legacy archives remain a migration fallback. CPU tests cover
+union restore, interrupted publication, corruption, incomplete groups, unchanged
+files and untimed worker checkpoints; cloud qualification is still required.
+This changes no operator, training equation, sampling, oracle or acceptance gate.
+
 2026-09-06: Corrected flattened source and upstream strides by ignoring singleton
 batch axes. Contiguous tensors can retain arbitrary singleton strides; copying
 them did not repair the old metadata. CPU addressing and physical-leaf gradient

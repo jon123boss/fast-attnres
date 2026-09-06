@@ -9,8 +9,8 @@ from pathlib import Path
 
 
 def completed_cache_path(path):
-    return not any(part in ("locks", "__pycache__") or part.endswith((".lock", ".tmp"))
-                   or part.startswith("tmp.") for part in Path(path).parts)
+    return not any(part in ("lock", "locks", "__pycache__") or part.endswith((".lock", ".tmp"))
+                   or part.startswith(("tmp.", ".pending-")) for part in Path(path).parts)
 
 
 def compiler_cache_stamp(roots):

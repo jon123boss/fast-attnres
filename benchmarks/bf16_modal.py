@@ -84,13 +84,22 @@ def _remote(job):
     cache_input, cache_archive = _compiler_cache_paths(cache_root, job["id"])
     local_cache_roots = [Path("/tmp") / f"attnres-{name}" for name in ("triton", "inductor")]
     saved_cache_stamp = None
+    cache_store = cache_specification = None
+    cache_restored = cache_saved = None
     def backup_compiler_cache():
-        nonlocal saved_cache_stamp
+        nonlocal saved_cache_stamp, cache_saved
         if not cache_enabled:
             return
         try:
-            saved_cache_stamp = save_compiler_cache(
-                local_cache_roots, cache_archive, saved_cache_stamp)
+            if cache_store is not None:
+                # A failed model compilation may leave unfinished Inductor
+                # outputs. Workers publish those only after a qualified arm.
+                cache_saved = cache_store.save(triton_only=True)
+                (root / "compiler-cache-checkpoint.json").write_text(
+                    json.dumps(cache_saved, indent=2) + "\n")
+            else:
+                saved_cache_stamp = save_compiler_cache(
+                    local_cache_roots, cache_archive, saved_cache_stamp)
         except Exception:
             (root / "compiler-cache-error.txt").write_text(traceback.format_exc())
 
@@ -104,6 +113,8 @@ def _remote(job):
             "input_archive_sha256": cache_input_sha256,
             "autotuning_enabled": job["config"].get("cache_autotuning", False),
             "autotuning_records": sum(1 for _ in Path("/tmp/attnres-triton").rglob("*.autotune.json")),
+            "incremental_restore": cache_restored,
+            "incremental_checkpoint": cache_saved,
         }
         path = root / "report.json"
         temporary = path.with_suffix(".tmp")
@@ -115,7 +126,25 @@ def _remote(job):
         volume.commit()
     try:
         checkpoint({"status": "running", "phase": "load_compiler_cache", "config": job["config"]})
-        if cache_enabled and cache_input is not None:
+        if cache_enabled and job["config"].get("incremental_compiler_cache", False):
+            from benchmarks.bf16_cache_store import CompilerCache
+            from benchmarks.bf16_device import metadata
+            from torch._inductor.codecache import torch_key
+            from triton.runtime.cache import triton_key
+            actual = metadata()
+            identity = {name: actual[name] for name in
+                        ("torch", "triton", "cuda", "python", "gpu", "capability", "sms")}
+            identity.update(torch_build=hashlib.sha256(torch_key()).hexdigest(),
+                            triton_build=hashlib.sha256(triton_key().encode()).hexdigest())
+            specification = {"directory": str(cache_root / "incremental-v1"),
+                             "roots": dict(zip(("triton", "inductor"), map(str, local_cache_roots))),
+                             "identity": identity}
+            cache_store = CompilerCache(**specification, commit=volume.commit)
+            cache_restored = cache_store.restore()
+            cache_loaded = cache_restored["loaded"]
+            cache_specification = root / "compiler-cache-store.json"
+            cache_specification.write_text(json.dumps(specification) + "\n")
+        if cache_enabled and not cache_loaded and cache_input is not None:
             with cache_input.open("rb") as stream:
                 cache_input_sha256 = hashlib.file_digest(stream, "sha256").hexdigest()
             with tarfile.open(cache_input, "r:gz") as archive:
@@ -158,7 +187,8 @@ def _remote(job):
             return json.loads(json.dumps(run_diagnostic(config, checkpoint), default=str))
         if config.get("optimizer_source"):
             config["optimizer_source"] = "/job/optimizer"
-        return _training(config, root, checkpoint, cache_archive if cache_enabled else None)
+        return _training(config, root, checkpoint, cache_archive if cache_enabled else None,
+                         cache_specification)
     except Exception as exc:
         failure = {"status": "failed", "job": job,
                    "error": f"{type(exc).__name__}: {exc}", "traceback": traceback.format_exc()}
@@ -170,7 +200,7 @@ def _remote(job):
         volume.commit()
 
 
-def _training(config, root, checkpoint, cache_archive=None):
+def _training(config, root, checkpoint, cache_archive=None, cache_specification=None):
     """Isolate compiler state per cell while retaining paired arms together."""
     import subprocess
     report = {"kind": "training", "status": "running", "config": config,
@@ -193,8 +223,10 @@ def _training(config, root, checkpoint, cache_archive=None):
                      "benchmarks.bf16_training_worker")
             command = [sys.executable, "-X", "faulthandler", "-m", entry,
                        "--config", str(config_file), "--output", str(output)]
-            if cache_archive and entry == "benchmarks.bf16_training_worker":
-                command += ["--cache-archive", str(cache_archive), "--cache-volume", VOLUME_NAME]
+            if (cache_archive or cache_specification) and entry == "benchmarks.bf16_training_worker":
+                command += (["--cache-store", str(cache_specification)] if cache_specification
+                            else ["--cache-archive", str(cache_archive)])
+                command += ["--cache-volume", VOLUME_NAME]
             with (cell / "process.log").open("w") as log:
                 process = subprocess.Popen(command, stdout=log, stderr=subprocess.STDOUT)
                 modified = None
@@ -203,14 +235,15 @@ def _training(config, root, checkpoint, cache_archive=None):
                         modified = output.stat().st_mtime_ns
                         partial = json.loads(output.read_text())
                         report["in_progress"] = partial.get("in_progress", {"case": case, "seed": seed})
-                        if "compiler_backup_error" in partial:
-                            report["compiler_backup_error"] = partial["compiler_backup_error"]
+                        for field in ("compiler_backup_error", "compiler_cache_checkpoint"):
+                            if field in partial:
+                                report[field] = partial[field]
                         checkpoint(report)
                     volume.commit()
                     time.sleep(10)
             result = json.loads(output.read_text()) if output.exists() else {}
             for field in ("identities", "runtime", "dynamo", "residency_qualification",
-                          "compiler_backup_error"):
+                          "compiler_backup_error", "compiler_cache_checkpoint"):
                 if field in result:
                     if field == "identities" and field in report and report[field] != result[field]:
                         raise RuntimeError("source identities changed between isolated cells")
