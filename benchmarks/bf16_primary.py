@@ -11,7 +11,7 @@ CONTRACT = Path(__file__).resolve().parents[1] / "configs/bf16_primary.json"
 FIXTURE_FILES = tuple("benchmarks/" + name for name in (
     "baseline.py", "bf16_training.py", "bf16_model.py", "bf16_competitors.py",
     "bf16_device.py", "bf16_primary.py", "bf16_residency_check.py", "bf16_comparison.py", "gluon_compat.py",
-)) + ("validation/oracle.py",)
+)) + ("validation/oracle.py", "validation/softmax_checks.py")
 
 
 def contract_digest(contract):
