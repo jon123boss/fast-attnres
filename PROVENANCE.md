@@ -7,10 +7,13 @@ recorded in each report, rather than to a branch name or package version.
 ## Source identity
 
 [`validation/frozen.json`](validation/frozen.json) records the selected source,
-validation, and packaging files. The primary experiment additionally binds
-package, evaluator, optimizer, and comparator identities in
-[`configs/bf16_primary.json`](configs/bf16_primary.json). The launcher verifies
-those identities before GPU admission and again inside the immutable snapshot.
+validation, and packaging files. The final sweep binds the package and evaluator
+in [`configs/bf16_final_sweep.json`](configs/bf16_final_sweep.json). Each worker
+verifies its complete source snapshot before qualification. The headline and
+smaller-workload phases retain their own exact source identities; the latter
+corrects Liger's constant dtype and removes two unused private helpers.
+The earlier [`configs/bf16_primary.json`](configs/bf16_primary.json) and its
+versioned successors retain their historical source identities.
 
 The shared source-list kernels adapt FLA's
 [`fused.py` at 5e02dd3a](https://github.com/fla-org/flash-linear-attention/blob/5e02dd3a7651f5f2797eb8b12bbec401826031e1/fla/ops/attnres/fused.py).
@@ -26,10 +29,10 @@ implementation uses BF16 operations throughout, with no precision override.
 
 ## External comparisons
 
-The [campaign adapters](benchmarks/bf16_competitors.py) call separately supplied
-native implementations: the released Fast-AttnRes package, PyTorch compilation,
-the research repository's per-read operators, FLA Triton and Gluon, Liger,
-Catswe, Hydra, and Hilda. The report records exact source hashes, adapter
+The final sweep calls separately supplied native FLA Triton checkpoint 1,
+Liger 0.8.2, and Catswe phase 1 implementations. Earlier
+[campaign adapters](benchmarks/bf16_competitors.py) cover additional alternatives.
+Each report records exact source hashes, adapter
 changes, runtime, shape restrictions, and correctness failures. A faster
 incorrect result does not enter the timing comparison.
 
@@ -49,18 +52,19 @@ upstream checkout's own license and notices remain authoritative.
 
 ## Measurements
 
-The [evaluation contract](EVALUATION.md) and [runbook](docs/bf16_campaign.md)
-define the model, rank ladder, precision, optimizer, timing interval, confidence
-intervals, and resource limits. Raw results retain failed and interrupted runs.
+The [final sweep contract](configs/bf16_final_sweep.json) defines five workloads,
+the standard and quarter ranks, precision, seeds, and paired timing rounds.
+Raw results retain failed and interrupted runs.
 All published figures must identify their measured source and workload;
 operator latency and complete training-step latency remain separate.
 
-The primary model retains the 1B research architecture: 24 layers, width 1536,
+An earlier diagnostic contract used the 1B research architecture: 24 layers, width 1536,
 batch 4, accumulation 4, and the original Muon plus AdamW implementation.
-Context is reduced to 1024 for every arm on both GPUs to lower control memory
+Context was reduced to 1024 for every arm on both GPUs to lower control memory
 use. Earlier context-2048 reports retain their recorded workload. Synthetic
 inputs exclude dataset I/O, logging, and scheduler host work. These measurements
-do not reproduce historical training throughput.
+do not reproduce historical training throughput. The final README refresh
+instead uses the existing 24-layer headline and 8-layer competitor workloads.
 
 ## Historical evidence
 

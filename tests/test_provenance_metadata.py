@@ -57,8 +57,9 @@ def test_provenance_covers_kernel_and_license_identities(historical_release_root
     assert "v1.0.0/results/compiled_step" in provenance
     assert "5e02dd3a7651f5f2797eb8b12bbec401826031e1" in provenance
     from benchmarks.bf16_primary import package_digest
-    primary = json.loads((ROOT / "configs/bf16_primary.json").read_text())
-    assert primary["identities"]["candidate"] == package_digest(ROOT / "src/attnres")
+    final = json.loads((ROOT / "configs/bf16_final_sweep.json").read_text())
+    assert final["candidate_package_sha256"] == package_digest(ROOT / "src/attnres")
+    assert "configs/bf16_final_sweep.json" in provenance
     frozen = json.loads((ROOT / "validation/frozen.json").read_text())
     for name in historical_runtime_hashes:
         assert frozen[name] == _sha256(ROOT / name)
