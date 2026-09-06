@@ -21,7 +21,8 @@ Their upstream MIT attribution remains in the source header and
 Full and Block execute the same per-read operator. Sliced routing uses the
 last `R` coordinates as keys while retaining width-`D` values and outputs.
 The independent [BF16 oracle](validation/oracle.py) defines the tested
-normalization, softmax, mixture, and first-order gradient contract.
+normalization, softmax, mixture, and first-order gradient contract. Its active
+implementation uses BF16 operations throughout, with no precision override.
 
 ## External comparisons
 

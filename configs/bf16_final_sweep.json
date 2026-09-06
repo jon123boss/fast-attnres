@@ -1,0 +1,167 @@
+{
+  "schema": "attnres.final_sweep.v1",
+  "purpose": "User-authorized refresh of the existing headline and competitor plots with R=D and R=D/4.",
+  "gpus": [
+    "H100",
+    "B200"
+  ],
+  "runtime": {
+    "python": "3.11.13",
+    "torch": "2.13.0+cu130",
+    "triton": "3.7.1",
+    "cuda": "13.0"
+  },
+  "reference": "validation.oracle.oracle",
+  "reference_dtype": "bfloat16",
+  "tolerance": {
+    "rtol": 0.05,
+    "atol": 0.05
+  },
+  "cells": [
+    {
+      "name": "headline_full",
+      "model": {
+        "layers": 24,
+        "width": 1024,
+        "heads": 16,
+        "ffn": 2816,
+        "vocab": 32768,
+        "sequence": 1024,
+        "batch": 2,
+        "block_count": 8,
+        "mode": "full",
+        "variant": "sliced",
+        "source_layout": "list"
+      },
+      "ranks": [
+        1024,
+        256
+      ],
+      "seeds": [
+        20260827,
+        20260903,
+        20260911
+      ],
+      "rounds": 120,
+      "warmups": 10
+    },
+    {
+      "name": "screen_full",
+      "model": {
+        "layers": 8,
+        "width": 1024,
+        "heads": 16,
+        "ffn": 2816,
+        "vocab": 8192,
+        "sequence": 512,
+        "batch": 2,
+        "block_count": 16,
+        "mode": "full",
+        "variant": "sliced",
+        "source_layout": "list"
+      },
+      "ranks": [
+        1024,
+        256
+      ],
+      "seeds": [
+        20260827
+      ],
+      "rounds": 40,
+      "warmups": 5
+    },
+    {
+      "name": "screen_block_1536_s9",
+      "model": {
+        "layers": 8,
+        "width": 1536,
+        "heads": 24,
+        "ffn": 4224,
+        "vocab": 8192,
+        "sequence": 512,
+        "batch": 2,
+        "block_count": 8,
+        "mode": "block",
+        "variant": "sliced",
+        "source_layout": "list"
+      },
+      "ranks": [
+        1536,
+        384
+      ],
+      "seeds": [
+        20260827
+      ],
+      "rounds": 40,
+      "warmups": 5
+    },
+    {
+      "name": "screen_block_1536_s3",
+      "model": {
+        "layers": 8,
+        "width": 1536,
+        "heads": 24,
+        "ffn": 4224,
+        "vocab": 8192,
+        "sequence": 512,
+        "batch": 2,
+        "block_count": 2,
+        "mode": "block",
+        "variant": "sliced",
+        "source_layout": "list"
+      },
+      "ranks": [
+        1536,
+        384
+      ],
+      "seeds": [
+        20260827
+      ],
+      "rounds": 40,
+      "warmups": 5
+    },
+    {
+      "name": "screen_block_2048_s9",
+      "model": {
+        "layers": 8,
+        "width": 2048,
+        "heads": 32,
+        "ffn": 5632,
+        "vocab": 8192,
+        "sequence": 512,
+        "batch": 2,
+        "block_count": 8,
+        "mode": "block",
+        "variant": "sliced",
+        "source_layout": "list"
+      },
+      "ranks": [
+        2048,
+        512
+      ],
+      "seeds": [
+        20260827
+      ],
+      "rounds": 40,
+      "warmups": 5
+    }
+  ],
+  "competitors": [
+    "fla_triton_checkpoint1",
+    "liger",
+    "catswe_phase1"
+  ],
+  "rank_comparison": "Within each matched workload, compare candidate R=D/4 against candidate R=D. Standard-only competitors remain R=D and are architectural comparisons to low-rank candidate.",
+  "timing": "Existing benchmarks.run + training_graph captured complete CUDA Graph step, fused AdamW, accumulation1; input copy, compilation, qualification, capture and serialization outside timed events.",
+  "historical_sources": [
+    "results/current_24l",
+    "results/adoption/compiled_step_screen"
+  ],
+  "identities": {
+    "validation/oracle.py": "0fc3afbf02a9e3d61dde2781bd3d5ba6c6aa91c3f2e358226dfad6406c99e5a3",
+    "benchmarks/model.py": "267d3200905960b4a05d1ed43274294eb7c057d65ca6cd5738adb417b2e27623",
+    "benchmarks/run.py": "b4e884a8f7ea60ccb4a57a45a0937316ce770f15314f1aef1342a59b9a132b08",
+    "benchmarks/training_graph.py": "b35e04997c5e2653087814b046d72b2bb5945017ed621ba880b53bb7d9f1524f",
+    "benchmarks/bf16_device.py": "3b48dab8afcb6aca62a9a8cfbe7a679c63eda97331f70ba1322f87b70907646e"
+  }
+}

@@ -162,8 +162,8 @@ def test_unsupported_cell_is_not_applicable_before_input_allocation_or_adapter_i
 
 def test_qualification_runs_output_each_value_gradient_and_query_gradient_before_timing():
     cell = _cell()
-    values = torch.randn(2, 3, 4)
-    query = torch.randn(4)
+    values = torch.randn(2, 3, 4, dtype=torch.bfloat16)
+    query = torch.randn(4, dtype=torch.bfloat16)
     calls = {"invoke": 0, "timer": 0}
 
     def invoke(actual_values, actual_query):
@@ -204,8 +204,8 @@ def test_qualification_runs_output_each_value_gradient_and_query_gradient_before
 
 def test_failed_qualification_blocks_timer_and_denominator():
     cell = _cell()
-    values = torch.randn(2, 2, 4)
-    query = torch.randn(4)
+    values = torch.randn(2, 2, 4, dtype=torch.bfloat16)
+    query = torch.randn(4, dtype=torch.bfloat16)
     timed = 0
 
     def wrong(actual_values, actual_query):
@@ -243,8 +243,8 @@ def test_matched_pair_qualifies_both_arms_and_times_forward_backward_abba():
         "R": 4,
         "timing_mode": "forward_backward",
     }
-    values = torch.randn(2, 3, 4)
-    query = torch.randn(4)
+    values = torch.randn(2, 3, 4, dtype=torch.bfloat16)
+    query = torch.randn(4, dtype=torch.bfloat16)
     calls = {"candidate": 0, "comparator": 0, "timers": 0}
 
     def candidate(actual_values, actual_query):
@@ -311,8 +311,8 @@ def test_matched_timing_performs_no_tensor_hashing_or_readback(monkeypatch):
         "R": 4,
         "timing_mode": "forward_backward",
     }
-    values = torch.randn(2, 3, 4)
-    query = torch.randn(4)
+    values = torch.randn(2, 3, 4, dtype=torch.bfloat16)
+    query = torch.randn(4, dtype=torch.bfloat16)
     inside_event = False
     gradient_clear_locations = []
     original_clear_gradients = comparator_runner._clear_timing_gradients
@@ -378,8 +378,8 @@ def test_matched_timing_uses_one_logical_pairing_id_without_tensor_reads(monkeyp
         "R": 4,
         "timing_mode": "forward",
     }
-    values = torch.randn(2, 3, 4)
-    query = torch.randn(4)
+    values = torch.randn(2, 3, 4, dtype=torch.bfloat16)
+    query = torch.randn(4, dtype=torch.bfloat16)
     inside_event = False
 
     def candidate(actual_values, actual_query):
@@ -425,8 +425,8 @@ def test_matched_timing_uses_one_logical_pairing_id_without_tensor_reads(monkeyp
 
 def test_list_inputs_keep_independent_source_gradient_checks():
     cell = _cell(source_count=3)
-    values = [torch.randn(2, 4), torch.randn(2, 4), torch.randn(2, 4)]
-    query = torch.randn(4)
+    values = [torch.randn(2, 4, dtype=torch.bfloat16), torch.randn(2, 4, dtype=torch.bfloat16), torch.randn(2, 4, dtype=torch.bfloat16)]
+    query = torch.randn(4, dtype=torch.bfloat16)
     qualification = qualify_comparator(
         cell["competitor"],
         cell,
@@ -449,8 +449,8 @@ def test_matched_list_inputs_are_preserved_per_arm_and_use_output_shaped_upstrea
         "R": 4,
         "timing_mode": "forward_backward",
     }
-    values = [torch.randn(2, 4) for _ in range(3)]
-    query = torch.randn(4)
+    values = [torch.randn(2, 4, dtype=torch.bfloat16) for _ in range(3)]
+    query = torch.randn(4, dtype=torch.bfloat16)
     seen_layouts = []
 
     def candidate(actual_values, actual_query):
@@ -498,8 +498,8 @@ def test_warmup_failure_retains_validator_complete_matrix_and_actual_arm_provena
         "R": 4,
         "timing_mode": "forward_backward",
     }
-    values = [torch.randn(2, 4), torch.randn(2, 4)]
-    query = torch.randn(4)
+    values = [torch.randn(2, 4, dtype=torch.bfloat16), torch.randn(2, 4, dtype=torch.bfloat16)]
+    query = torch.randn(4, dtype=torch.bfloat16)
     comparator_calls = 0
 
     def candidate(actual_values, actual_query):
@@ -630,8 +630,8 @@ def test_alias_dispatch_keeps_canonical_identity_in_materialized_result():
         "hydra_2p",
         alias_cell,
         load_config(),
-        values=torch.randn(2, 2, 4),
-        query=torch.randn(4),
+        values=torch.randn(2, 2, 4, dtype=torch.bfloat16),
+        query=torch.randn(4, dtype=torch.bfloat16),
         route=_route("manish_hydra_2p"),
         rounds=0,
     )
@@ -1059,8 +1059,8 @@ def test_direct_forward_only_comparator_cannot_time_operator_plan_as_forward():
         cell["competitor"],
         cell,
         config,
-        values=torch.randn(2, 2, 4),
-        query=torch.randn(4),
+        values=torch.randn(2, 2, 4, dtype=torch.bfloat16),
+        query=torch.randn(4, dtype=torch.bfloat16),
         route=_route(cell["competitor"]),
         rounds=1,
         timing_call=lambda function: pytest.fail("forward-only comparator must not be timed"),

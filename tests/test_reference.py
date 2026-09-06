@@ -7,17 +7,8 @@ from attnres import attnres
 
 
 def _oracle(values, query, *, eps=2**-23, scale=1.0):
-    """Test-only BF16 oracle; no reference implementation ships in attnres."""
-    values_fp32 = values.float()
-    keys_fp32 = values[..., -query.numel():].float()
-    query_fp32 = query.float()
-    scores = (
-        keys_fp32
-        * torch.rsqrt(keys_fp32.square().mean(-1, keepdim=True) + eps)
-        * query_fp32
-    ).sum(-1)
-    weights = torch.softmax(scores * scale, dim=0)
-    return (weights.unsqueeze(-1) * values_fp32).sum(0).to(values.dtype)
+    from validation.oracle import oracle
+    return oracle(values, query, eps=eps, scale=scale)
 
 
 @pytest.mark.cuda

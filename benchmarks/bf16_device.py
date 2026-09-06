@@ -36,7 +36,7 @@ def metadata():
 
 
 def bf16_torch(values, query, *, eps=2**-23, scale=1.0):
-    """Validation/benchmark fixture only: BF16 storage with stable reductions."""
+    """Validation/benchmark fixture with BF16 PyTorch arithmetic."""
     return oracle(values, query, eps=eps, scale=scale)
 
 

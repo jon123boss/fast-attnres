@@ -1,5 +1,16 @@
 # Evaluator revisions
 
+2026-09-06: At the user's explicit request, removed the promoted reference and
+its precision override. The active independent reference now uses BF16 tensors
+throughout normalization, scoring, softmax, mixing, and autograd. The historical
+alias diagnostic and remaining duplicate promoted test/model references were
+removed from active code. Tests inspect every floating intermediate in forward
+and backward. The benchmark model casts every backend's read inputs to the same
+BF16 boundary. Numerical tolerances are unchanged. Historical measurements and
+contracts retain their identities and do not qualify the new evaluator. The
+user's final sweep reuses the headline/adoption workloads with R=D and R=D/4;
+the broader former rank-development plan is superseded for final delivery.
+
 2026-09-06: Per the user's kernel-only scope clarification, removed model
 serialization and bitwise resumed-next-update checks from the training harness
 and primary admission. They test trainer state outside this stateless operator.

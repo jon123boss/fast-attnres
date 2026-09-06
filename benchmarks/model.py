@@ -122,20 +122,12 @@ def _block_ends(source_events: int, block_count: int) -> tuple[int, ...]:
 
 
 def _reference_read(values: Tensor | Sequence[Tensor], query: Tensor) -> Tensor:
-    """Independent test oracle with FP32 accumulation and BF16-compatible output."""
+    """Use the BF16-only validation reference for every residual read."""
+    from validation.oracle import oracle
 
-    if not isinstance(values, Tensor):
-        values = torch.stack(tuple(values), dim=0)
-
-    # Keep this equation local to the training fixture.  In particular, the
-    # reference block path must not consume a prepared kernel cache.
-    value_f = values.to(torch.float32)
-    key_f = values[..., -query.numel() :].to(torch.float32)
-    query_f = query.to(torch.float32)
-    key_norm = torch.rsqrt(key_f.square().mean(dim=-1, keepdim=True) + 2**-23)
-    logits = (key_f * key_norm * query_f).sum(dim=-1)
-    probabilities = torch.softmax(logits, dim=0)
-    return (probabilities.unsqueeze(-1) * value_f).sum(dim=0).to(values.dtype)
+    sources = tuple(values.unbind()) if isinstance(values, Tensor) else values
+    return oracle(tuple(source.to(torch.bfloat16) for source in sources),
+                  query.to(torch.bfloat16))
 
 
 class _TransformerLayer(nn.Module):
@@ -277,14 +269,15 @@ class CausalAttnResLM(nn.Module):
         """Invoke the one residual primitive shared by Full and Block."""
 
         operator = self._operator()
-        operator_values = self._operator_inputs(values, operator)
+        dtype = values[0].dtype
+        operator_values = self._operator_inputs(
+            tuple(value.to(torch.bfloat16) for value in values), operator)
+        query = query.to(torch.bfloat16)
         if self._backend_rms_weight is not None:
-            return operator(
-                operator_values,
-                query,
-                rms_weight=self._backend_rms_weight,
-            )
-        return operator(operator_values, query)
+            output = operator(operator_values, query, rms_weight=self._backend_rms_weight)
+        else:
+            output = operator(operator_values, query)
+        return output.to(dtype)
 
     def _forward_full(self, embedding_value: Tensor) -> Tensor:
         values: list[Tensor] = [embedding_value]

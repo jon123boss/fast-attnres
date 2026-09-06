@@ -1,8 +1,10 @@
 # Release artifacts
 
 This page describes the v1.0.0 release workflow and its historical evidence.
-The CUDA BF16 continuation remains an unpublished draft; its current
-measurement and reproduction instructions are in the [campaign runbook](bf16_campaign.md).
+For the current CUDA BF16 benchmark refresh, see
+[benchmark results](benchmark_results.md). The workflow below retains its
+historical evidence requirements; new measurements must be connected to the
+release checks before a new release can claim them.
 
 The release workflow builds four assets from the tagged source tree:
 
@@ -21,15 +23,15 @@ The installable artifact's historical evidence bundle is the six-report Full
 compiled-step campaign under `results/compiled_step`. It preserves its compact campaign
 manifest, raw reports, audited sidecars, hardware/vendor attestations, the
 exact reproduction wrapper and per-seed configs, and the projection JSON
-freshly recomputed from all six reports. The current-release README hero is a
-separate campaign and is deliberately not copied into this historical archive.
-The `MANIFEST.in` `prune
-results` rule keeps this evidence out of both installable package formats.
+freshly recomputed from all six reports. The later 24-layer headline is a
+separate historical campaign and is not copied into this archive.
+The `MANIFEST.in` `prune results` rule keeps this evidence out of both
+installable package formats.
 No results tree is embedded in the wheel or source distribution.
 
-The current GitHub adoption screen is repository-hosted under
+The historical GitHub adoption screen is repository-hosted under
 `results/adoption/compiled_step_screen`; its chart, table, CSV, raw reports,
-and manifest are independently hash-bound and feed the README. It is
+and manifest are independently hash-bound. It is
 intentionally excluded from installable packages to avoid shipping benchmark
 reports to library users. It is distinct from the historical standalone
 evidence archive produced by `scripts/build_release.py`.
@@ -67,7 +69,7 @@ sha256sum -c SHA256SUMS
 Tags matching `v*` invoke `.github/workflows/release.yml`. The tag must be
 protected and must equal `v` followed by the version in `pyproject.toml`.
 Before building, the workflow verifies every file in `validation/frozen.json`,
-audits the current 24-layer H100/B200 campaign against the exact production
+audits the archived 24-layer H100/B200 campaign against the exact production
 kernel bytes in the tagged checkout,
 reconstructs a clean checkout of the exact measured source commit from the
 sealed repository bundle, and checks the compact compiled-step manifest, all

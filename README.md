@@ -7,7 +7,7 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-2E7D32.svg)](LICENSE)
 
 **Fast Attention Residuals** (`Fast-AttnRes`) makes
-[Attention Residuals](https://arxiv.org/abs/2603.15031) a small, ordinary PyTorch
+[Attention Residuals](https://arxiv.org/abs/2603.15031) a single PyTorch
 operation: pass ordered full-width residual sources and one learned query, get
 one full-width residual back. The same `attnres(values, query)` call handles
 standard and sliced low-rank AttnRes in Full and Block schedules, with packed
@@ -28,10 +28,10 @@ Start with the [standard quickstart](#quickstart-standard-attnres), choose a
 
 ## Training performance
 
-The H100/B200 BF16 campaign is still pending. This README makes no final timing
-claim. The reproducible campaign commands and reporting layer are in
-[`docs/bf16_campaign.md`](docs/bf16_campaign.md); the final Markdown report is
-not available until the primary measurements finish.
+H100 and B200 measurements are being refreshed for the existing headline and
+competitor plots, using standard (`R=D`) and sliced (`R=D/4`) routing.
+See [benchmark results](docs/benchmark_results.md) for the workload scope and
+archived measurements. Updated plots will follow the completed measurements.
 
 ## Install
 
@@ -42,8 +42,7 @@ python -m pip install --index-url https://download.pytorch.org/whl/cu130 torch==
 python -m pip install -e ".[cuda,test,benchmark]"
 ```
 
-The campaign uses Python 3.11, PyTorch 2.13.0 with CUDA 13.0, and Triton 3.7.1.
-This branch has not been published as a package release.
+The pinned runtime is Python 3.11, PyTorch 2.13.0 with CUDA 13.0, and Triton 3.7.1.
 
 ## Quickstart: standard AttnRes
 
@@ -128,17 +127,15 @@ such as 384 and 640. Other ranks retain the same mathematical support.
 
 ## Validation scope
 
-Correctness precedes timing. The BF16 protocol uses `rtol=0.05` and `atol=0.05`
-for outputs and first-order gradients, and covers packed/list sources, repeated
-reads, partial Blocks, changed inputs, non-contiguous layouts, shared sources,
-compiled replay, optimizer updates, and save/resume. See
-[`docs/validation.md`](docs/validation.md).
+Correctness checks compare BF16 outputs and first-order gradients with an
+independent BF16 PyTorch reference at `rtol=0.05` and `atol=0.05`. Coverage
+includes packed/list sources, repeated reads, partial Blocks, changed inputs,
+non-contiguous layouts, shared sources, and compiled replay. See the
+[validation protocol](docs/validation.md).
 
-The primary timing campaign uses L24/D1536/H24/FFN4224, vocabulary 100277,
-context 1024, batch 4, accumulation 4, and eight Blocks. It uses BF16
-cross-entropy, gradient clipping 1.0, the original Muon plus AdamW implementation,
-no activation checkpointing, three seeds, and 120 paired timing rounds. Reports
-retain failed, incomplete, and inconclusive results alongside verified gains.
+Timing reports identify the exact source, device, runtime, workload, and
+measurement boundary. Failed, incomplete, and inconclusive comparisons remain
+visible in the results.
 
 ## License
 

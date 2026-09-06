@@ -1,15 +1,11 @@
-# BF16 production-width matched matrix
+# Historical BF16 width-matrix protocol
 
-I froze the ten primary cells in
-[`configs/matched_competitor_benchmark_d_gt_768.json`](../configs/matched_competitor_benchmark_d_gt_768.json)
-before collecting results. This page explains what I mean by each dimension,
-why the cells are shaped this way, and which comparisons can honestly be made.
-I want someone reading a report later to reconstruct why each row exists
-without guessing. It is a measurement plan, not a results page: I am not
-claiming a latency, speedup, ranking, or adoption result for any cell here.
-No operator latency table from this plan is published in the current release;
-the public performance claim uses the separately audited complete compiled
-training-step campaign.
+This archived measurement plan defines the ten primary cells in
+[`configs/matched_competitor_benchmark_d_gt_768.json`](../configs/matched_competitor_benchmark_d_gt_768.json).
+Its original dimensions, eligibility rules, and reference settings are retained
+for provenance. It contains no measured latency or speedup. The
+[current benchmark scope](benchmark_results.md) covers the README headline and
+competitor plot workloads at `R=D` and `R=D/4`.
 
 ## The four dimensions
 

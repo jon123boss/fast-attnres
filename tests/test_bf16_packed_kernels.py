@@ -12,22 +12,9 @@ _ROOT = Path(__file__).parents[1]
 _BF16_TOL = {"rtol": 0.05, "atol": 0.05}
 
 
-def _bf16_oracle(
-    values: torch.Tensor,
-    query: torch.Tensor,
-    *,
-    eps: float = 2**-23,
-    scale: float = 1.0,
-) -> torch.Tensor:
-    """Test-only equation oracle; the production files do not use this path."""
-
-    values_f32 = values.float()
-    query_f32 = query.float()
-    keys = values_f32[..., -query.numel() :]
-    inv_rms = torch.rsqrt(keys.square().mean(dim=-1, keepdim=True) + eps)
-    logits = (keys * inv_rms * query_f32).sum(dim=-1) * scale
-    weights = torch.softmax(logits, dim=0)
-    return (weights.unsqueeze(-1) * values_f32).sum(dim=0).to(values.dtype)
+def _bf16_oracle(values, query, *, eps=2**-23, scale=1.0):
+    from validation.oracle import oracle
+    return oracle(values, query, eps=eps, scale=scale)
 
 
 def test_target_files_have_only_the_bf16_cuda_runtime_surface():

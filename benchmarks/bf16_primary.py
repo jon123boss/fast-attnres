@@ -6,7 +6,7 @@ import hashlib
 import json
 from pathlib import Path
 
-CONTRACT = Path(__file__).resolve().parents[1] / "configs/bf16_primary_v3.json"
+CONTRACT = Path(__file__).resolve().parents[1] / "configs/bf16_primary_v4.json"
 
 FIXTURE_FILES = tuple("benchmarks/" + name for name in (
     "baseline.py", "bf16_training.py", "bf16_model.py", "bf16_competitors.py",

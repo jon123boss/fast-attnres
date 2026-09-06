@@ -6,14 +6,11 @@
 > autotuned production kernel. Current-kernel performance must be established
 > by a fresh, separately sealed campaign.
 
-This page documents the historical six-report large-model campaign. Its
-separately labeled summary is the top README hero because it is the strongest
-audited Full-workload evidence; it is never pooled with the current adoption
-screen or described as a measurement of the current autotuned source bytes. It
-compares the audited Fast-AttnRes route with pinned native FLA Triton
-checkpoint 1 on one Full `R=D=1024` same-equation AttnRes workload. Current
-broader-screen evidence is documented in
-[`results/adoption`](../results/adoption/README.md).
+This page preserves the historical six-report Full campaign. It compares the
+recorded Fast-AttnRes source with pinned native FLA Triton checkpoint 1 on one
+Full `R=D=1024` workload. The archived
+[adoption screen](../results/adoption/README.md) is separate. See
+[benchmark results](benchmark_results.md) for the current refresh.
 
 ## Workload
 
@@ -159,4 +156,4 @@ The Matplotlib renderer reads only the compact audited projection. Raw-report pa
 - It does not compare LR-AttnRes (`R<D`) with FLA; the pinned external routes require `R=D`.
 - CUDA Graph input-copy and host launch time are excluded.
 - H100 and B200 results are separate replications, not a cross-device ranking.
-- FLA Gluon, Liger, Catswe, Hydra, and FLA checkpoint 0 do not have an accepted complete Full-model result in this campaign; their exact stipulations are listed in the README.
+- FLA Gluon, Liger, Catswe, Hydra, and FLA checkpoint 0 do not have an accepted complete Full-model result in this campaign; their recorded eligibility is described in the [archived competitor protocol](matched_competitor_protocol.md).

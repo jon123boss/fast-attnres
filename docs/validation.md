@@ -20,7 +20,7 @@ operator boundary and does not treat internal accumulator dtype as a public
 mode.
 
 The only allowed oracle in a correctness test is a test-local PyTorch/autograd
-calculation over BF16 inputs. It is test machinery, not an importable runtime
+calculation with BF16 inputs and BF16 intermediate tensors throughout. It is test machinery, not an importable runtime
 entry point and not a second public operator.
 
 ## Required correctness coverage
@@ -83,8 +83,8 @@ The existing performance artifacts are historical v1.0.0 evidence:
 
 - [`docs/current_24l_results.md`](current_24l_results.md) contains the archived
   24-layer Full report and its named H100/B200 measurements.
-- [`docs/compiled_step_results.md`](compiled_step_results.md) contains the
-  archived 8-layer complete-step screen and per-cell reports.
+- [`results/adoption/compiled_step_screen/results.md`](../results/adoption/compiled_step_screen/results.md)
+  contains the archived 8-layer complete-step screen.
 
 Those reports remain linked for provenance. Their numbers do not qualify this
 candidate, and no new timing number should be inferred from this page.

@@ -1,40 +1,39 @@
-"""BF16 oracle boundaries checked against the analytic routing derivative."""
+"""BF16 arithmetic is enforced throughout the independent reference."""
 import pytest
 import torch
 
 from validation.oracle import oracle
 
 
-@pytest.mark.parametrize("rank", [3, 7, 17])
 @pytest.mark.parametrize("sequence", [False, True])
-def test_bf16_oracle_rounds_complete_input_derivative_once(rank, sequence):
-    torch.manual_seed(19)
-    packed = torch.randn(5, 3, 17, dtype=torch.bfloat16)
-    values = (tuple(x.clone().requires_grad_() for x in packed)
-              if sequence else packed.requires_grad_())
-    query = torch.randn(rank, dtype=torch.bfloat16, requires_grad=True)
-    upstream = torch.randn(3, 17, dtype=torch.bfloat16)
-    parameters = (*values, query) if sequence else (values, query)
-    output = oracle(values, query, scale=.7)
-    gradients = torch.autograd.grad(output, parameters, upstream)
+def test_reference_keeps_every_floating_intermediate_and_gradient_bf16(sequence):
+    from torch.utils._python_dispatch import TorchDispatchMode
+    from torch.utils._pytree import tree_leaves
 
-    v, q, dy = packed.float(), query.detach().float(), upstream.float()
-    key = v[..., -rank:]
-    inverse = (key.square().mean(-1) + 2**-23).rsqrt()
-    normalized = key * inverse[..., None]
-    logits = .7 * (normalized * q).sum(-1)
-    probability = logits.softmax(0)
-    dweight = (v * dy).sum(-1)
-    dscore = probability * (dweight - (probability * dweight).sum(0))
-    expected_v = probability[..., None] * dy
-    expected_v[..., -rank:] += inverse[..., None] * (
-        .7 * dscore[..., None] * q - normalized * (dscore * logits / rank)[..., None])
-    expected_q = (.7 * dscore[..., None] * normalized).sum((0, 1))
-    expected = ((*expected_v.to(torch.bfloat16).unbind(0), expected_q.to(torch.bfloat16))
-                if sequence else (expected_v.to(torch.bfloat16), expected_q.to(torch.bfloat16)))
-    for actual, target in zip(gradients, expected):
-        assert actual.dtype == torch.bfloat16
-        torch.testing.assert_close(actual, target, rtol=.05, atol=.05)
+    class BF16Only(TorchDispatchMode):
+        def __torch_dispatch__(self, func, types, args=(), kwargs=None):
+            result = func(*args, **(kwargs or {}))
+            for tensor in tree_leaves(result):
+                if isinstance(tensor, torch.Tensor) and tensor.is_floating_point():
+                    assert tensor.dtype == torch.bfloat16, str(func)
+            return result
+
+    torch.manual_seed(19)
+    values = torch.randn(5, 3, 17, dtype=torch.bfloat16, requires_grad=True)
+    query = torch.randn(7, dtype=torch.bfloat16, requires_grad=True)
+    upstream = torch.randn(3, 17, dtype=torch.bfloat16)
+    with BF16Only():
+        inputs = tuple(values.unbind()) if sequence else values
+        output = oracle(inputs, query, scale=.7)
+        gradients = torch.autograd.grad(output, (values, query), upstream)
+    assert output.dtype == torch.bfloat16
+    assert all(gradient.dtype == torch.bfloat16 for gradient in gradients)
+
+
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+def test_reference_rejects_other_floating_dtypes(dtype):
+    with pytest.raises(TypeError, match="requires BF16"):
+        oracle(torch.ones(2, 3, 16, dtype=dtype), torch.ones(16, dtype=dtype))
 
 
 @pytest.mark.parametrize("mode", ["full", "block"])

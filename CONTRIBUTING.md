@@ -5,10 +5,10 @@ simpler to inspect and reproduce. Keep changes focused and support performance
 claims with measurements.
 
 Read the [public contract](docs/equation.md), [evaluation contract](EVALUATION.md),
-and [campaign runbook](docs/bf16_campaign.md) before changing kernel or benchmark
-behavior. The public operator uses CUDA BF16 storage and FP32 internal math.
-The independent equation oracle lives in [`validation/oracle.py`](validation/oracle.py)
-and is separate from the installed package.
+and [benchmark scope](docs/benchmark_results.md) before changing kernel or benchmark
+behavior. The public operator uses CUDA BF16 storage and may use FP32
+accumulators internally. Correctness checks use an independent BF16 PyTorch
+reference, separate from the installed package.
 
 ## Development
 
@@ -42,9 +42,9 @@ CUDA_VISIBLE_DEVICES=0 PYTHONPATH=src:. python examples/train.py \
   --device cuda --mode full --variant standard --steps 2
 ```
 
-The training example is a smoke check. The frozen campaign separately checks
-changed-input graph replay, shared and strided sources, optimizer updates,
-checkpointing, and exact save/resume. H100 and B200 require separate results.
+The training example is a smoke check. Follow the [validation protocol](docs/validation.md)
+for changed-input graph replay and shared or strided sources. Record H100 and
+B200 results separately.
 
 ## Performance evidence
 
@@ -57,16 +57,11 @@ workload and layout, timing boundaries, warmups and rounds, correctness results,
 and raw timing samples. Operator latency and complete training-step latency
 are separate measurements. Historical results keep their original identities.
 
-Use the frozen report tools for simultaneous confidence intervals and adjacent
-rank comparisons. The current primary rank-ratio upper bound is `1.005`; the
-broader operator bound is `1.01`. Missing coverage is an unmet target. A passing
-correctness check does not establish a speedup, and one workload does not
-establish a universal performance guarantee.
-
-Development screens may use a small configuration search and stop after the
-first failure. Restore the production search and run the declared confirmation
-matrix before publishing its performance claims. See the [runbook](docs/bf16_campaign.md)
-for GPU admission, stage budgets, immutable snapshots, and reproduction.
+Reuse the existing benchmark harness and report tools. Keep workload geometry,
+timing boundaries, comparison eligibility, and statistical methods explicit.
+The current refresh covers the existing headline and competitor plot workloads
+at `R=D` and `R=D/4`; see [benchmark results](docs/benchmark_results.md).
+A passing correctness check alone does not establish a speedup.
 
 ## Pull requests
 

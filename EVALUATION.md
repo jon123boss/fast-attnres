@@ -21,11 +21,13 @@ this campaign.
 
 ## Correctness
 
-The BF16 test oracle in `validation/oracle.py` is the independent comparison.
+The independent reference in `validation/oracle.py` uses BF16 PyTorch
+operations throughout normalization, scoring, softmax, mixing, and autograd.
+It has no higher-precision reference mode.
 Every output and source/query gradient must be finite and satisfy
-`rtol=atol=0.05`. Direct and routing derivatives combine before the BF16 input
-boundary; BF16 addition and casting are not assumed associative. The user's
-BF16 nonlinearity clarification does not change the tolerance.
+`rtol=atol=0.05`. BF16 addition and casting are not assumed associative. The reference precision
+was changed at the user's explicit request; historical reference results remain
+historical and do not qualify the new evaluator.
 
 Cover packed and source-list layouts, odd dimensions, strides, duplicate
 sources and shared views, repeated reads, partial blocks, analytic gradients,
@@ -36,33 +38,17 @@ stateless kernel's qualification scope.
 
 ## Performance
 
-`configs/bf16_primary_v3.json` defines the current primary model, rank ladder,
-seeds, runtime, competitor inventory, and immutable source identity contract.
-The model has 24 layers, width 1536, 24 heads, MLP width 4224, vocabulary
-100277, context 1024, batch four, accumulation four, and eight blocks. It uses
-ordinary source assembly, BF16 cross-entropy, gradient clipping at 1.0, and the
-original Muon plus AdamW implementation. Activation checkpointing is qualified
-separately and is disabled in the primary model.
+The current final sweep is defined in `configs/bf16_final_sweep.json`. It reuses
+the existing headline and competitor-plot workloads on H100 and B200 with
+`R=D` and `R=D/4`, as explicitly requested by the user. The existing
+`benchmarks.run` and `training_graph` harnesses retain their complete CUDA Graph
+step boundary, paired schedule, and optimizer. Compare the two candidate ranks
+within each workload; comparisons of LR with standard-only competitors must
+be labelled as different equations. Raw failures remain visible.
 
-The v3 contract retains accumulated and clipped gradient comparisons and first
-optimizer-update qualification. The earlier `bf16_primary.json` and
-`bf16_primary_v2.json` remain unchanged historical contracts.
-
-Measure three seeds and 120 balanced paired rounds after ten warmups. Include
-input copies, source preparation, forward, loss, backward, accumulation,
-zeroing gradients, and optimizer work. Record compilation/warmup, operator
-latency, complete-step latency, and memory separately. This controlled
-synthetic-data fixture excludes dataset I/O, logging, and scheduler host work;
-it does not reproduce historical training throughput.
-
-Compare each cell with its fastest correct eligible alternative. Preserve all
-failures and incomplete measurements. Use simultaneous 95% confidence
-intervals and require adjacent lower/higher-rank latency ratio upper bounds
-at most 1.005 for primary coverage, or 1.01 for broader coverage. Never slow
-higher ranks, relax correctness tolerances, omit regressions, or select the
-fastest retry. The fastest-kernel target additionally requires an upper latency
-ratio bound below 1.0 against each cell's strongest qualified alternative.
-Missing or inconclusive coverage is an unmet target.
+The earlier `bf16_primary*.json`, operator and broader matrices remain
+historical contracts and do not expand this final refresh. The former 1B
+fixture remains available for reproducing its recorded experiments.
 
 ## Resources and delivery
 

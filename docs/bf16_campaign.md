@@ -1,12 +1,28 @@
-# BF16 campaign runbook
+# BF16 benchmark runbook
 
-This runbook describes the frozen BF16 campaign around `bf16_primary.py`,
+## Current scope
+
+The current refresh covers the existing README headline and competitor plot
+workloads on H100 and B200, at `R=D` and `R=D/4`. Reuse the existing harnesses
+listed in [benchmark results](benchmark_results.md) and the
+[BF16 validation protocol](validation.md). Whole-model checkpoint/resume
+qualification is outside this refresh. The final run configuration is being
+prepared as `configs/bf16_final_sweep.json`; `configs/bf16_primary_v3.json`
+belongs to the historical campaign. Fresh measurements are pending.
+
+## Archived campaign protocol
+
+The broader campaign below is retained for reproduction of earlier work. Its
+rank ladder, model geometry, budgets, and commands are historical; they do not
+extend the current refresh.
+
+This runbook describes the earlier frozen BF16 campaign around `bf16_primary.py`,
 `bf16_modal.py`, `bf16_report.py`, and `bf16_archive.py`. The campaign renderer
 [`benchmarks/bf16_campaign_report.py`](../benchmarks/bf16_campaign_report.py)
 only consumes JSON produced by those tools; it does not alter evaluation or
 recompute timing statistics.
 
-## Frozen scope
+## Historical scope
 
 The primary matrix covers H100 and B200, both `full` and `block` modes, ranks
 `1536 1024 768 640 512 384 256 128 64 32 16`, and seeds

@@ -16,20 +16,9 @@ def _oracle(
     eps: float,
     scale: float,
 ) -> torch.Tensor:
-    """Test-only BF16 oracle; the fixture itself has no FP32 model backend."""
-
-    if isinstance(values, torch.Tensor):
-        sources = tuple(values.unbind(0))
-    else:
-        sources = tuple(values)
-    packed = torch.stack(sources, dim=0)
-    values_f = packed.float()
-    keys_f = values_f[..., -query.numel() :]
-    query_f = query.float()
-    logits = (keys_f * torch.rsqrt(keys_f.square().mean(-1, keepdim=True) + eps))
-    logits = (logits * query_f).sum(-1) * scale
-    weights = logits.softmax(dim=0)
-    return (weights.unsqueeze(-1) * values_f).sum(dim=0).to(MODEL_DTYPE)
+    """Use the same BF16-only validation reference as the campaign."""
+    from validation.oracle import oracle
+    return oracle(values, query, eps=eps, scale=scale)
 
 
 class _RecordingOracle:
