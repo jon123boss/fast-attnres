@@ -1,8 +1,7 @@
 # CUDA BF16 validation protocol
 
-This page specifies validation for the CUDA BF16 candidate surface. It is a
-protocol, not a new result report: this documentation patch does not claim a
-new GPU qualification or timing result.
+This protocol covers the CUDA BF16 operator. Measured qualification results
+belong to the exact source and runtime recorded in each report.
 
 ## Contract gate
 
@@ -53,7 +52,7 @@ The examples are intentionally GPU-only. A no-write syntax check can run with
 the configured Python environment:
 
 ```bash
-PYTHONDONTWRITEBYTECODE=1 /opt/anaconda3/bin/python -c \
+PYTHONDONTWRITEBYTECODE=1 python -c \
   'import ast; from pathlib import Path; [ast.parse(p.read_text()) for p in Path("examples").glob("*.py")]'
 ```
 

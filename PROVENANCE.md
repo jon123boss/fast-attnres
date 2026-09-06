@@ -25,7 +25,8 @@ Full and Block execute the same per-read operator. Sliced routing uses the
 last `R` coordinates as keys while retaining width-`D` values and outputs.
 The independent [BF16 oracle](validation/oracle.py) defines the tested
 normalization, softmax, mixture, and first-order gradient contract. Its active
-implementation uses BF16 operations throughout, with no precision override.
+implementation normalizes keys before the query dot product, using BF16
+inputs/outputs and FP32 internal accumulation with autocast disabled.
 
 ## External comparisons
 
