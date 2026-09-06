@@ -175,6 +175,7 @@ def test_model_liger_backend_declares_reused_rms_weight():
 
     source = inspect.getsource(liger.make_model_backend)
     assert "accepts_rms_weight = True" in source
+    assert "rms_weight_dtype = torch.float32" in source
     assert "one_buffer_per_model" in inspect.getsource(liger.source_hash_metadata)
     # The marker only helps if the call path actually skips the direct-call
     # fallback when a model supplies its preallocated unit vector.  Keep this

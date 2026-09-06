@@ -66,7 +66,7 @@ body:
     id: correctness
     attributes:
       label: Correctness gate
-      description: Name the independent FP32 equation oracle and report forward, loss, all relevant gradients, route identity, layouts, metadata, tolerances, and the complete shape matrix. State clearly whether the gate passed, failed, skipped, or was not run.
+      description: Name the independent BF16 equation reference and report forward, loss, all relevant gradients, route identity, layouts, metadata, tolerances, and the complete shape matrix. State clearly whether the gate passed, failed, skipped, or was not run.
       placeholder: |
         Reference:
         Tolerances:

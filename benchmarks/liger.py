@@ -515,6 +515,7 @@ def make_model_backend(
     # residual read, making a compiled training-step comparison measure an
     # avoidable adapter artifact.
     backend.accepts_rms_weight = True  # type: ignore[attr-defined]
+    backend.rms_weight_dtype = torch.float32  # type: ignore[attr-defined]
 
     backend.source_hash_metadata = metadata  # type: ignore[attr-defined]
     backend.vendor_root = root_string  # type: ignore[attr-defined]

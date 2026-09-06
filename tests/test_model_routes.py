@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import pytest
 import torch
 
 from benchmarks import model as model_module
@@ -80,34 +81,39 @@ def test_full_and_block_share_read_helper_and_preserve_source_schedules(monkeypa
         assert calls == [(expected_kind, count) for count in (2, 2, 3, 3)]
 
 
-def test_model_backend_rms_weight_is_preallocated_reused_and_nonpersistent():
+@pytest.mark.parametrize("weight_dtype", [torch.bfloat16, torch.float32])
+def test_model_backend_rms_weight_is_preallocated_reused_and_nonpersistent(weight_dtype):
     seen: list[torch.Tensor] = []
 
     def backend(values, query, *, rms_weight):
-        assert rms_weight.dtype == query.dtype == torch.bfloat16
+        assert rms_weight.dtype == weight_dtype
+        assert query.dtype == torch.bfloat16
+        if weight_dtype == torch.float32:
+            from benchmarks.liger import _validate_rms_weight
+            assert _validate_rms_weight(rms_weight, query) is rms_weight
         seen.append(rms_weight)
         packed = values if isinstance(values, torch.Tensor) else torch.stack(values, dim=0)
         return oracle(packed, query)
 
     backend.accepts_rms_weight = True
+    backend.rms_weight_dtype = weight_dtype
     config = _config("full", "list")
     model = make_model(config, backend=backend)
 
     assert model._backend_rms_weight.shape == (config.rank,)
-    assert model._backend_rms_weight.dtype == torch.bfloat16
+    assert model._backend_rms_weight.dtype == weight_dtype
     assert "_backend_rms_weight" not in model.state_dict()
 
     model(torch.randint(config.vocab, (config.batch, config.sequence)))
     assert len(seen) == 4
     assert all(weight is model._backend_rms_weight for weight in seen)
 
-    # ``Module.to`` must move and cast the preallocated constant with the
-    # model, while state matching remains limited to persistent parameters.
+    # Model casts preserve the native adapter's required constant dtype.
     model.to(dtype=torch.bfloat16)
-    assert model._backend_rms_weight.dtype == torch.bfloat16
+    assert model._backend_rms_weight.dtype == weight_dtype
     model(torch.randint(config.vocab, (config.batch, config.sequence)))
     assert seen[-1] is model._backend_rms_weight
-    assert seen[-1].dtype == torch.bfloat16
+    assert seen[-1].dtype == weight_dtype
 
 
 def test_fla_weight_contract_is_static_and_keeps_direct_call_fallback():

@@ -178,10 +178,6 @@ def _affine_row_stride(tensor: torch.Tensor) -> int | None:
     return 0 if row_stride is None else row_stride
 
 
-def _is_row_affine(tensor: torch.Tensor) -> bool:
-    return _affine_row_stride(tensor) is not None
-
-
 def _source_pointer_table(
     tensors: Sequence[torch.Tensor],
 ) -> tuple[tuple[torch.Tensor, ...], tuple[int, ...], tuple[int, ...], int]:

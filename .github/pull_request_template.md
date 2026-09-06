@@ -13,7 +13,7 @@ issue or design note when one exists. -->
 
 <!-- A performance claim cannot be reviewed without a correctness result. -->
 
-- [ ] I named the independent FP32 equation oracle and the candidate and
+- [ ] I named the independent BF16 equation reference and the candidate and
       baseline routes.
 - [ ] Forward output and loss behavior pass at the declared dtype and
       tolerance; outputs and gradients are finite.

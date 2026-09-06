@@ -196,20 +196,30 @@ class CausalAttnResLM(nn.Module):
         self.queries = nn.ParameterList(
             [nn.Parameter(torch.empty(config.rank)) for _ in range(2 * config.layers)]
         )
-        # Native FLA accepts an explicit unit RMS weight.  Keep that weight on
+        # Native adapters accept an explicit unit RMS weight. Keep that weight on
         # the model so it is allocated before compilation/capture and follows
         # the model through ``to(device)``.  It is non-persistent because it is
         # a parameter-free constant and must not alter state matching.
-        # Residual reads cast queries to BF16 even with FP32 master parameters.
+        # FLA matches BF16 queries; Liger retains its native FP32 unit weight.
         if getattr(backend, "accepts_rms_weight", False) is True:
             self.register_buffer(
                 "_backend_rms_weight",
-                torch.ones((config.rank,), dtype=torch.bfloat16),
+                torch.ones(
+                    (config.rank,), dtype=getattr(backend, "rms_weight_dtype", torch.bfloat16)
+                ),
                 persistent=False,
             )
         else:
             self._backend_rms_weight = None
         self._initialize()
+
+    def _apply(self, fn, recurse=True):
+        """Preserve native constant dtypes when moving or casting the model."""
+        super()._apply(fn, recurse=recurse)
+        if self._backend_rms_weight is not None:
+            dtype = getattr(self.backend, "rms_weight_dtype", torch.bfloat16)
+            self._backend_rms_weight = self._backend_rms_weight.to(dtype=dtype)
+        return self
 
     def _initialize(self) -> None:
         for module in self.modules():

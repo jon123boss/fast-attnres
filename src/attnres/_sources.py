@@ -39,8 +39,6 @@ def validate_sources(
     query,
     eps,
     scale,
-    *,
-    query_ndim: int = 1,
 ) -> tuple[torch.Tensor, ...]:
     """Normalize and validate packed or per-source residual containers.
 
@@ -50,12 +48,10 @@ def validate_sources(
     may therefore retain independent physical strides.
     """
 
-    if isinstance(query_ndim, bool) or not isinstance(query_ndim, int) or query_ndim < 1:
-        raise ValueError("query_ndim must be a positive integer")
     if not isinstance(query, torch.Tensor):
         raise TypeError("query must be a tensor")
-    if query.ndim != query_ndim:
-        raise ValueError(f"query must have {query_ndim} dimensions")
+    if query.ndim != 1:
+        raise ValueError("query must have 1 dimensions")
     if any(int(size) < 1 for size in query.shape):
         raise ValueError("query dimensions must be positive")
     if query.dtype != _SUPPORTED_DTYPE:

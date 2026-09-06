@@ -159,7 +159,7 @@
   ],
   "identities": {
     "validation/oracle.py": "0fc3afbf02a9e3d61dde2781bd3d5ba6c6aa91c3f2e358226dfad6406c99e5a3",
-    "benchmarks/model.py": "3ae747338a9c3fa0472b0e4839879b6389a405190ab45bce689337775a8ab30c",
+    "benchmarks/model.py": "c12d194d22c246603f4443ae4c685486d07187ab1475a0f9a4a3ff55c622bc53",
     "benchmarks/run.py": "b4e884a8f7ea60ccb4a57a45a0937316ce770f15314f1aef1342a59b9a132b08",
     "benchmarks/training_graph.py": "b35e04997c5e2653087814b046d72b2bb5945017ed621ba880b53bb7d9f1524f",
     "benchmarks/bf16_device.py": "3b48dab8afcb6aca62a9a8cfbe7a679c63eda97331f70ba1322f87b70907646e"
