@@ -54,10 +54,12 @@ intervals, and resource limits. Raw results retain failed and interrupted runs.
 All published figures must identify their measured source and workload;
 operator latency and complete training-step latency remain separate.
 
-The primary model matches the 1B research geometry: 24 layers, width 1536,
-batch 4, context 2048, accumulation 4, and the original Muon plus AdamW
-implementation. Synthetic inputs exclude dataset I/O, logging, and scheduler
-host work. These measurements do not reproduce historical training throughput.
+The primary model retains the 1B research architecture: 24 layers, width 1536,
+batch 4, accumulation 4, and the original Muon plus AdamW implementation.
+Context is reduced to 1024 for every arm on both GPUs to lower control memory
+use. Earlier context-2048 reports retain their recorded workload. Synthetic
+inputs exclude dataset I/O, logging, and scheduler host work. These measurements
+do not reproduce historical training throughput.
 
 ## Historical evidence
 

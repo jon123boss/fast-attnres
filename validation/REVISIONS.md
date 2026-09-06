@@ -1,5 +1,11 @@
 # Evaluator revisions
 
+2026-09-06: Synchronized the evaluation and provenance prose with the already
+configured, user-authorized context-1024 primary workload and allowance for up
+to eight independent single-GPU final jobs. Development remains exclusive to
+one GPU. This documentation correction changes no kernel, evaluator, timing
+sample, numerical tolerance, statistical gate, or stage budget.
+
 2026-08-27: GPU checks revised from `76a04b33909a1d91c495bb510a85c3e6f31ec657f37e4ce6c7c5529ee256d74d` to `53186d885cd88d3d6b2565733bef2bca30cbc9b4d2907ff5f22b6d98fb166240`. CUDA Graph warmup and fresh static autograd leaves now use the capture side stream, as required by PyTorch 2.12 CUDA semantics. The prior default-stream warmup caused a capture-stream dependency failure after compiled parity passed. Equations, seeds, shapes, tolerances, and changed-input replay checks are unchanged. Prior reports are retained; all candidates must pass this revision. No performance evaluation had started.
 
 Reference: https://docs.pytorch.org/docs/2.12/notes/cuda.html#cuda-graphs
