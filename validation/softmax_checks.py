@@ -5,11 +5,15 @@ import torch
 
 def check_equal_logits(operator, *, sources=4, rows=2, packed=False, scale=2**24):
     """Equal sources must have exact uniform value gradients and zero query gradients."""
-    values = torch.ones(sources, rows, 256, device='cuda', dtype=torch.bfloat16,
-                        requires_grad=True)
-    query = torch.ones(16, device='cuda', dtype=torch.bfloat16, requires_grad=True)
-    inputs = values if packed else tuple(values.unbind())
-    upstream = torch.ones_like(values[0])
+    stream = torch.cuda.Stream()
+    stream.wait_stream(torch.cuda.current_stream())
+    # Views create autograd nodes too: construct them on the capture stream.
+    with torch.cuda.stream(stream):
+        values = torch.ones(sources, rows, 256, device='cuda', dtype=torch.bfloat16,
+                            requires_grad=True)
+        query = torch.ones(16, device='cuda', dtype=torch.bfloat16, requires_grad=True)
+        inputs = values if packed else tuple(values.unbind())
+        upstream = torch.ones_like(values[0])
 
     def call():
         output = operator(inputs, query, eps=2**-23, scale=scale)
@@ -21,8 +25,6 @@ def check_equal_logits(operator, *, sources=4, rows=2, packed=False, scale=2**24
         torch.testing.assert_close(dv, upstream.expand_as(values) / sources, rtol=0, atol=0)
         torch.testing.assert_close(dq, torch.zeros_like(query), rtol=0, atol=0)
 
-    stream = torch.cuda.Stream()
-    stream.wait_stream(torch.cuda.current_stream())
     with torch.cuda.stream(stream):
         check(call())
         graph = torch.cuda.CUDAGraph()

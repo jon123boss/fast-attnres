@@ -1,5 +1,10 @@
 # Evaluator revisions
 
+2026-09-06: The first equal-logit GPU regression stopped on a stale default-stream
+UnbindBackward node before operator timing. Construct the test's leaves and views
+on its capture stream as well as running warmup there. The stopped run remains
+recorded; no numerical assertion, kernel, or measurement boundary changed.
+
 2026-09-06: Added opt-in equal-logit correctness checks before operator timing.
 They cover finite scales +/-2**24, packed and source-list inputs, saved and
 recomputed backward, and two changed-upstream CUDA Graph replays. Outputs and
