@@ -10,7 +10,7 @@ remains available with its historical evidence.
 From a clean release checkout, install the development dependencies and run:
 
 ```bash
-python -m pip install -e ".[dev]" "matplotlib==3.8.0"
+python -m pip install -e ".[dev,test,plot]" "setuptools>=68" wheel "twine>=5" "matplotlib==3.8.0"
 python -m pytest -m "not cuda" -q
 python scripts/verify_final_release.py --work /tmp/fast-attnres-release-audit
 SOURCE_DATE_EPOCH="$(git show -s --format=%ct HEAD)" \
