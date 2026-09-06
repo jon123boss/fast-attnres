@@ -788,8 +788,7 @@
         "mode",
         "rank",
         "source_layout",
-        "block_path",
-        "cached_block"
+        "block_path"
       ],
       "properties": {
         "kind": {
@@ -809,9 +808,6 @@
         },
         "block_path": {
           "const": "public_attnres_per_read"
-        },
-        "cached_block": {
-          "const": false
         }
       }
     },
@@ -824,8 +820,7 @@
         "mode",
         "rank",
         "source_layout",
-        "block_path",
-        "cached_block"
+        "block_path"
       ],
       "properties": {
         "kind": {
@@ -845,9 +840,6 @@
         },
         "block_path": {
           "const": "public_attnres_per_read"
-        },
-        "cached_block": {
-          "const": false
         }
       }
     },

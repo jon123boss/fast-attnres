@@ -77,7 +77,7 @@ def _case(config, variant, mode, accumulation):
     _same_state(_state(graph_model, optimizers[0]), before_capture, exact=True)
     before_counters = dict(torch._dynamo.utils.counters["stats"])
     losses = []
-    for index in range(2):
+    for index in range(8):
         changed_tokens = (tokens + index + 1) % cfg.vocab
         changed_targets = (targets + index + 3) % cfg.vocab
         graph.copy_inputs(changed_tokens, changed_targets)
@@ -92,7 +92,8 @@ def _case(config, variant, mode, accumulation):
             _same_state(a.grad, e.grad)
         losses.append(float(actual))
     assert before_counters == dict(torch._dynamo.utils.counters["stats"])
-    return {"two_changed_input_updates": True, "warmup_state_restored_exactly": True,
+    return {"eight_changed_input_updates": True, "changed_input_replays": 8,
+            "warmup_state_restored_exactly": True,
             "optimizer_steps_exact": True, "state_rtol": 1e-5, "state_atol": 1e-6,
             "accumulation": accumulation, "total_batch": cfg.batch, "losses": losses}
 

@@ -1,6 +1,10 @@
-# Resident complete-training rank ladder
+# Historical complete-training rank ladder
 
-This directory contains recipes for the active autotuned source-list candidate
+This archived protocol preserves its original source hashes and rank matrix.
+The [current benchmark scope](benchmark_results.md) uses the existing headline
+and competitor plots at `R=D` and `R=D/4`.
+
+The recipes below describe the source-list implementation
 at `8ddb0bbaf184663703ded65b45839fddd1c429fc` (tree
 `a91fb6d7662c36652bf648aa2e8170c90887bc1a`). The candidate source files are
 recorded in each recipe by SHA256:
@@ -99,8 +103,7 @@ qualification for every selected rank.
 
 The Full recipe uses the complete public Full schedule. The Block recipe uses
 the same public `attnres` primitive for every residual read; its difference is
-the per-read Block schedule. There is no cached Block execution and no
-`block_execution` or `include_per_read` setting. `source_layout` is `list`,
+the per-read Block schedule. `source_layout` is `list`,
 `include_packed_comparison` is false, and no packed arm is scheduled. There is
 also no projected candidate.
 
@@ -114,7 +117,7 @@ model discovery and extra backends are disabled.
 
 ## Runtime-safe split matrix
 
-The 12-rank recipes are the current complete-ladder definition. Because a
+The 12-rank recipes define this historical ladder. Because a
 12-rank complete-training job also qualifies, compiles, captures, and warms
 the FLA anchor, the runtime-safe launch matrix is in
 [`production_ladder_split_manifest.json`](../configs/production_ladder_split_manifest.json).

@@ -1809,9 +1809,9 @@ def render_sweep(
 ) -> tuple[Path, Path, Path, Path]:
     """Render separate, large H100 and B200 SVG/PNG small multiples.
 
-    The split is intentional: placing all eight configurations on one canvas
-    made labels too small at README width.  Each returned device figure keeps
-    one vertical bar chart per configuration while retaining FAIL and NA arms.
+    Each device figure keeps one vertical bar chart per configuration while
+    retaining FAIL and NA arms. Additional configurations extend the figure
+    vertically so that every supplied cell remains visible at README width.
     """
 
     if theme not in {"light", "dark"}:
@@ -1855,14 +1855,15 @@ def render_sweep(
             )
             if not subset:
                 _error(f"no {gpu} cells were supplied")
-            rows, columns = ((1, 3) if gpu == "H100" else (2, 3))
-            size = (17, 6.2) if gpu == "H100" else (17, 10.8)
+            columns = 3
+            rows = max(1 if gpu == "H100" else 2, math.ceil(len(subset) / columns))
+            size = (17, 6.2 + 4.6 * (rows - 1))
             fig, axes = plt.subplots(rows, columns, figsize=size, squeeze=False, facecolor=face)
             fig.subplots_adjust(
                 left=.06,
                 right=.985,
-                top=.75 if gpu == "H100" else .78,
-                bottom=.15 if gpu == "H100" else .12,
+                top=.75 if rows == 1 else .78 if rows == 2 else .82,
+                bottom=.15 if rows == 1 else .12 if rows == 2 else .08,
                 hspace=.52,
                 wspace=.25,
             )

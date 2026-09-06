@@ -1,0 +1,172 @@
+{
+  "schema": "attnres.final_sweep.v1",
+  "purpose": "User-authorized refresh of the existing headline and competitor plots with R=D and R=D/4.",
+  "gpus": [
+    "H100",
+    "B200"
+  ],
+  "runtime": {
+    "python": "3.11.13",
+    "torch": "2.13.0+cu130",
+    "triton": "3.7.1",
+    "cuda": "13.0"
+  },
+  "reference": "validation.oracle.oracle",
+  "reference_dtype": "bfloat16",
+  "tolerance": {
+    "rtol": 0.05,
+    "atol": 0.05
+  },
+  "cells": [
+    {
+      "name": "headline_full",
+      "model": {
+        "layers": 24,
+        "width": 1024,
+        "heads": 16,
+        "ffn": 2816,
+        "vocab": 32768,
+        "sequence": 1024,
+        "batch": 2,
+        "block_count": 8,
+        "mode": "full",
+        "variant": "sliced",
+        "source_layout": "list"
+      },
+      "ranks": [
+        1024,
+        256
+      ],
+      "seeds": [
+        20260827,
+        20260903,
+        20260911
+      ],
+      "rounds": 120,
+      "warmups": 10
+    },
+    {
+      "name": "screen_full",
+      "model": {
+        "layers": 8,
+        "width": 1024,
+        "heads": 16,
+        "ffn": 2816,
+        "vocab": 8192,
+        "sequence": 512,
+        "batch": 2,
+        "block_count": 16,
+        "mode": "full",
+        "variant": "sliced",
+        "source_layout": "list"
+      },
+      "ranks": [
+        1024,
+        256
+      ],
+      "seeds": [
+        20260827
+      ],
+      "rounds": 40,
+      "warmups": 5
+    },
+    {
+      "name": "screen_block_1536_s9",
+      "model": {
+        "layers": 8,
+        "width": 1536,
+        "heads": 24,
+        "ffn": 4224,
+        "vocab": 8192,
+        "sequence": 512,
+        "batch": 2,
+        "block_count": 8,
+        "mode": "block",
+        "variant": "sliced",
+        "source_layout": "list"
+      },
+      "ranks": [
+        1536,
+        384
+      ],
+      "seeds": [
+        20260827
+      ],
+      "rounds": 40,
+      "warmups": 5
+    },
+    {
+      "name": "screen_block_1536_s3",
+      "model": {
+        "layers": 8,
+        "width": 1536,
+        "heads": 24,
+        "ffn": 4224,
+        "vocab": 8192,
+        "sequence": 512,
+        "batch": 2,
+        "block_count": 2,
+        "mode": "block",
+        "variant": "sliced",
+        "source_layout": "list"
+      },
+      "ranks": [
+        1536,
+        384
+      ],
+      "seeds": [
+        20260827
+      ],
+      "rounds": 40,
+      "warmups": 5
+    },
+    {
+      "name": "screen_block_2048_s9",
+      "model": {
+        "layers": 8,
+        "width": 2048,
+        "heads": 32,
+        "ffn": 5632,
+        "vocab": 8192,
+        "sequence": 512,
+        "batch": 2,
+        "block_count": 8,
+        "mode": "block",
+        "variant": "sliced",
+        "source_layout": "list"
+      },
+      "ranks": [
+        2048,
+        512
+      ],
+      "seeds": [
+        20260827
+      ],
+      "rounds": 40,
+      "warmups": 5
+    }
+  ],
+  "competitors": [
+    "fla_triton_checkpoint1",
+    "liger",
+    "catswe_phase1"
+  ],
+  "rank_comparison": "Within each matched workload, compare candidate R=D/4 against candidate R=D. Standard-only competitors remain R=D and are architectural comparisons to low-rank candidate.",
+  "timing": "Existing benchmarks.run + training_graph captured complete CUDA Graph step, fused AdamW, accumulation1; input copy, compilation, qualification, capture and serialization outside timed events.",
+  "historical_sources": [
+    "results/current_24l",
+    "results/adoption/compiled_step_screen"
+  ],
+  "identities": {
+    "validation/oracle.py": "17b5592e9d112441fd953b164dd8c24b9f000174d73f14385dee16faf8aefb05",
+    "benchmarks/model.py": "c12d194d22c246603f4443ae4c685486d07187ab1475a0f9a4a3ff55c622bc53",
+    "benchmarks/run.py": "de036a70aeb617f5338b69c6da0cca6ef8bd6f879684d4b151cb1c7ba962e6e8",
+    "benchmarks/training_graph.py": "b35e04997c5e2653087814b046d72b2bb5945017ed621ba880b53bb7d9f1524f",
+    "benchmarks/bf16_device.py": "b4b4588afade0486e4da3a4a3e94e250ccf38dd67d1f2bf878e702c1bb467b6f"
+  },
+  "candidate_package_sha256": "2a8838d1471c8eb45899c423f7bfae0c334c922d151a6c0de7f680e226900bb2",
+  "normalization_rounding_policy": {
+    "authorization": "User: Ignore any normalization differences causing numerical differences, move on",
+    "scope": "Initial model logits only; record nominal tolerance failures explicitly; finite, loss, gradients and complete training-state checks remain strict"
+  }
+}

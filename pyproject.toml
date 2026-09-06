@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "fast-attnres"
 version = "1.0.0"
-description = "Fast PyTorch training operators for standard and sliced low-rank Attention Residuals"
+description = "CUDA BF16 PyTorch operators for standard and sliced low-rank Attention Residuals"
 readme = "README.md"
 requires-python = ">=3.10"
 authors = [{name = "Jonathan Su"}]
@@ -13,7 +13,7 @@ dependencies = ["torch>=2.9"]
 license = {text = "MIT"}
 keywords = ["pytorch", "attention", "residuals", "triton", "cuda", "bfloat16"]
 classifiers = [
-    "Development Status :: 5 - Production/Stable",
+    "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3 :: Only",

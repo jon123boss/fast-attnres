@@ -28,6 +28,14 @@ _VENDOR_ENV_VARS = (
 )
 
 
+def _oracle_backend(values, query, *, eps=2**-23, scale=1.0):
+    """Use the frozen BF16 oracle instead of the removed package reference."""
+
+    if isinstance(values, (list, tuple)):
+        values = torch.stack(tuple(values), dim=0)
+    return oracle(values, query, eps=eps, scale=scale)
+
+
 def _configured_vendor_root():
     """Use the same env/default resolution as the backend under test."""
 
@@ -178,7 +186,7 @@ def test_fullgraph_model_changed_inputs_all_parameter_gradients(implementation, 
         mode=mode,
     )
     torch.manual_seed(41)
-    reference = make_model(config, backend="reference").cuda()
+    reference = make_model(config, backend=_oracle_backend).cuda()
     kernel = make_model(config, backend=backend).cuda()
     kernel.load_state_dict(copy.deepcopy(reference.state_dict()))
     compiled = torch.compile(kernel, fullgraph=True, dynamic=False)

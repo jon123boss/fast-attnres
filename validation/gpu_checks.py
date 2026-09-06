@@ -16,7 +16,9 @@ def _metrics(actual, expected):
 
 
 def _compare(actual, expected, dtype):
-    tol = PROTOCOL["bf16" if dtype == torch.bfloat16 else "fp32"]
+    if dtype != torch.bfloat16:
+        raise ValueError("CUDA correctness validation supports BF16 storage only")
+    tol = PROTOCOL["bf16"]
     if not torch.isfinite(actual).all() or not torch.isfinite(expected).all():
         raise AssertionError("non-finite output or gradient")
     torch.testing.assert_close(actual, expected, **tol)
@@ -28,8 +30,8 @@ def _single(shape, dtype, *, strided=False, scale=1., zero_query=False):
     s,n,d,r = shape
     width = d+(7 if strided else 0)
     producer = torch.randn(s,n,width,device="cuda",dtype=dtype,requires_grad=True)
-    q = (torch.zeros(r,device="cuda") if zero_query else
-         torch.randn(r,device="cuda") * .25).requires_grad_()
+    q = (torch.zeros(r,device="cuda",dtype=dtype) if zero_query else
+         torch.randn(r,device="cuda",dtype=dtype) * .25).requires_grad_()
     v = producer[..., :d]
     actual = attnres(v,q,scale=scale)
     expected = oracle(v,q,scale=scale)
@@ -48,19 +50,16 @@ def _block(dtype, rank):
     width = d
     source = torch.randn(s,n,width,device="cuda",dtype=dtype,requires_grad=True)
     partial = torch.randn(n,width,device="cuda",dtype=dtype,requires_grad=True)
-    q = (torch.randn(qcount,rank,device="cuda")*.25).requires_grad_()
+    q = (torch.randn(qcount,rank,device="cuda",dtype=dtype)*.25).requires_grad_()
     values=source[...,:d]
     indexes=[0,1,1,2]  # A duplicate consumer must accumulate rather than overwrite.
     combined=torch.cat((values,partial[None,...,:d]),dim=0)
     outputs=[attnres(combined,q[i]) for i in indexes]
     outputs.append(attnres(values,q[0]))
-    # One common FP32 source equation: accumulation is equation-level, not staged BF16.
-    sf,pf=source.float(),partial.float()
     expected=[]
     for i in indexes:
-        packed=torch.cat([sf[...,:d],pf[None,...,:d]],dim=0)
-        expected.append(oracle(packed,q[i]).to(dtype))
-    expected.append(oracle(sf[...,:d],q[0]).to(dtype))
+        expected.append(oracle(combined,q[i]))
+    expected.append(oracle(values,q[0]))
     weights=[torch.randn(d,n,device="cuda",dtype=dtype).T for _ in outputs]
     actual_loss=sum((o.float()*w.float()).sum() for o,w in zip(outputs,weights))
     expected_loss=sum((o.float()*w.float()).sum() for o,w in zip(expected,weights))
@@ -76,11 +75,13 @@ def _block(dtype, rank):
 
 
 def _compiled_and_graph(*, dtype=torch.bfloat16, shape=(9,65,256,32)):
+    if dtype != torch.bfloat16:
+        raise ValueError("CUDA correctness validation supports BF16 storage only")
     from attnres import attnres
     s,n,d,r=shape
     width=d
     source=torch.randn(s,n,width,device="cuda",dtype=dtype,requires_grad=True)
-    query=torch.randn(r,device="cuda",requires_grad=True)
+    query=torch.randn(r,device="cuda",dtype=dtype,requires_grad=True)
     def forward(v,q):
         return attnres(v[...,:d],q)
     compiled=torch.compile(forward,fullgraph=True,dynamic=False)
@@ -112,22 +113,31 @@ def _compiled_and_graph(*, dtype=torch.bfloat16, shape=(9,65,256,32)):
     with torch.cuda.graph(graph,stream=stream):
         captured=forward(source,query)
         captured_grads=torch.autograd.grad(captured,(source,query),upstream)
-    with torch.no_grad():
-        source.copy_(torch.randn_like(source))
-        query.copy_(torch.randn_like(query))
-        upstream.copy_(torch.randn_like(upstream))
-    graph.replay()
-    torch.cuda.synchronize()
-    expected=oracle(source[...,:d],query)
-    ge=torch.autograd.grad(expected,(source,query),upstream)
-    _compare(captured,expected,dtype)
-    for a,b in zip(captured_grads,ge): _compare(a,b,dtype)
-    return {"compiled_forward_backward":True,"changed_input_graph":True}
+    replay_inputs = [
+        (torch.randn_like(source), torch.randn_like(query), torch.randn_like(upstream))
+        for _ in range(8)
+    ]
+    for replay_source, replay_query, replay_upstream in replay_inputs:
+        with torch.no_grad():
+            source.copy_(replay_source)
+            query.copy_(replay_query)
+            upstream.copy_(replay_upstream)
+        graph.replay()
+        torch.cuda.synchronize()
+        expected=oracle(source[...,:d],query)
+        ge=torch.autograd.grad(expected,(source,query),upstream)
+        _compare(captured,expected,dtype)
+        for a,b in zip(captured_grads,ge): _compare(a,b,dtype)
+    return {"compiled_forward_backward":True,"changed_input_graph":True,
+            "changed_input_graph_replays":len(replay_inputs)}
 
 
 def run_checks(config):
     kind=config.get("kind","all")
-    dtype=torch.bfloat16 if config.get("dtype","bf16")=="bf16" else torch.float32
+    requested_dtype = config.get("dtype", "bf16")
+    if requested_dtype not in ("bf16", "bfloat16", torch.bfloat16):
+        raise ValueError("CUDA correctness validation supports BF16 only")
+    dtype=torch.bfloat16
     torch.manual_seed(config.get("seed",PROTOCOL["seeds"][0]))
     cases=[]
     if kind in ("all", "full"):

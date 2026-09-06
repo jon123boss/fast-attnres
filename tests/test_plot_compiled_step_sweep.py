@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections import Counter
+import gzip
 import hashlib
 import json
 from pathlib import Path
@@ -10,6 +11,8 @@ from pathlib import Path
 import pytest
 
 from benchmarks.plot_compiled_step_sweep import (
+    ArmResult,
+    CellResult,
     SCHEMA,
     SweepPlotError,
     audit_cell,
@@ -29,6 +32,12 @@ _REPORTS = (
     "compiled-autotune-b200-full-d1024-s17-v2.json",
     "compiled-autotune-b200-block-d1536-s3-v2.json",
 )
+
+
+@pytest.fixture(autouse=True)
+def measured_checkout(historical_release_root, monkeypatch):
+    from scripts import compiled_step_sweep
+    monkeypatch.setattr(compiled_step_sweep, "PROJECT_ROOT", historical_release_root)
 
 
 def _drop_worker(payload: dict) -> None:
@@ -56,9 +65,12 @@ def test_published_screen_is_populated_and_matches_its_manifest():
     assert len(rows) == 24
     assert Counter(row["status"] for row in rows) == Counter({"OK": 16, "NA": 7, "FAIL": 1})
 
-    for artifact in manifest["derived_artifacts"].values():
-        path = _REPO_ROOT / artifact["path"]
-        assert hashlib.sha256(path.read_bytes()).hexdigest() == artifact["sha256"]
+    for name, artifact in manifest["derived_artifacts"].items():
+        # The historical figure records its original generator. The current
+        # renderer can evolve without changing that archived source binding.
+        data = (gzip.decompress((_PUBLISHED_SCREEN / "reproduction/plot_compiled_step_sweep.py.gz").read_bytes())
+                if name == "generator" else (_REPO_ROOT / artifact["path"]).read_bytes())
+        assert hashlib.sha256(data).hexdigest() == artifact["sha256"]
     for gpu in ("h100", "b200"):
         assert "No qualified arms" not in (
             _REPO_ROOT / "docs" / "assets" / f"compiled_step_screen_{gpu}.svg"
@@ -176,6 +188,25 @@ def test_outputs_are_deterministic_and_long_form(tmp_path: Path):
     csv_path, md_path = write_table(rows, first / "rows.csv", first / "rows.md")
     assert csv_path.read_text(encoding="utf-8").splitlines()[0].startswith("gpu,phase,mode")
     assert "Catswe" in md_path.read_text(encoding="utf-8")
+
+
+def test_extended_sweep_renders_every_supplied_cell(tmp_path: Path):
+    cells = [
+        CellResult(
+            source="rendering fixture", gpu=gpu, phase="screen", mode="full",
+            event_block_size=None, smax=17, width=1024 + index,
+            rank=1024 + index, rank_relation="R=D", warmup=5, rounds=40,
+            status="OK", reason="rendering fixture",
+            arms=(ArmResult("attnres", "OK", "rendering fixture", mean_ms=1.0),),
+        )
+        for gpu in ("H100", "B200")
+        for index in range(8)
+    ]
+    for path in render_sweep(cells, tmp_path):
+        if path.suffix == ".svg":
+            text = path.read_text(encoding="utf-8")
+            for index in range(8):
+                assert f"D=R={1024 + index}" in text
 
 
 def test_cli_rejects_invalid_report_before_writing_any_artifact(tmp_path: Path):

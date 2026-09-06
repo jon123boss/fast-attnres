@@ -1,7 +1,9 @@
-# Current 24-layer Full AttnRes results
+# Historical 24-layer Full AttnRes results
 
-This is the current headline performance campaign for Fast-AttnRes. It uses
-the release kernel bytes and compares the standard `R=D=1024` equation with a
+These measurements supported the previous README headline. They apply to the
+source identities recorded below; the [current refresh](benchmark_results.md)
+requires new measurements. This campaign uses
+the recorded kernel bytes and compares the standard `R=D=1024` equation with a
 clean, pinned native FLA Triton checkpoint-1 checkout. H100 and B200 were run
 as separate Modal jobs and the three protocol seeds remain separate.
 
@@ -99,4 +101,4 @@ projection, and CPU-only audit command are in
   Catswe coverage; it is not pooled with this campaign.
 - H100 and B200 are separate replications, not a cross-device ranking.
 - The archived earlier campaign remains valid only for its named historical
-  source bytes and is not used by the current headline.
+  source bytes; neither archive measures the current kernel.

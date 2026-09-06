@@ -1,16 +1,61 @@
 # Benchmark results
 
-The README's current performance evidence is the BF16 compiled
-complete-training-step screen in
-[`results/adoption/compiled_step_screen`](../results/adoption/compiled_step_screen/).
-It contains eight independently audited H100/B200 reports, the exact
-[long-form table](../results/adoption/compiled_step_screen/results.md), a
-[machine-readable CSV](../results/adoption/compiled_step_screen/results.csv),
-and a hash-bound [manifest](../results/adoption/compiled_step_screen/manifest.json).
-The screen uses PyTorch 2.13.0+cu130 and Triton 3.7.1 and is the sole source for
-the bars and values at the top of the README.
+The H100/B200 measurements use the existing README headline and competitor
+workloads with standard (`R=D`) and sliced (`R=D/4`) routing. The
+[results table](../results/final_sweep/results.md),
+[CSV](../results/final_sweep/results.csv), and
+[source archive and reproduction commands](../results/final_sweep/README.md)
+retain the exact workload, source identity, and comparison scope.
 
-The older three-seed Full campaign in
-[`results/compiled_step`](../results/compiled_step/) remains an immutable
-historical replication and packaging-evidence bundle. It does not feed the
-current README chart or table.
+The 24-layer Full workload has 5.95% lower step latency on H100 SXM and
+22.74% lower on B200 than native FLA checkpoint 1, using the median of three
+paired seed estimates. H100 standard D2048 is 0.28% slower than FLA, within
+the predefined 1% parity band; the other nine standard comparisons are faster.
+Quarter rank reduces step latency in all ten device/workload pairs. These
+results cover `R=D` and `R=D/4` on the listed configurations.
+
+| Plot | Existing workload and harness |
+| --- | --- |
+| Headline | L24 / D1024 / H16 / FFN2816 / B2 / T1024 / vocabulary 32768; [compiled-step campaign](../benchmarks/compiled_step_campaign.py) and [hero renderer](../benchmarks/plot_compiled_step_hero.py). |
+| Competitor plots | L8 / B2 / T512 / vocabulary 8192: D1024 Full, D1536 Block with event sizes 8 or 2, and D2048 Block with event size 2; [compiled-step sweep](../scripts/compiled_step_sweep.py) and [sweep renderer](../benchmarks/plot_compiled_step_sweep.py). |
+
+Both workload groups use `R=D` and `R=D/4`. Block event size counts Transformer
+sublayer events per block. The final run configuration is
+[`configs/bf16_final_sweep.json`](../configs/bf16_final_sweep.json); the earlier `bf16_primary_v3.json` matrix is historical. The harness links above identify the existing measurement paths;
+they do not imply that the archived configurations cover the new rank scope.
+
+The headline uses three seeds (20260827, 20260903, 20260911), 120 paired
+rounds, and 10 warmup rounds. Each smaller workload uses seed 20260827,
+40 paired rounds, and 5 warmup rounds. Timed arms share model weights,
+logical inputs, and the rotating execution order.
+
+The runtime is Python 3.11.13, PyTorch 2.13.0+cu130, and Triton 3.7.1.
+The timing boundary includes forward, backward, and fused capturable AdamW;
+compilation, input copies, qualification, and CUDA Graph capture are excluded.
+
+The reference accepts BF16 inputs, accumulates internally in FP32, normalizes
+keys before the query dot product, and returns BF16 outputs. The same
+`rtol=0.05, atol=0.05` applies to outputs and first-order gradients.
+The final D2048 continuation explicitly accepts and counts initial-logit
+differences from normalization order. Loss, all parameter gradients and
+complete training-state checks retain their original tolerances. Original
+failed reports remain in the evidence; these deviations are not strict
+output-tolerance passes.
+
+Each report must identify its rank, eligible comparators, BF16 correctness result, timing
+boundary, paired samples, and exact source/runtime. Unsupported, failed, and
+incomplete comparisons stay visible. A comparison of sliced `R=D/4` routing
+with a standard-only `R=D` backend must identify the different equations.
+H100 and B200 results remain separate.
+
+## Historical measurements
+
+- [24-layer Full results](current_24l_results.md): the previous headline and
+  its exact reports in [results/current_24l](../results/current_24l/README.md).
+- [Competitor screen](../results/adoption/compiled_step_screen/results.md):
+  eight archived H100/B200 reports, with a [CSV](../results/adoption/compiled_step_screen/results.csv)
+  and [manifest](../results/adoption/compiled_step_screen/manifest.json).
+- [Earlier compiled-step results](compiled_step_results.md): the six-report
+  Full campaign preserved in the historical packaging evidence bundle.
+
+Historical figures and reports retain their original sources and measurements.

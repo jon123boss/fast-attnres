@@ -6,17 +6,15 @@ pytestmark = [pytest.mark.cuda, pytest.mark.skipif(
     not torch.cuda.is_available(), reason="requires a CUDA device")]
 
 
-@pytest.mark.parametrize("dtype", ["bf16", "fp32"])
-def test_operator_equations_and_replay(dtype):
+def test_operator_equations_and_replay():
     from validation.gpu_checks import run_checks
-    result = run_checks({"dtype": dtype})
+    result = run_checks({"dtype": "bf16"})
     assert result["failed"] == 0, result
 
 
-@pytest.mark.parametrize("dtype", ["bf16", "fp32"])
-def test_block_envelope(dtype):
+def test_block_envelope():
     from validation.block_checks import run_block_checks
-    result = run_block_checks({"dtype": dtype})
+    result = run_block_checks({"dtype": "bf16"})
     assert result["failed"] == 0, result
 
 
@@ -24,14 +22,6 @@ def test_block_compiled_and_replay():
     from validation.block_checks import run_block_checks
     result = run_block_checks({"cases": [[9, 11, 256, 127]], "graph": True})
     assert result["failed"] == 0, result
-
-
-@pytest.mark.parametrize("shape", [(1, 2, 128, 1), (129, 8, 7168, 1024),
-                                   (129, 8, 8192, 8192)])
-def test_compiled_fp32_envelope(shape):
-    from validation.gpu_checks import _compiled_and_graph, PROTOCOL
-    torch.manual_seed(PROTOCOL["seeds"][0])
-    _compiled_and_graph(dtype=torch.float32, shape=shape)
 
 
 @pytest.mark.parametrize("shape", [(9, 65, 1024, 512), (9, 19, 1024, 1023),
@@ -52,7 +42,7 @@ def test_compiled_bf16_sliced_feature_and_query_strides():
     s, n, d, r = 9, 7, 1536, 769
     values = torch.randn(s, n, 2*d, device="cuda", dtype=torch.bfloat16,
                          requires_grad=True)
-    query = (torch.randn(2*r, device="cuda") * .25).requires_grad_()
+    query = (torch.randn(2*r, device="cuda", dtype=torch.bfloat16) * .25).requires_grad_()
     upstream = torch.randn(d, n, device="cuda", dtype=torch.bfloat16).T
     compiled = torch.compile(lambda v, q: attnres(v[..., ::2], q[::2]),
                              fullgraph=True, dynamic=False)
@@ -74,11 +64,10 @@ def test_compiled_training(variant, mode):
 
 @pytest.mark.parametrize("mode", ["full", "block"])
 @pytest.mark.parametrize("variant", ["standard", "sliced"])
-@pytest.mark.parametrize("dtype", [torch.bfloat16, torch.float32])
-def test_source_list_strides_shared_gradients_and_graph(mode, variant, dtype):
+def test_source_list_strides_shared_gradients_and_graph(mode, variant):
     from validation.source_checks import source_case
     source_case((5, 7, 128, 128 if variant == "standard" else 16),
-                mode, dtype, graph=True, shared=True)
+                mode, torch.bfloat16, graph=True, shared=True)
 
 
 @pytest.mark.parametrize("variant", ["standard", "sliced"])
@@ -95,7 +84,7 @@ def test_source_lists_keep_fresh_storage_after_graph_capture(variant):
     def fixture():
         values = tuple(torch.randn(5, 34, device="cuda", dtype=torch.bfloat16,
                                    requires_grad=True) for _ in range(3))
-        query = torch.randn(2 * rank, device="cuda", requires_grad=True)
+        query = torch.randn(2 * rank, device="cuda", dtype=torch.bfloat16, requires_grad=True)
         weight = torch.randn(17, 5, device="cuda", dtype=torch.bfloat16).T
         return (*values, query), weight
 
@@ -169,7 +158,7 @@ def test_source_list_shared_storage_keeps_distinct_gradient_edges(variant):
     values = (shared[:, :17].detach().requires_grad_(),
               shared[:, 1:].detach().requires_grad_(),
               torch.randn(5, 17, device="cuda", dtype=torch.bfloat16, requires_grad=True))
-    query = torch.randn(rank, device="cuda", requires_grad=True)
+    query = torch.randn(rank, device="cuda", dtype=torch.bfloat16, requires_grad=True)
     parameters = (*values, query)
     actual = attnres(values, query)
     expected = oracle(torch.stack(values), query)
@@ -190,7 +179,7 @@ def _source_lifetime_refs(variant, mode, sequence, device, dtype):
 
     rank = 17 if variant == "standard" else 5
     values = [torch.randn(5, 17, device=device, dtype=dtype, requires_grad=True) for _ in range(3)]
-    query = torch.randn(rank, device=device, requires_grad=True)
+    query = torch.randn(rank, device=device, dtype=torch.bfloat16, requires_grad=True)
     refs = [weakref.ref(tensor) for tensor in [*values, query]]
     value_arg = tuple(values) if sequence else torch.stack(values)
     if mode == "full":
@@ -217,13 +206,12 @@ def _source_lifetime_refs(variant, mode, sequence, device, dtype):
 @pytest.mark.parametrize("variant", ["standard", "sliced"])
 @pytest.mark.parametrize("mode", ["full", "block"])
 @pytest.mark.parametrize("sequence", [False, True])
-@pytest.mark.parametrize("dtype", [torch.bfloat16, torch.float32])
-def test_source_calls_release_tensor_arguments(variant, mode, sequence, dtype):
+def test_source_calls_release_tensor_arguments(variant, mode, sequence):
     import gc
 
     torch.manual_seed(20260827)
     for _ in range(2):
-        refs = _source_lifetime_refs(variant, mode, sequence, "cuda", dtype)
+        refs = _source_lifetime_refs(variant, mode, sequence, "cuda", torch.bfloat16)
         torch.cuda.synchronize()
         gc.collect()
         assert all(ref() is None for ref in refs), "completed call retained input tensors"
@@ -236,7 +224,7 @@ def _compiled_source_lifetime_refs(compiled, variant, mode, graph, device="cuda"
     rank = 17 if variant == "standard" else 5
     values = tuple(torch.randn(5, 17, device=device, dtype=torch.bfloat16,
                                requires_grad=True) for _ in range(3))
-    query = torch.randn(rank, device=device, requires_grad=True)
+    query = torch.randn(rank, device=device, dtype=torch.bfloat16, requires_grad=True)
     partial = torch.randn_like(values[0], requires_grad=True) if mode == "block" else None
     leaves = (*values, query,
               *((partial,) if partial is not None else ()),
@@ -259,7 +247,7 @@ def _compiled_source_lifetime_refs(compiled, variant, mode, graph, device="cuda"
         captured = torch.cuda.CUDAGraph()
         with torch.cuda.graph(captured, stream=stream):
             step()
-        for _ in range(2):
+        for _ in range(8):
             with torch.no_grad():
                 for tensor in leaves:
                     tensor.add_(0.01)
@@ -320,17 +308,6 @@ def test_source_list_bf16_envelope(mode, shape):
     source_case(shape, mode, torch.bfloat16)
 
 
-@pytest.mark.parametrize("mode,shape", [
-    ("full", (129, 8, 7168, 1024)),
-    ("full", (129, 8, 8192, 8192)),
-    ("block", (128, 8, 7168, 1024)),
-    ("block", (128, 8, 8192, 8192)),
-])
-def test_source_list_fp32_envelope(mode, shape):
-    from validation.source_checks import source_case
-    source_case(shape, mode, torch.float32)
-
-
 @pytest.mark.parametrize("variant", ["standard", "sliced"])
 @pytest.mark.parametrize("mode", ["full", "block"])
 def test_source_list_compiled_training(variant, mode):
@@ -340,19 +317,18 @@ def test_source_list_compiled_training(variant, mode):
     assert result["failed"] == 0, result
 
 
-@pytest.mark.parametrize("dtype", [torch.bfloat16, torch.float32])
 @pytest.mark.parametrize("variant", ["standard", "sliced"])
 @pytest.mark.parametrize("sequence", [False, True])
-def test_non_affine_output_batches_preserve_all_gradients(dtype, variant, sequence):
+def test_non_affine_output_batches_preserve_all_gradients(variant, sequence):
     from attnres import attnres
     from validation.gpu_checks import _compare
     from validation.oracle import oracle
 
     torch.manual_seed(20260827)
     rank = 17 if variant == "standard" else 5
-    values = torch.randn(3, 2, 3, 17, device="cuda", dtype=dtype, requires_grad=True)
-    query = torch.randn(rank, device="cuda", dtype=torch.float32, requires_grad=True)
-    upstream = torch.randn(3, 2, 17, device="cuda", dtype=dtype).transpose(0, 1)
+    values = torch.randn(3, 2, 3, 17, device="cuda", dtype=torch.bfloat16, requires_grad=True)
+    query = torch.randn(rank, device="cuda", dtype=torch.bfloat16, requires_grad=True)
+    upstream = torch.randn(3, 2, 17, device="cuda", dtype=torch.bfloat16).transpose(0, 1)
     params = (values, query)
 
     def forward(v, q):
@@ -364,7 +340,7 @@ def test_non_affine_output_batches_preserve_all_gradients(dtype, variant, sequen
         ga = torch.autograd.grad(actual, params, upstream)
         ge = torch.autograd.grad(expected, params, upstream)
         for a, e in zip((actual, *ga), (expected, *ge)):
-            _compare(a, e, dtype)
+            _compare(a, e, torch.bfloat16)
 
 
 @pytest.mark.parametrize("shape", [(7, 9, 513, 257), (33, 7, 2048, 2048),

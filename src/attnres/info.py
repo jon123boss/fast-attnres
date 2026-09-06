@@ -1,8 +1,8 @@
 """Lightweight runtime diagnostics for an AttnRes installation.
 
 Run ``python -m attnres.info`` to inspect the package and the local PyTorch
-runtime.  This module deliberately checks Triton through package metadata
-instead of importing it, so the command remains useful on CPU-only systems.
+runtime.  The diagnostic command remains usable on CPU-only systems; the
+operator itself requires CUDA BF16 tensors.
 """
 
 from __future__ import annotations
@@ -78,6 +78,7 @@ def _format_human(info: dict[str, Any]) -> str:
             f"cuda runtime: {_value(info['cuda_runtime'])}",
             f"triton available: {_bool(info['triton_available'])}",
             f"triton version: {_value(info['triton_version'])}",
+            "attnres API: CUDA BF16 only",
         )
     )
 

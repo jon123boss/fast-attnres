@@ -66,7 +66,8 @@ def _walk_tensors(value):
             yield from _walk_tensors(item)
 
 
-def test_model_qualification_requires_loss_parity(monkeypatch):
+@pytest.mark.parametrize("accept_rounding", [False, True])
+def test_model_qualification_requires_loss_parity(monkeypatch, accept_rounding):
     calls = 0
 
     def loss_function(logits, targets):
@@ -82,8 +83,33 @@ def test_model_qualification_requires_loss_parity(monkeypatch):
     tokens, targets = _inputs()
     with pytest.raises(AssertionError):
         run._model_qualification(
-            reference, candidate, tokens, targets, PROTOCOL, loss_function
+            reference, candidate, tokens, targets, PROTOCOL, loss_function,
+            accept_normalization_rounding=accept_rounding,
         )
+
+
+def test_output_rounding_disposition_is_explicit_and_keeps_gradient_checks(monkeypatch):
+    monkeypatch.setattr(torch, "autocast", lambda **_: nullcontext())
+
+    class Shifted(TinyTrainingModel):
+        def forward(self, tokens):
+            return super().forward(tokens) + 2.0
+
+    reference, candidate = TinyTrainingModel(), Shifted()
+    candidate.load_state_dict(reference.state_dict())
+    tokens, targets = _inputs()
+    loss = torch.nn.functional.cross_entropy
+    with pytest.raises(AssertionError):
+        run._model_qualification(reference, candidate, tokens, targets, PROTOCOL, loss)
+    report = run._model_qualification(reference, candidate, tokens, targets, PROTOCOL,
+                                      loss, accept_normalization_rounding=True)
+    assert report["output_comparison"]["status"] == "accepted_normalization_rounding"
+    assert report["output_comparison"]["mismatched_elements"] > 0
+    assert report["output_comparison"]["tolerance"] == PROTOCOL["bf16"]
+    candidate.projection.weight.register_hook(lambda gradient: gradient * 100)
+    with pytest.raises(AssertionError):
+        run._model_qualification(reference, candidate, tokens, targets, PROTOCOL,
+                                  loss, accept_normalization_rounding=True)
 
 
 def test_graph_reference_evidence_is_cpu_owned_and_exactly_two_steps(monkeypatch):

@@ -1,3 +1,4 @@
+import ast
 from pathlib import Path
 
 try:
@@ -27,7 +28,15 @@ def test_typing_stub_explicitly_exports_the_root_api():
     stub = (ROOT / "src" / "attnres" / "__init__.pyi").read_text(encoding="utf-8")
 
     assert "from .modules import LearnedQuery as LearnedQuery" in stub
-    assert '__all__ = ["attnres", "reference_attnres", "LearnedQuery", "__version__"]' in stub
+    assert "reference_attnres" not in stub
+    tree = ast.parse(stub)
+    exports = next(
+        ast.literal_eval(node.value)
+        for node in tree.body
+        if isinstance(node, ast.Assign)
+        and any(isinstance(target, ast.Name) and target.id == "__all__" for target in node.targets)
+    )
+    assert set(exports) == {"attnres", "LearnedQuery", "__version__"}
 
 
 def test_cuda_extra_pins_the_supported_pytorch_triton_stack():
@@ -40,13 +49,11 @@ def test_cuda_extra_pins_the_supported_pytorch_triton_stack():
     assert "tomli>=2; python_version < '3.11'" in extras["test"]
 
 
-def test_readme_explains_the_latest_compatible_stable_runtime_pair():
+def test_readme_identifies_the_campaign_runtime_pair():
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
 
-    assert "newest mutually compatible stable PyTorch/Triton pair" in readme
     assert "PyTorch 2.13.0" in readme
-    assert "triton==3.7.1" in readme
-    assert "Triton 3.8.0" in readme
+    assert "Triton 3.7.1" in readme
 
 
 def test_project_provenance_and_citation_are_discoverable():

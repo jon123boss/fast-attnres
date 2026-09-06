@@ -1,4 +1,4 @@
-"""Smoke-test ``torch.compile`` around the installed Fast-AttnRes operator."""
+"""Smoke-test ``torch.compile`` around the CUDA BF16 Fast-AttnRes operator."""
 
 from __future__ import annotations
 
@@ -14,17 +14,17 @@ def run(
     *,
     backend: str = "eager",
 ) -> torch.Tensor:
-    """Compile a packed standard AttnRes function and compare its output."""
+    """Compile a packed standard AttnRes function on CUDA BF16."""
 
     if not hasattr(torch, "compile"):
         raise RuntimeError("this example requires PyTorch with torch.compile")
     torch.manual_seed(4)
-    if device is None:
-        device = "cuda" if torch.cuda.is_available() else "cpu"
-    device = torch.device(device)
-    dtype = torch.bfloat16 if device.type == "cuda" else torch.float32
+    device = torch.device("cuda" if device is None else device)
+    if device.type != "cuda" or not torch.cuda.is_available():
+        raise RuntimeError("this example requires an available CUDA device")
+    dtype = torch.bfloat16
     values = torch.randn(4, 2, 16, device=device, dtype=dtype)
-    query = torch.randn(16, device=device, dtype=torch.float32)
+    query = torch.randn(16, device=device, dtype=dtype)
 
     def residual(source_values: torch.Tensor, source_query: torch.Tensor) -> torch.Tensor:
         return attnres(source_values, source_query)
@@ -37,11 +37,9 @@ def run(
         dynamic=False,
     )
     compiled_output = compiled_residual(values, query)
-    tolerance = {"rtol": 0.05, "atol": 0.05} if dtype == torch.bfloat16 else {
-        "rtol": 0.001,
-        "atol": 0.0001,
-    }
-    torch.testing.assert_close(compiled_output, eager_output, **tolerance)
+    torch.testing.assert_close(compiled_output, eager_output, rtol=0.05, atol=0.05)
+    if compiled_output.dtype != dtype:
+        raise AssertionError("compiled output must be BF16")
     return compiled_output
 
 

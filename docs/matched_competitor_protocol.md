@@ -1,10 +1,9 @@
-# Matched competitor protocol and runners
+# Historical matched competitor protocol
 
-> **Development protocol, not current performance evidence.** This document
-> specifies the optional eager operator-compatibility harness. No timing from
-> that harness feeds the README or release claims. Current performance evidence
-> is the audited compiled complete-training-step screen described in
-> [`docs/benchmark_results.md`](benchmark_results.md).
+> **Archived protocol.** This document preserves the eager compatibility
+> harness and its original reference settings. It does not define the current
+> CUDA BF16 contract or provide current-kernel performance evidence. See
+> [benchmark results](benchmark_results.md) for the README refresh.
 
 [`configs/matched_competitor_benchmark.json`](../configs/matched_competitor_benchmark.json)
 is the sealed selection and timing contract. The Modal transport in
@@ -136,10 +135,10 @@ run two billable GPU containers concurrently. The runner records resource
 settings but does not estimate or enforce a dollar budget; check current
 Modal rates and obtain launch approval before submitting a GPU run.
 
-If this development harness is run, its operator timing boundary is a
+If this archived harness is reproduced, its operator timing boundary is a
 CUDA-event measured forward plus backward
 invocation. It includes adapter-owned source stacking and contiguous
-preparation, so those costs are part of the comparison. The development
+preparation, so those costs are part of the comparison. The archived
 operator timing surface uses BF16 inputs and autocast. Ten warmup rounds are
 excluded and 120 paired timed rounds are required. The model contract names a
 complete compiled training-step boundary, but this worker leaves model cells,
@@ -174,8 +173,8 @@ The declared native comparator surface is:
 | Hydra 2P | standard operator and declared Block panel; native timing is limited to `D <= 256` |
 
 FLA Triton checkpoint 0 is diagnostic-only and is never an eligible
-denominator. Catswe has no cached Block or model route, and the public AttnRes
-Block path is per-read; no cached Block method is benchmarked here.
+denominator. This historical protocol includes Catswe's operator route only;
+the public AttnRes Block path uses the shared per-read operator.
 
 All external comparator capabilities require `R = D`. The `lr_ranks` arm is a
 candidate model arm with ranks `[16, 64, 128, 512, 1024]`; its `R < D` rows

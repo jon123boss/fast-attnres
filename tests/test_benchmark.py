@@ -114,12 +114,12 @@ def test_protocol_tuple_fields_are_source_rows_width_rank():
 @pytest.mark.parametrize("container", ["packed", "list", "tuple"])
 @pytest.mark.parametrize("strided", [False, True])
 def test_model_backend_restores_token_shape_without_source_axis(monkeypatch, container, strided):
-    carrier = torch.randn(2, 2, 3, 10, requires_grad=True)
+    carrier = torch.randn(2, 2, 3, 10, dtype=torch.bfloat16, requires_grad=True)
     sources = (carrier[0, ..., ::2], carrier[1, ..., ::2], carrier[0, ..., ::2])
     if not strided:
         sources = tuple(source.contiguous() for source in sources)
     values = torch.stack(sources) if container == "packed" else (list(sources) if container == "list" else sources)
-    query = torch.randn(5, requires_grad=True)
+    query = torch.randn(5, dtype=torch.bfloat16, requires_grad=True)
     expected = sum((i + 1) * source for i, source in enumerate(sources)) + query
     upstream = torch.randn_like(expected)
     expected_grads = torch.autograd.grad(expected, (carrier, query), upstream, retain_graph=True)
@@ -149,11 +149,11 @@ def test_model_backend_restores_token_shape_without_source_axis(monkeypatch, con
 
 
 @pytest.mark.parametrize("values,query,error", [
-    ([], torch.ones(4), ValueError),
-    ([torch.ones(2, 4), "invalid"], torch.ones(4), TypeError),
-    ([torch.ones(2, 4), torch.ones(3, 4)], torch.ones(4), ValueError),
-    ([torch.ones(2, 4), torch.ones(2, 4, dtype=torch.bfloat16)], torch.ones(4), TypeError),
-    ([torch.ones(2, 4)], torch.ones(3), ValueError),
+    ([], torch.ones(4, dtype=torch.bfloat16), ValueError),
+    ([torch.ones(2, 4, dtype=torch.bfloat16), "invalid"], torch.ones(4, dtype=torch.bfloat16), TypeError),
+    ([torch.ones(2, 4, dtype=torch.bfloat16), torch.ones(3, 4, dtype=torch.bfloat16)], torch.ones(4, dtype=torch.bfloat16), ValueError),
+    ([torch.ones(2, 4, dtype=torch.bfloat16), torch.ones(2, 4)], torch.ones(4, dtype=torch.bfloat16), TypeError),
+    ([torch.ones(2, 4, dtype=torch.bfloat16)], torch.ones(3, dtype=torch.bfloat16), ValueError),
 ])
 def test_model_backend_rejects_invalid_sources_before_native_call(values, query, error):
     def unexpected_call(**kwargs):
@@ -167,7 +167,7 @@ def test_model_backend_rejects_invalid_sources_before_native_call(values, query,
 def test_model_backend_rejects_removed_keys_argument():
     backend = model_backend(Comparator("fake", lambda **kwargs: None, status="available"))
     with pytest.raises(TypeError):
-        backend(torch.ones(2, 3, 4), torch.ones(4), keys=None)
+        backend(torch.ones(2, 3, 4, dtype=torch.bfloat16), torch.ones(4, dtype=torch.bfloat16), keys=None)
 
 
 def test_cuda_graph_operator_timing_options_are_strictly_validated():
@@ -188,16 +188,26 @@ def test_cuda_graph_operator_timing_options_are_strictly_validated():
         protocol["seeds"][0],
         {},
     )
+    invalid_dtype = _operator_timings(
+        protocol,
+        [],
+        {"operator_dtype": "fp32"},
+        torch.device("cpu"),
+        protocol["seeds"][0],
+        {},
+    )
     assert invalid_method["status"] == "failed"
     assert invalid_replays["status"] == "failed"
+    assert invalid_dtype["status"] == "failed"
+    assert "BF16" in invalid_dtype["failures"][0]["error"]["message"]
 
 
 def test_cuda_graph_parity_uses_independent_implicit_oracle(monkeypatch):
     from validation.oracle import oracle
 
-    values = torch.randn(2, 3, 4)
-    query = torch.randn(4)
-    upstream = torch.randn(3, 4)
+    values = torch.randn(2, 3, 4, dtype=torch.bfloat16)
+    query = torch.randn(4, dtype=torch.bfloat16)
+    upstream = torch.randn(3, 4, dtype=torch.bfloat16)
     graph_values = values.detach().clone().requires_grad_(True)
     graph_query = query.detach().clone().requires_grad_(True)
     graph_info = {
@@ -228,9 +238,9 @@ def test_cuda_graph_parity_uses_independent_implicit_oracle(monkeypatch):
         generator = torch.Generator().manual_seed(seed)
         samples.append(
             (
-                torch.randn((2, 3, 4), generator=generator),
-                torch.randn((4,), generator=generator),
-                torch.randn((3, 4), generator=generator),
+                torch.randn((2, 3, 4), generator=generator, dtype=torch.bfloat16),
+                torch.randn((4,), generator=generator, dtype=torch.bfloat16),
+                torch.randn((3, 4), generator=generator, dtype=torch.bfloat16),
             )
         )
 
@@ -242,8 +252,8 @@ def test_cuda_graph_parity_uses_independent_implicit_oracle(monkeypatch):
         should_not_run,
         graph_info,
         samples,
-        {"fp32": {"rtol": 1e-3, "atol": 1e-4}},
-        torch.float32,
+        {"bf16": {"rtol": 0.05, "atol": 0.05}},
+        torch.bfloat16,
         torch.device("cpu"),
     )
     assert result["status"] == "qualified"
@@ -294,7 +304,7 @@ def test_model_qualification_releases_reference_graph_before_candidate(monkeypat
     candidate.load_state_dict(reference.state_dict())
     result = _model_qualification(
         reference, candidate, torch.randn(2, 3, 1), torch.zeros(2, 3, dtype=torch.long),
-        {"fp32": {"rtol": 1e-3, "atol": 1e-4}}, torch.nn.functional.cross_entropy,
+        {"bf16": {"rtol": 0.05, "atol": 0.05}}, torch.nn.functional.cross_entropy,
     )
     assert events == [("reference", "forward"), ("reference", "backward"),
                       ("candidate", "forward"), ("candidate", "backward")]
@@ -510,7 +520,7 @@ def test_architectural_fla_statistics_compare_candidate_to_standard():
 
 @pytest.mark.parametrize("obsolete", [
     {"include_per_read": True},
-    {"model_config": {"block_execution": "cached"}},
+    {"model_config": {"block_execution": "unsupported"}},
 ])
 def test_removed_block_settings_fail_before_allocating_model_inputs(monkeypatch, obsolete):
     from benchmarks import run
@@ -565,7 +575,7 @@ def test_source_layout_report_records_actual_staging_and_arm_layout(monkeypatch,
     from benchmarks import run
 
     def fake_step(model, *args, **kwargs):
-        if model.backend == "reference":
+        if callable(model.backend):
             return torch.tensor(10.)
         return torch.tensor(4. if model.config.source_layout == "list" else 5.)
 
@@ -739,7 +749,7 @@ def test_cleanup_failure_does_not_drop_selected_comparators(monkeypatch, failed_
 @pytest.mark.parametrize("variant", ["standard", "sliced"])
 def test_canonical_source_runner_qualifies_all_arm_states(monkeypatch, mode, variant):
     from contextlib import nullcontext
-    from benchmarks import fla_compile, run
+    from benchmarks import fla_compile, model, run
     from validation.oracle import oracle
 
     def backend(values, query, *, eps=2**-23, scale=1.0):
@@ -754,6 +764,7 @@ def test_canonical_source_runner_qualifies_all_arm_states(monkeypatch, mode, var
         raise RuntimeError("CPU state test stops after independent qualifications")
 
     monkeypatch.setattr(fla_compile, "make_model_backend", lambda *args, **kwargs: backend)
+    monkeypatch.setattr(model, "attnres", backend)
     monkeypatch.setattr(torch, "compile", lambda fn, **kwargs: fn)
     monkeypatch.setattr(torch, "autocast", lambda **kwargs: nullcontext())
     monkeypatch.setattr(torch.cuda, "synchronize", stop_before_gpu)

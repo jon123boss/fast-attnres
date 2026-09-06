@@ -275,7 +275,6 @@ def make_model_backend(comparator: Any):
     backend.native_model_source_list = False  # type: ignore[attr-defined]
     backend.supports_full = True  # type: ignore[attr-defined]
     backend.supports_per_read_block = True  # type: ignore[attr-defined]
-    backend.supports_cached_block = False  # type: ignore[attr-defined]
     backend.vendor_root = getattr(comparator, "vendor_root", None)  # type: ignore[attr-defined]
     backend.vendor_revision = getattr(  # type: ignore[attr-defined]
         comparator, "vendor_revision", PINNED_REVISION
@@ -298,7 +297,6 @@ def make_model_backend(comparator: Any):
             ),
             "supports_full": True,
             "supports_per_read_block": True,
-            "supports_cached_block": False,
             "accepts_source_list": True,
             "native_model_source_list": False,
             "model_source_argument": "ordered source-list tuple",

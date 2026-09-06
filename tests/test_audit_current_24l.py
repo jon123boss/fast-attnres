@@ -11,7 +11,13 @@ import pytest
 from benchmarks import audit_current_24l as auditor
 
 ROOT = Path(__file__).resolve().parents[1]
+CODE_ROOT = ROOT
 EVIDENCE = ROOT / "results" / "current_24l"
+
+
+@pytest.fixture(autouse=True)
+def measured_checkout(historical_release_root, monkeypatch):
+    monkeypatch.setattr(sys.modules[__name__], "ROOT", historical_release_root)
 
 
 def _report(gpu: str) -> dict:
@@ -94,7 +100,7 @@ def test_cli_emits_canonical_passed_audit(tmp_path: Path):
             "--output",
             str(output),
         ],
-        cwd=ROOT,
+        cwd=CODE_ROOT,
         capture_output=True,
         text=True,
         check=False,

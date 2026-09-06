@@ -1,9 +1,20 @@
 from __future__ import annotations
 
+import pytest
 import torch
 
 from benchmarks import model as model_module
 from benchmarks.model import TrainingConfig, make_model
+from validation.oracle import oracle
+
+
+def _oracle_backend(values, query, *, eps=2**-23, scale=1.0, rms_weight=None):
+    """Use the frozen BF16 oracle for model routing fixtures."""
+
+    del rms_weight
+    if isinstance(values, (list, tuple)):
+        values = torch.stack(tuple(values), dim=0)
+    return oracle(values, query, eps=eps, scale=scale)
 
 
 def _config(mode: str, layout: str) -> TrainingConfig:
@@ -34,7 +45,7 @@ def test_full_and_block_resolve_the_same_public_operator():
         assert not hasattr(block.config, "block_execution")
 
 
-def test_full_and_block_reference_use_the_same_read_scheduler(monkeypatch):
+def test_full_and_block_use_the_same_read_scheduler(monkeypatch):
     calls: list[tuple[str, int]] = []
     original = model_module.CausalAttnResLM._read
 
@@ -44,8 +55,8 @@ def test_full_and_block_reference_use_the_same_read_scheduler(monkeypatch):
 
     monkeypatch.setattr(model_module.CausalAttnResLM, "_read", record)
     tokens = torch.randint(31, (1, 4))
-    make_model(_config("full", "packed"), backend="reference")(tokens)
-    make_model(_config("block", "packed"), backend="reference")(tokens)
+    make_model(_config("full", "packed"), backend=_oracle_backend)(tokens)
+    make_model(_config("block", "packed"), backend=_oracle_backend)(tokens)
     assert calls == [
         *(("full", count) for count in (2, 3, 4, 5)),
         *(("block", count) for count in (2, 2, 3, 3)),
@@ -53,15 +64,13 @@ def test_full_and_block_reference_use_the_same_read_scheduler(monkeypatch):
 
 
 def test_full_and_block_share_read_helper_and_preserve_source_schedules(monkeypatch):
-    from attnres import reference_attnres
-
     for layout, expected_kind in (("packed", torch.Tensor), ("list", tuple)):
         calls: list[tuple[type, int]] = []
 
         def recorder(values, query):
             calls.append((type(values), len(values)))
             packed = values if isinstance(values, torch.Tensor) else torch.stack(values)
-            return reference_attnres(packed, query)
+            return oracle(packed, query)
 
         monkeypatch.setattr(model_module, "attnres", recorder)
         tokens = torch.randint(31, (1, 4))
@@ -72,35 +81,39 @@ def test_full_and_block_share_read_helper_and_preserve_source_schedules(monkeypa
         assert calls == [(expected_kind, count) for count in (2, 2, 3, 3)]
 
 
-def test_model_backend_rms_weight_is_preallocated_reused_and_nonpersistent():
-    from attnres import reference_attnres
-
+@pytest.mark.parametrize("weight_dtype", [torch.bfloat16, torch.float32])
+def test_model_backend_rms_weight_is_preallocated_reused_and_nonpersistent(weight_dtype):
     seen: list[torch.Tensor] = []
 
     def backend(values, query, *, rms_weight):
+        assert rms_weight.dtype == weight_dtype
+        assert query.dtype == torch.bfloat16
+        if weight_dtype == torch.float32:
+            from benchmarks.liger import _validate_rms_weight
+            assert _validate_rms_weight(rms_weight, query) is rms_weight
         seen.append(rms_weight)
         packed = values if isinstance(values, torch.Tensor) else torch.stack(values, dim=0)
-        return reference_attnres(packed, query)
+        return oracle(packed, query)
 
     backend.accepts_rms_weight = True
+    backend.rms_weight_dtype = weight_dtype
     config = _config("full", "list")
     model = make_model(config, backend=backend)
 
     assert model._backend_rms_weight.shape == (config.rank,)
-    assert model._backend_rms_weight.dtype == torch.float32
+    assert model._backend_rms_weight.dtype == weight_dtype
     assert "_backend_rms_weight" not in model.state_dict()
 
     model(torch.randint(config.vocab, (config.batch, config.sequence)))
     assert len(seen) == 4
     assert all(weight is model._backend_rms_weight for weight in seen)
 
-    # ``Module.to`` must move and cast the preallocated constant with the
-    # model, while state matching remains limited to persistent parameters.
-    model.to(dtype=torch.float64)
-    assert model._backend_rms_weight.dtype == torch.float64
+    # Model casts preserve the native adapter's required constant dtype.
+    model.to(dtype=torch.bfloat16)
+    assert model._backend_rms_weight.dtype == weight_dtype
     model(torch.randint(config.vocab, (config.batch, config.sequence)))
     assert seen[-1] is model._backend_rms_weight
-    assert seen[-1].dtype == torch.float64
+    assert seen[-1].dtype == weight_dtype
 
 
 def test_fla_weight_contract_is_static_and_keeps_direct_call_fallback():

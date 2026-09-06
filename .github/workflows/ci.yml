@@ -172,6 +172,34 @@ jobs:
           set -euo pipefail
           python -m pytest tests/test_benchmark.py tests/test_production_ladder_configs.py \
             tests/test_plot_compiled_step_sweep.py -q
+      - name: Reproduce the final H100 and B200 audit
+        env:
+          PYTHONDONTWRITEBYTECODE: "1"
+          MPLBACKEND: Agg
+        run: |
+          python - <<'PY'
+          import hashlib, json, os, tarfile
+          from pathlib import Path
+          root = Path("results/final_sweep")
+          manifest = json.loads((root / "manifest.json").read_text())
+          archive = root / "evidence.tar.gz"
+          assert hashlib.sha256(archive.read_bytes()).hexdigest() == manifest["archive_sha256"]
+          with tarfile.open(archive) as evidence:
+              evidence.extractall(Path(os.environ["RUNNER_TEMP"]) / "final-sweep", filter="data")
+          PY
+          evidence="${RUNNER_TEMP}/final-sweep/evidence"
+          python -m benchmarks.final_sweep_report \
+            --source "$evidence/sources/final78" \
+            --h100 "$evidence/runs/H100/final78" --b200 "$evidence/runs/B200/final78" \
+            --headline-source "$evidence/sources/final74" \
+            --headline-h100 "$evidence/runs/H100/final74" \
+            --headline-b200 "$evidence/runs/B200/final74" \
+            --completion-source "$evidence/sources/final80" \
+            --completion-h100 "$evidence/runs/H100/final80" \
+            --completion-b200 "$evidence/runs/B200/final80" \
+            --output "${RUNNER_TEMP}/final-sweep/reproduced"
+          diff results/final_sweep/audit.json "${RUNNER_TEMP}/final-sweep/reproduced/audit.json"
+          diff results/final_sweep/rank_comparison.json "${RUNNER_TEMP}/final-sweep/reproduced/rank_comparison.json"
 
   package:
     name: Build and install distributions
@@ -240,11 +268,16 @@ jobs:
           package_file = Path(attnres.__file__).resolve()
           assert install_dir in package_file.parents, package_file
           assert importlib.metadata.version("fast-attnres") == "1.0.0"
-          required_exports = {"attnres", "reference_attnres", "LearnedQuery", "__version__"}
+          required_exports = {"attnres", "LearnedQuery", "__version__"}
           assert required_exports <= set(attnres.__all__)
-          values = torch.randn(2, 1, 4)
-          query = torch.randn(4)
-          assert attnres.attnres(values, query).shape == (1, 4)
+          values = torch.randn(2, 1, 4, dtype=torch.bfloat16)
+          query = torch.randn(4, dtype=torch.bfloat16)
+          try:
+              attnres.attnres(values, query)
+          except RuntimeError as error:
+              assert "CUDA" in str(error), error
+          else:
+              raise AssertionError("CPU execution unexpectedly succeeded")
           PY
             )
           done

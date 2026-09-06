@@ -66,7 +66,6 @@
     "base_revision": "81dffbfeb0f84470513e846e3df8080e8ffb563d",
     "base_tree": "1cceb5e0a37330015ca2945312da29aa7566aaeb",
     "block_path": "per_read_public_attnres",
-    "cached_block": false,
     "fla_anchor": {
       "checkpoint_level": 1,
       "implementation": "triton",

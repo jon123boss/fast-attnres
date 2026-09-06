@@ -645,7 +645,6 @@ def test_external_adapters_do_not_expose_cached_public_api():
     backend = catswe.make_cpu_mock_backend()
     assert not hasattr(backend, "prepare")
     assert not hasattr(backend, "merge")
-    assert getattr(backend, "supports_cached_block", False) is False
     assert "flash_attn_res.ops.phase_2" not in catswe_source
 
 

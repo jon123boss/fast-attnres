@@ -1,4 +1,4 @@
-"""Small trainable building blocks for standard and sliced Attention Residuals."""
+"""Small trainable building blocks for CUDA BF16 Attention Residuals."""
 
 from __future__ import annotations
 
@@ -30,12 +30,12 @@ class LearnedQuery(nn.Module):
             raise ValueError("rank must be positive")
         if not math.isfinite(init_std) or init_std <= 0:
             raise ValueError("init_std must be finite and positive")
-        self.query = nn.Parameter(torch.empty(rank))
+        self.query = nn.Parameter(torch.empty(rank, dtype=torch.bfloat16))
         nn.init.normal_(self.query, mean=0.0, std=init_std)
 
     def forward(self) -> torch.Tensor:
-        """Return the learned query without changing its dtype or shape."""
-        return self.query
+        """Return a BF16 query while preserving gradients to the parameter."""
+        return self.query.to(dtype=torch.bfloat16)
 
 
 __all__ = ["LearnedQuery"]

@@ -1,5 +1,133 @@
 # Evaluator revisions
 
+2026-09-06: Retire the earlier campaign launcher, budget/cache workers, training
+orchestration, and standalone diagnostics from active code. Their exact source
+remains in the immutable final78 snapshot. Keep operator/profile/replay checks
+unchanged; move comparison and digest helpers without changing their bodies.
+The current runner imports the same reference directly. The current final-sweep
+contract and frozen manifest bind this cleanup; measured snapshots retain their
+original contracts, source bytes, and failures. No kernel, arithmetic, tolerance,
+optimizer, sampling schedule, or timing boundary changes.
+
+2026-09-06: Final delivery cleanup removes the unused historical selected-FLA
+code-generation probe, its Modal wrapper, and their exclusive tests/runbook.
+Immutable campaign snapshots retain their original copies and hashes. README
+preparation preserves the existing layout and records the final sweep method.
+The current frozen manifest follows these removals and documentation edits;
+production kernels, reference arithmetic, tolerances, and timings are unchanged.
+
+2026-09-06: The user's latest reference instruction supersedes the earlier
+all-intermediate-BF16 experiment below. Restore main's training reference:
+BF16 inputs/outputs and FP32 internal accumulation, explicitly outside autocast;
+normalize each key before its query dot product. Separate value/key promotions
+preserve main's autograd rounding boundaries. Keep the BF16 public operator
+contract and .05/.05 tolerance. Original failed reports remain unchanged;
+new qualification uses the restored reference and identifies its exact source.
+
+2026-09-06: At the user's explicit request, removed the promoted reference and
+its precision override. The active independent reference now uses BF16 tensors
+throughout normalization, scoring, softmax, mixing, and autograd. The historical
+alias diagnostic and remaining duplicate promoted test/model references were
+removed from active code. Tests inspect every floating intermediate in forward
+and backward. The benchmark model casts every backend's read inputs to the same
+BF16 boundary. Numerical tolerances are unchanged. Historical measurements and
+contracts retain their identities and do not qualify the new evaluator. The
+user's final sweep reuses the headline/adoption workloads with R=D and R=D/4;
+the broader former rank-development plan is superseded for final delivery.
+
+2026-09-06: Per the user's kernel-only scope clarification, removed model
+serialization and bitwise resumed-next-update checks from the training harness
+and primary admission. They test trainer state outside this stateless operator.
+The new bf16_primary_v3.json retains accumulated/clipped gradients, first
+optimizer updates, compiled/graph execution, all numerical tolerances and
+performance requirements. The v1/v2 contracts and raw failures are preserved
+unchanged; no historical failed run is reclassified as a pass. Activation
+checkpoint recomputation coverage is retained. The production package and
+README are unchanged.
+
+2026-09-06: Training qualification now snapshots the actual clipping norm and
+clipped gradients. An explicit resume_next_update gate serializes model/buffers,
+optimizer/RNG state and input position, compares the next full update after
+recreating optimizers, and restores the pre-warmup trajectory. The historical
+serialization smoke remains separately named. Compiler counters/timers, initial
+backward/update wall times, restore and cache-checkpoint times are untimed
+observations; nested compiler timers must not be summed. Export now observes
+callable grids using real JIT-bound metadata and retains global launch order.
+CPU tests include an optimizer with deliberately omitted state to ensure resume
+qualification rejects false serialization-only success. GPU qualification and
+final source-selection contracts remain pending; a new bf16_primary_v2.json
+qualifies the current harness and requires the new state checks in admission
+and reports. Historical contracts and all
+numerical tolerances are unchanged. The user authorized $100 additional budget;
+the live ledger cap is $600 with the increase assigned to confirmation ($240).
+No operator source or README layout changes.
+
+2026-09-06: Added opt-in incremental compiler persistence to the cloud transport.
+Compressed content-addressed files precede immutable manifests and durability
+callbacks. Restore combines complete compatible compiler groups and checks all
+payload hashes before exposing records. Namespaces include actual hardware,
+runtime build hashes and absolute compiler-cache roots. Qualified training arms
+publish synchronously outside timing; failed compilation preserves only atomic
+Triton entries. Legacy archives remain a migration fallback. CPU tests cover
+union restore, interrupted publication, corruption, incomplete groups, unchanged
+files and untimed worker checkpoints; cloud qualification is still required.
+This changes no operator, training equation, sampling, oracle or acceptance gate.
+
+2026-09-06: Corrected flattened source and upstream strides by ignoring singleton
+batch axes. Contiguous tensors can retain arbitrary singleton strides; copying
+them did not repair the old metadata. CPU addressing and physical-leaf gradient
+checks cover singleton, offset, strided, broadcast and non-affine layouts. The
+Triton bodies and source positions remain unchanged; GPU cases require new
+qualification. Added opt-in layout checks and parameterized equal-logit cases
+that can verify actual guarded-router launches. The exporter retains both query
+reductions, softmax and gradient-copy launches, rejects unexpected cold trials,
+and records physical layouts. Shared backward checks include JIT dependencies.
+The independent oracle, existing timing, tolerances and statistical gates remain
+unchanged; prior artifacts retain their original source/fixture identities.
+
+2026-09-06: Moved progress logging and its JSON dependency into importable
+module scope. The cache-preserving worker imports the training evaluator, so
+an import previously guarded by __main__ was unavailable. Control62 retained
+both NameError failures before training; no memory-fit conclusion follows.
+A CPU regression now executes the imported progress function. Numerical
+operations, phase boundaries, workload and acceptance gates are unchanged.
+
+2026-09-06: Updated the frozen Torch control source identity after adding the
+compiler export helper. The launcher caught the stale identity before GPU
+admission. A CPU check now verifies all three locally available primary source
+identities against the current files. No numerical code, workload, timing,
+statistical threshold, or historical evidence changed.
+
+2026-09-06: Added opt-in selected-kernel compiler exports after timing and profiling.
+The exporter observes one ordinary launch, restores its temporary hooks even on
+failure, and records the actual selected binary, IR, constants, registers and
+spills. It does not select launch configurations or change captured calls,
+qualification assertions, samples, seeds, or statistical thresholds. An additional
+experiment-only option shares the incumbent backward autotuner after exact AST
+comparison, making forward attribution use the same backward configuration.
+This option is rejected for scoped confirmation and primary training jobs.
+
+2026-09-06: The first equal-logit GPU regression stopped on a stale default-stream
+UnbindBackward node before operator timing. Construct the test's leaves and views
+on its capture stream as well as running warmup there. The stopped run remains
+recorded; no numerical assertion, kernel, or measurement boundary changed.
+
+2026-09-06: Added opt-in equal-logit correctness checks before operator timing.
+They cover finite scales +/-2**24, packed and source-list inputs, saved and
+recomputed backward, and two changed-upstream CUDA Graph replays. Outputs and
+value/query gradients must match their analytical answers exactly. Existing
+operator timing, seeds, oracle, and tolerances are unchanged. Both runtime
+adapters now save maximum and inverse softmax denominator separately, retaining
+the raw routing logit for the RMS derivative. Previous timing artifacts remain
+results for their recorded source hashes; the changed kernels require new GPU
+qualification.
+
+2026-09-06: Synchronized the evaluation and provenance prose with the already
+configured, user-authorized context-1024 primary workload and allowance for up
+to eight independent single-GPU final jobs. Development remains exclusive to
+one GPU. This documentation correction changes no kernel, evaluator, timing
+sample, numerical tolerance, statistical gate, or stage budget.
+
 2026-08-27: GPU checks revised from `76a04b33909a1d91c495bb510a85c3e6f31ec657f37e4ce6c7c5529ee256d74d` to `53186d885cd88d3d6b2565733bef2bca30cbc9b4d2907ff5f22b6d98fb166240`. CUDA Graph warmup and fresh static autograd leaves now use the capture side stream, as required by PyTorch 2.12 CUDA semantics. The prior default-stream warmup caused a capture-stream dependency failure after compiled parity passed. Equations, seeds, shapes, tolerances, and changed-input replay checks are unchanged. Prior reports are retained; all candidates must pass this revision. No performance evaluation had started.
 
 Reference: https://docs.pytorch.org/docs/2.12/notes/cuda.html#cuda-graphs
@@ -230,3 +358,36 @@ helper and the public `attnres` primitive; Block differs only in its source
 schedule and sequential partial sums. Direct per-read Block validation retains
 standard and sliced equations, all gradients, aliases, compilation, and
 changed-input CUDA Graph replay. Historical cache results above remain intact.
+
+2026-09-05: Begin the separately qualified BF16-only H100/B200 campaign from public release ce0881d. Remove public CPU/FP32/reference execution; retain BF16 test-oracle tolerances (rtol=.05, atol=.05), with FP32 internal accumulation. Full and uncached Block share the same operator. BF16 queries are explicit in validation; graph replay coverage increases to eight. Current-file hashes are refreshed to identify changed code, not to reuse historical performance qualification. All v1.0.0 raw results and their measured source archive remain historical; new immutable job snapshots carry independent runner/source identities.
+
+2026-09-05: User explicitly accepts differences due solely to BF16 nonlinearity when the BF16 oracle passes. Exact-input H100/B200 diagnostics (jobs 20260905T031419Z-h100-alias-diagnostic and 20260905T032230Z-b200-alias-diagnostic) show both release and candidate pass single-read checks and the one-input-cast PyTorch/autograd graph. The old repeated-read oracle casts the direct and routing paths separately and reuses a BF16 packed intermediate, producing additional rounding boundaries. Root updates the test-only oracle to promote each operator input once, combining its direct and routing derivatives before one BF16 cast. Source-list and packed views are each checked against matching per-read assembly. Equations, seeds, shapes, all gradients, tolerance .05/.05, and eight changed-input graph replays are retained. Original failures and immutable diagnostic snapshots remain evidence; no historical timing is requalified.
+validation/oracle.py: 1fb854eabf9a6c8b2fe65b9ec47d0c7b31e6cd8ded29e1c2188d70ff7377c8a4 -> dd1f975a0654c8d224636893a56ae350a9d5c59fa93336c89cc44b7df26ea0df
+validation/source_checks.py: 5b641b63c67f543ed87bfe90f3555cef5ac2ebec4951869d5dc6aa5ecc9ec1b3 -> 39fa710ea042466bad17c19f3971d2cb128365db18634f2b1b09229aefcb7aab
+
+2026-09-05: Root freezes the current BF16 campaign harness and package checkpoint. The original Muon+AdamW loop now uses BF16 loss, clipping at 1.0, four accumulation steps, and no activation checkpointing on the primary geometry; checkpointing remains a separate correctness gate. The evaluator requires explicit backend inventories, runtime and source identities, model arithmetic, optimizer qualification, input hashes, paired round identifiers, and a frozen identity contract before a primary pass. Native competitor, distributed qualification, diagnostic and archive tools are included in the manifest. H100 and B200 passed the updated one-cast BF16 qualification; complete-step/distributed/final statistical qualification remains pending. Refreshing file identities does not requalify historical timings or relax correctness tolerances.
+
+2026-09-05: Root replaces stale EVALUATION.md release geometry, FP32 support and earlier budget text with the user-approved BF16 campaign contract. Legacy benchmark fixture shapes remain in protocol.json with an explicit scope label; the current primary matrix is configs/bf16_primary.json. Removes unused FP32 tolerance metadata and a deleted reference-file name from the legacy runner inventory. No BF16 input, oracle, tolerance, kernel or timing sample changes.
+
+2026-09-05: Before final measurements, root requires nonzero-query operator output/all-gradient parity and eight changed-input replays at the model maximum source count and full token count. The same cell records 120 operator timings separately from training, and rejects failed operators before model allocation. This prevents zero-initialized model queries masking native backward defects. First-step model/all-parameter/optimizer comparisons and .05 BF16 tolerances remain unchanged; nonfinite timed losses fail. The identity contract now includes model, training, adapter and oracle fixture bytes. Compiler cache transport uses an architecture/runtime-specific archive, saved after each completed cell; no model state or residual-read state is cached. Earlier development results retain their original snapshots.
+
+2026-09-05: Exact-source H100 envelope qualification found a real singleton-source compiler failure at S=N=D=R=1: selector initialization remained scalar when the source-selection loop was empty, while backward stores used a larger source tile. Root broadcasts the initial pointer and strides to the source-index shape. All mathematical operations, autotuning candidates and BF16 tolerances remain unchanged. The two original failures and all 30 passing additional CUDA tests are retained; new-source confirmation is required. Distributed qualification now accepts the two prescribed primary ranks in one exclusive rental and commits collective results after each case.
+
+2026-09-05: Root reconciles independent review6a/review6b before primary timing: bind actual model metadata to requested cases; sort CI contrasts and report inputs for reproducible bootstrap draws; verify role-specific source and fixture identities before GPU reservation and again in the worker; record available Git commit/tree origins and client failures while retaining active reservations until shutdown is confirmed. Native FLA now receives one immutable unit RMS scale operand allocated outside measurement, avoiding repeated constant allocation without retaining any source-dependent state. The alleged Python3.11 archive-filter incompatibility is rejected: actual GPU Python3.11.12 loaded the archive successfully, and a local3.11.7 extraction roundtrip passed. No primary timing sample exists yet.
+
+2026-09-05: Added a read-only Modal evidence fetch command and a compact Markdown formatter for the existing summary. The formatter copies statistical results, distinguishes admission failures from measured comparisons, retains negative results, and counts failed-job reservations. Root corrected both independent delivery drafts against the CLI and schema; three focused report tests added. Numerical oracle, timing, model, and source package are unchanged.
+
+2026-09-06: Added independent nonuniform routing checks for the already admitted S4/N4096/D2048/R768 and S4/N32768/D256/R16 geometries: negative scale with nondefault epsilon, zero/tiny keys, zero scale, unequal large finite logits, changed source/query/upstream replay, and a separate GPU Inductor fullgraph boundary. Zero-key checks use the nonzero analytic routing derivative and exact zero query derivative. Three CPU tests verify the fixture premises; GPU results are pending. Documented existing FP32 range limits without changing accepted inputs, clamping, equations, .05/.05 tolerances, or timing. No production source or historical contract changed.
+
+2026-09-06: The final sweep retains the three-seed headline phase at 48f3caf and seals the four smaller workloads separately after correcting native adapter unit-weight dtypes: BF16 for FLA, FP32 for Liger, allocated before capture and preserved by model casts. This does not change the BF16 reference, tolerances, timing boundary, or vendor kernels. Remove the unreferenced _is_row_affine wrapper and unused private query_ndim option; all remaining kernel-module AST nodes and supported validation results are unchanged. Each phase retains its measured source identity and raw reports.
+# 2026-09-06: User-authorized normalization-rounding disposition
+
+The measured production kernel is retained. An isolated normalize-before-dot
+experiment resolved H100's two failing D=2048/S=9 logits at fixed launch choices,
+but was not promoted after the user instructed us to ignore normalization-order
+numerical differences and finish. The original failed H100 and B200 reports
+remain unchanged. A separate continuation explicitly records accepted initial
+logit discrepancies, including their count and maximum error, while retaining
+strict finite-value, loss, all-gradient and complete-training-state checks.
+The reference and its nominal BF16 tolerances are unchanged. No kernel dispatch,
+shape exception, training input or timing statistic is changed.

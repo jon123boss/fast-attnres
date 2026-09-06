@@ -1,13 +1,25 @@
 # Changelog
 
-I keep this file for user-visible changes to `fast-attnres`. Research
-results and experimental benchmark outcomes should remain traceable to their
-raw artifact, source commit, and stated evaluation conditions; a changelog
-entry is not a replacement for that evidence.
+User-visible changes to `fast-attnres`. Performance results remain tied to
+their raw artifacts, source commits, and measurement conditions.
 
 ## [Unreleased]
 
+- Narrow the public operator to CUDA BF16 values, queries, and first-order
+  gradients, with FP32 internal math and an independent BF16 validation reference.
+- Share one per-read backend across Full/Block standard and sliced LR AttnRes.
+- Reduce unused auxiliary-gradient work and coalesce transposed upstream
+  gradients; tune source kernels with CUDA Graph timing on each architecture.
+- Preserve benchmark provenance and refresh the existing H100/B200 headline
+  and competitor workloads at `R=D` and `R=D/4`. Measurements are pending.
+- Clarify the API and benchmark documentation, retaining earlier results as
+  historical evidence.
+
 ## [1.0.0] - 2026-08-31
+
+Historical release notes below describe that release and its measured source
+identities. Its CPU/FP32 compatibility and performance statements do not
+describe the current CUDA BF16 contract.
 
 ### Added
 

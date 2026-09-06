@@ -47,7 +47,7 @@ PLATEAU_MARGIN = 0.01
 # checks it for the default path so a result cannot silently use a locally
 # edited protocol.  Callers loading a deliberate temporary config can still
 # pass a path and use ``validate_config`` directly.
-CONFIG_SHA256 = "f871881a02bf8b4a307d84b5c36de604613cc5cf82f2181b6e98d8c0ba714502"
+CONFIG_SHA256 = "e479b724db63bac693ae4344747e94a83fb907aec70ed10309d56661e9aff040"
 
 _FAILURE_STATUSES = frozenset(
     {"failed", "skipped_due_to_failure", "not_applicable"}
@@ -508,7 +508,6 @@ def validate_config(config: Mapping[str, Any]) -> dict[str, Any]:
                 "rank": 1024,
                 "source_layout": "list",
                 "block_path": "public_attnres_per_read",
-                "cached_block": False,
             },
             "block_per_read": {
                 "kind": "model",
@@ -517,7 +516,6 @@ def validate_config(config: Mapping[str, Any]) -> dict[str, Any]:
                 "rank": 1024,
                 "source_layout": "list",
                 "block_path": "public_attnres_per_read",
-                "cached_block": False,
             },
             "lr_ranks": {
                 "kind": "model",

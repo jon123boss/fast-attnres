@@ -1,4 +1,4 @@
-"""Exercise packed, list, and tuple source containers."""
+"""Exercise packed, list, and tuple CUDA BF16 source containers."""
 
 from __future__ import annotations
 
@@ -9,37 +9,35 @@ import torch
 from attnres import attnres
 
 
-def _assert_same(actual: torch.Tensor, expected: torch.Tensor, dtype: torch.dtype) -> None:
-    tolerance = {"rtol": 0.05, "atol": 0.05} if dtype == torch.bfloat16 else {
-        "rtol": 0.001,
-        "atol": 0.0001,
-    }
-    torch.testing.assert_close(actual, expected, **tolerance)
+def _assert_same(actual: torch.Tensor, expected: torch.Tensor) -> None:
+    torch.testing.assert_close(actual, expected, rtol=0.05, atol=0.05)
 
 
 def run(device: str | torch.device | None = None) -> None:
-    """Check equivalent standard and sliced calls for each container form."""
+    """Check equivalent standard and sliced CUDA BF16 calls."""
 
     torch.manual_seed(2)
-    if device is None:
-        device = "cuda" if torch.cuda.is_available() else "cpu"
-    device = torch.device(device)
-    dtype = torch.bfloat16 if device.type == "cuda" else torch.float32
+    device = torch.device("cuda" if device is None else device)
+    if device.type != "cuda" or not torch.cuda.is_available():
+        raise RuntimeError("this example requires an available CUDA device")
+    dtype = torch.bfloat16
     source_count, batch, width = 5, 2, 24
     packed_values = torch.randn(source_count, batch, width, device=device, dtype=dtype)
     value_list = list(packed_values.unbind(0))
     value_tuple = tuple(value_list)
 
-    standard_query = torch.randn(width, device=device, dtype=torch.float32)
+    standard_query = torch.randn(width, device=device, dtype=dtype)
     standard_packed = attnres(packed_values, standard_query)
-    _assert_same(attnres(value_list, standard_query), standard_packed, dtype)
-    _assert_same(attnres(value_tuple, standard_query), standard_packed, dtype)
+    _assert_same(attnres(value_list, standard_query), standard_packed)
+    _assert_same(attnres(value_tuple, standard_query), standard_packed)
 
     rank = 6
-    sliced_query = torch.randn(rank, device=device, dtype=torch.float32)
+    sliced_query = torch.randn(rank, device=device, dtype=dtype)
     sliced_packed = attnres(packed_values, sliced_query)
-    _assert_same(attnres(value_list, sliced_query), sliced_packed, dtype)
-    _assert_same(attnres(value_tuple, sliced_query), sliced_packed, dtype)
+    _assert_same(attnres(value_list, sliced_query), sliced_packed)
+    _assert_same(attnres(value_tuple, sliced_query), sliced_packed)
+    if standard_packed.dtype != dtype or sliced_packed.dtype != dtype:
+        raise AssertionError("AttnRes must return BF16 output")
 
     print(
         "source containers: "
