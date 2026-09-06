@@ -388,7 +388,8 @@ def _primary_report(gpu, mode, rank, seed):
             for name in bf16_report.BACKENDS}
     report = _training_report(gpu, mode, rank, seed, arms)
     report["config"].update(seeds=[seed], rounds=120, warmups=10,
-                            optimizer_source="/frozen/optimizer", cache_autotuning=True)
+                            optimizer_source="/frozen/optimizer", cache_autotuning=True,
+                            resume_next_update=True)
     report["identities"].update({
         name: {"sha256": name + "-v1"}
         for name in ("release", "torch_compile", "fla", "liger", "legacy", "catswe", "hydra", "hilda")})
@@ -420,8 +421,20 @@ def _primary_report(gpu, mode, rank, seed):
         arm["round_ids"] = list(range(120))
         arm.update(optimizer="Muon+AdamW(configured)", qualification={
             "gradient_count": 146,
+            "clipped_gradients": {"status": "matched", "gradient_count": 146, "preclip_norm": 3.},
+            "resume_next_update": {"status": "passed", "fresh_optimizers": True, "next_input": 1,
+                                   "loss": {"max_abs": 0.}, "state": {"max_abs": 0.}},
             "first_update": {"status": "baseline" if name == "release" else "matched"}})
     return report
+
+
+@pytest.mark.parametrize('field', ['clipped_gradients', 'resume_next_update'])
+def test_primary_requires_clipped_gradients_and_resumed_update(field):
+    report = _primary_report('H100', 'full', 1536, bf16_report.SEEDS[0])
+    result = report['results'][0]
+    assert not bf16_report._contract_errors(report, result, 120)
+    del result['arms']['candidate']['qualification'][field]
+    assert bf16_report._contract_errors(report, result, 120)
 
 
 def test_complete_frozen_campaign_passes_with_resumed_seed_subsets(tmp_path, exact_intervals):

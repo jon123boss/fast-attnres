@@ -126,6 +126,7 @@ def _remote(job):
         volume.commit()
     try:
         checkpoint({"status": "running", "phase": "load_compiler_cache", "config": job["config"]})
+        restore_started = time.monotonic()
         if cache_enabled and job["config"].get("incremental_compiler_cache", False):
             from benchmarks.bf16_cache_store import CompilerCache
             from benchmarks.bf16_device import metadata
@@ -151,6 +152,11 @@ def _remote(job):
                 archive.extractall("/tmp", filter="data")
             cache_loaded = True
             saved_cache_stamp = compiler_cache_stamp(local_cache_roots)
+        restore_s = time.monotonic() - restore_started
+        (root / "compiler-restore.json").write_text(json.dumps({"elapsed_s": restore_s,
+            "archive": str(cache_input) if cache_input is not None else None,
+            "archive_bytes": cache_input.stat().st_size if cache_input is not None else None,
+            "loaded": cache_loaded, "incremental": cache_restored}, indent=2) + "\n")
         for label, expected in job["hashes"].items():
             actual = source_digest(Path("/job") / label)["sha256"]
             if actual != expected:
@@ -228,14 +234,16 @@ def _training(config, root, checkpoint, cache_archive=None, cache_specification=
                             else ["--cache-archive", str(cache_archive)])
                 command += ["--cache-volume", VOLUME_NAME]
             with (cell / "process.log").open("w") as log:
-                process = subprocess.Popen(command, stdout=log, stderr=subprocess.STDOUT)
+                worker_env = dict(os.environ)
+                worker_env.setdefault("TORCH_LOGS", "recompiles")
+                process = subprocess.Popen(command, stdout=log, stderr=subprocess.STDOUT, env=worker_env)
                 modified = None
                 while process.poll() is None:
                     if output.exists() and output.stat().st_mtime_ns != modified:
                         modified = output.stat().st_mtime_ns
                         partial = json.loads(output.read_text())
                         report["in_progress"] = partial.get("in_progress", {"case": case, "seed": seed})
-                        for field in ("compiler_backup_error", "compiler_cache_checkpoint"):
+                        for field in ("compiler_backup_error", "compiler_cache_checkpoint", "compiler_checkpoint_durations_s"):
                             if field in partial:
                                 report[field] = partial[field]
                         checkpoint(report)
@@ -243,7 +251,7 @@ def _training(config, root, checkpoint, cache_archive=None, cache_specification=
                     time.sleep(10)
             result = json.loads(output.read_text()) if output.exists() else {}
             for field in ("identities", "runtime", "dynamo", "residency_qualification",
-                          "compiler_backup_error", "compiler_cache_checkpoint"):
+                          "compiler_backup_error", "compiler_cache_checkpoint", "compiler_checkpoint_durations_s"):
                 if field in result:
                     if field == "identities" and field in report and report[field] != result[field]:
                         raise RuntimeError("source identities changed between isolated cells")
@@ -298,11 +306,12 @@ def verify_primary(snapshot, config):
     if not config.get("expected_identities"):
         return
     sys.path.insert(0, str(snapshot / "runner"))
-    from benchmarks.bf16_primary import contract_digest, fixture_digest, package_digest
-    contract = json.loads((snapshot / "runner/configs/bf16_primary.json").read_text())
+    from benchmarks.bf16_primary import CONTRACT, contract_digest, fixture_digest, package_digest
+    contract = json.loads((snapshot / "runner/configs" / CONTRACT.name).read_text())
     if (config.get("primary_contract_sha256") != contract_digest(contract) or
         config["expected_identities"] != contract["identities"] or
-        config.get("cache_autotuning") is not contract["runtime"]["cache_autotuning"]):
+        config.get("cache_autotuning") is not contract["runtime"]["cache_autotuning"] or
+        config.get("resume_next_update", False) is not contract.get("resume_next_update", False)):
         raise ValueError("primary configuration differs from the frozen contract")
     actual = {name: package_digest(snapshot / path / "src/attnres")
               for name, path in config["sources"].items()}
@@ -385,7 +394,7 @@ def reserve(job):
     rate += job["cpu_cores"] * .0000131 + (job["memory_mib"] / 1024) * .00000222
     bound = (job["timeout_s"] + 300) * rate * 1.1
     sys.path.insert(0, str(PROJECT))
-    from benchmarks.bf16_budget import accounted, check_concurrency
+    from benchmarks.bf16_budget import accounted, check_concurrency, stage_caps
     with ledger_path.open("r+") as stream:
         fcntl.flock(stream, fcntl.LOCK_EX)
         data = json.load(stream)
@@ -395,7 +404,7 @@ def reserve(job):
         committed = float(sum(accounted(x, WORK) for x in data["jobs"]))
         if committed + bound > data["cap_usd"]:
             raise RuntimeError("campaign spending cap would be exceeded")
-        stages = {"baseline": 80, "experiments": 220, "confirmation": 140, "reserve": 60}
+        stages = stage_caps(data)
         spent = float(sum(accounted(x, WORK) for x in data["jobs"] if x["stage"] == job["stage"]))
         if spent + bound > stages[job["stage"]]:
             raise RuntimeError("stage reservation cap would be exceeded")

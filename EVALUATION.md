@@ -35,13 +35,16 @@ continuation after resume. Compare equal ranks.
 
 ## Performance
 
-`configs/bf16_primary.json` defines the current primary model, rank ladder,
+`configs/bf16_primary_v2.json` defines the current primary model, rank ladder,
 seeds, runtime, competitor inventory, and immutable source identity contract.
 The model has 24 layers, width 1536, 24 heads, MLP width 4224, vocabulary
 100277, context 1024, batch four, accumulation four, and eight blocks. It uses
 ordinary source assembly, BF16 cross-entropy, gradient clipping at 1.0, and the
 original Muon plus AdamW implementation. Activation checkpointing is qualified
 separately and is disabled in the primary model.
+
+The v2 contract requires clipped gradients and exact resumed-next-update
+qualification. The earlier `bf16_primary.json` remains a historical contract.
 
 Measure three seeds and 120 balanced paired rounds after ten warmups. Include
 input copies, source preparation, forward, loss, backward, accumulation,
@@ -61,8 +64,10 @@ Missing or inconclusive coverage is an unmet target.
 
 ## Resources and delivery
 
-The Modal cap is US$500: baseline/profiling $80, experiments $220,
-confirmation $140, and infrastructure/retry reserve $60. Reserve
+The Modal cap is US$600 following the additional $100 authorized on
+2026-09-06: baseline/profiling $80, experiments $220, confirmation $240,
+and infrastructure/retry reserve $60. The ledger records this increase;
+earlier job reservations remain unchanged. Reserve
 each job's full timeout and startup maximum before launch. Development uses
 one GPU across both architectures. Final qualification and frozen matrices
 may use up to eight independent single-GPU jobs. Distributed work is disabled.

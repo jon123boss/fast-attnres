@@ -33,6 +33,16 @@ def _progress(backend, phase, started):
                       "elapsed_s": time.monotonic() - started}), flush=True)
 
 
+def _compiler_metrics():
+    """Untimed cumulative compiler observations; nested timers are not additive."""
+    from torch._dynamo import utils
+    from torch._inductor import metrics
+    return {"phase_seconds": utils.calculate_time_spent(),
+            "function_seconds": {name: list(times) for name, times in utils.compilation_time_metrics.items()},
+            "counters": {name: dict(values) for name, values in utils.counters.items()},
+            "generated_kernel_count": metrics.generated_kernel_count}
+
+
 def _validate_runtime(config):
     """Validate the actual CUDA device before allocating benchmark tensors."""
 
@@ -456,6 +466,61 @@ def _save_resume_enabled(case, config, model_config):
     )
 
 
+def _rng_state(model):
+    return {"cpu": torch.get_rng_state(),
+            "cuda": torch.cuda.get_rng_state_all() if any(p.is_cuda for p in model.parameters()) else []}
+
+
+def _restore_rng(state):
+    torch.set_rng_state(state["cpu"])
+    if state["cuda"]:
+        torch.cuda.set_rng_state_all(state["cuda"])
+
+
+def _resume_next_update(model, optimizers, step, make_optimizers, next_input=1):
+    """Compare uninterrupted and restored updates with one resident model."""
+    checkpoint = {"model": _cpu_state(model), "optimizers": _cpu_optimizer_state(optimizers),
+                  "rng": _rng_state(model), "next_input": next_input}
+    stream = io.BytesIO()
+    torch.save(checkpoint, stream)
+    stream.seek(0)
+    restored = torch.load(stream, map_location="cpu")
+
+    def restore():
+        model.load_state_dict(restored["model"])
+        # The step closure retains this list, but none of the old optimizer
+        # instances or their unserialized attributes survive restoration.
+        optimizers.clear()
+        optimizers.extend(make_optimizers())
+        if len(optimizers) != len(restored["optimizers"]):
+            raise AssertionError("resume changed the optimizer count")
+        for optimizer, state in zip(optimizers, restored["optimizers"]):
+            optimizer.load_state_dict(state)
+            optimizer.zero_grad(set_to_none=True)
+        _restore_rng(restored["rng"])
+
+    try:
+        expected_loss = _cpu_clone(step(next_input))
+        expected = {"model": _cpu_state(model), "optimizers": _cpu_optimizer_state(optimizers),
+                    "rng": _rng_state(model)}
+        restore()
+        actual_loss = _cpu_clone(step(restored["next_input"]))
+        actual = {"model": _cpu_state(model), "optimizers": _cpu_optimizer_state(optimizers),
+                  "rng": _rng_state(model)}
+        return {"status": "passed", "next_input": next_input, "fresh_optimizers": True,
+                "loss": _compare_state_tree(actual_loss, expected_loss, path="resume.loss", strict=True),
+                "state": _compare_state_tree(actual, expected, path="resume.state", strict=True)}
+    finally:
+        restore()
+
+
+def _clipped_gradients(model):
+    norm = _cpu_clone(torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0))
+    return {"preclip_norm": norm, "gradients": {
+        name: _cpu_clone(parameter.grad) for name, parameter in model.named_parameters()
+        if parameter.grad is not None}}
+
+
 def _failure_record(phase, exc, *, samples_ms=(), wall_ms=(), compile_warmup_s=None,
                     optimizer=None, memory=None, qualification=None, classification=None):
     error_traceback = traceback.format_exc() if isinstance(exc, Exception) else ""
@@ -468,7 +533,7 @@ def _failure_record(phase, exc, *, samples_ms=(), wall_ms=(), compile_warmup_s=N
             "ineligible" if type(exc).__name__ == "Ineligible"
             else "incorrect" if (
                 isinstance(exc, AssertionError)
-                and phase in {"qualification", "first_optimizer_update"}
+                and phase in {"qualification", "clipped_gradients", "first_optimizer_update", "resume_next_update"}
             )
             else "unresolved"
         )
@@ -645,6 +710,7 @@ def training_case(case, backends, config, seed, checkpoint, runtime=None):
     baseline_gradients = None
     baseline_model_update = None
     baseline_optimizer_update = None
+    baseline_clipped = None
     warmups = config.get("warmups", 10)
     deferred_warmup = int(warmups >= 2)
 
@@ -721,7 +787,12 @@ def training_case(case, backends, config, seed, checkpoint, runtime=None):
             # First compare the complete pre-update loss/gradient result.
             phase = "qualification"
             _progress(name, phase, started)
+            compiler_before = _compiler_metrics()
+            pre_qualification_rng = _rng_state(model)
+            backward_started = time.monotonic()
             loss = step(0, update=False)
+            torch.cuda.synchronize()
+            backward_s = time.monotonic() - backward_started
             _progress(name, "gradient_snapshot", started)
             loss_cpu = loss.detach().cpu()
             gradients = {
@@ -734,6 +805,9 @@ def training_case(case, backends, config, seed, checkpoint, runtime=None):
             qualification = {
                 "loss": float(loss_cpu),
                 "gradient_count": len(gradients),
+                "first_accumulated_forward_backward_s": backward_s,
+                "compiler_before": compiler_before,
+                "compiler_after_backward": _compiler_metrics(),
             }
             if baseline_loss is not None:
                 loss_metrics = compare(
@@ -751,14 +825,26 @@ def training_case(case, backends, config, seed, checkpoint, runtime=None):
                     metric["max_abs"] for metric in gradient_metrics
                 )
 
+            phase = "clipped_gradients"
+            clipped = _clipped_gradients(model)
+            qualification["clipped_gradients"] = {
+                "preclip_norm": float(clipped["preclip_norm"]),
+                "gradient_count": len(clipped["gradients"]),
+                "status": "baseline" if baseline_clipped is None else "matched",
+                "comparison": (_compare_state_tree(clipped, baseline_clipped, path="clipped_gradients")
+                               if baseline_clipped is not None else None)}
+
             # Take the first optimizer update solely for a complete-state gate.
             # Restore the pre-update model/optimizer state before warmup so the
             # timed training geometry retains its original update count.
             phase = "first_optimizer_update"
             _progress(name, phase, started)
             pre_update_optimizer = _cpu_optimizer_state(optimizers)
+            update_started = time.monotonic()
             step(0, update=True)
             torch.cuda.synchronize()
+            qualification["first_optimizer_update_s"] = time.monotonic() - update_started
+            qualification["compiler_after_update"] = _compiler_metrics()
             model_update = _cpu_state(model)
             optimizer_update = _cpu_optimizer_state(optimizers)
             _progress(name, "compare_first_update", started)
@@ -784,6 +870,12 @@ def training_case(case, backends, config, seed, checkpoint, runtime=None):
                 }
             qualification["first_update"] = first_update
 
+            if case.get("resume_next_update", config.get("resume_next_update", False)):
+                phase = "resume_next_update"
+                _progress(name, phase, started)
+                qualification["resume_next_update"] = _resume_next_update(
+                    model, optimizers, step, lambda: _optimizers(model, config))
+
             phase = "save_resume"
             if smoke_enabled:
                 save_resume = _save_resume_smoke(model, optimizers)
@@ -794,10 +886,13 @@ def training_case(case, backends, config, seed, checkpoint, runtime=None):
                 }
 
             model.load_state_dict(initial)
+            optimizers.clear()
+            optimizers.extend(_optimizers(model, config))
             for optimizer, state in zip(optimizers, pre_update_optimizer):
                 optimizer.load_state_dict(state)
             for optimizer in optimizers:
                 optimizer.zero_grad(set_to_none=True)
+            _restore_rng(pre_qualification_rng)
             torch.cuda.synchronize()
 
             phase = "warmup"
@@ -827,6 +922,7 @@ def training_case(case, backends, config, seed, checkpoint, runtime=None):
                 baseline_gradients = gradients
                 baseline_model_update = model_update
                 baseline_optimizer_update = optimizer_update
+                baseline_clipped = clipped
             _offload_arm(arms[name])
             _progress(name, "qualified", started)
             committed = True
@@ -850,12 +946,14 @@ def training_case(case, backends, config, seed, checkpoint, runtime=None):
                 _release_arm_references(model, optimizers, compiled, compiled_loss, step)
             model = optimizers = compiled = compiled_loss = step = None
             gradients = None
+            clipped = None
             model_update = optimizer_update = pre_update_optimizer = None
         record["arms"] = _arm_rows(arms, failures, "qualified")
         checkpoint(record)
 
     del initial
     baseline_loss = baseline_gradients = baseline_model_update = baseline_optimizer_update = None
+    baseline_clipped = None
     gc.collect()
 
     if not arms:

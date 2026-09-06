@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import time
 from pathlib import Path
 
 from benchmarks.bf16_cache import compiler_cache_stamp, save_compiler_cache
@@ -23,6 +24,8 @@ def training_checkpoint(output, cache_archive=None, commit=None, cache_store=Non
                      for name, arm in current.get("arms", {}).items()
                      if arm.get("status") == "qualified"}
         if (cache_archive or cache_store) and qualified - saved_arms:
+            started = time.monotonic()
+            print(json.dumps({"phase": "compiler_checkpoint_start"}), flush=True)
             try:
                 if cache_store:
                     report["compiler_cache_checkpoint"] = cache_store.save()
@@ -36,6 +39,10 @@ def training_checkpoint(output, cache_archive=None, commit=None, cache_store=Non
                 # A backup failure does not turn a valid measurement into a
                 # correctness failure, but it must remain visible in evidence.
                 report["compiler_backup_error"] = f"{type(exc).__name__}: {exc}"
+            finally:
+                elapsed = time.monotonic() - started
+                report.setdefault("compiler_checkpoint_durations_s", []).append(elapsed)
+                print(json.dumps({"phase": "compiler_checkpoint_end", "elapsed_s": elapsed}), flush=True)
         temporary = output.with_suffix(".tmp")
         temporary.write_text(json.dumps(report, indent=2, default=str) + "\n")
         temporary.replace(output)

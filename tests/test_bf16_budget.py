@@ -8,6 +8,18 @@ import pytest
 from benchmarks.bf16_budget import accounted, check_concurrency, reconciliation_upper
 
 
+def test_stage_allocations_change_only_through_explicit_ledger_values():
+    from benchmarks.bf16_budget import stage_caps
+    assert stage_caps({})['confirmation'] == 140
+    assert stage_caps({'cap_usd': 600})['confirmation'] == 140
+    limits = {'baseline': 80, 'experiments': 220, 'confirmation': 240, 'reserve': 60}
+    assert stage_caps({'stage_caps_usd': limits})['confirmation'] == 240
+    with pytest.raises(ValueError, match='every campaign stage'):
+        stage_caps({'stage_caps_usd': {'confirmation': 240}})
+    with pytest.raises(ValueError, match='budget amount'):
+        stage_caps({'stage_caps_usd': {**limits, 'confirmation': float('inf')}})
+
+
 def test_final_matrix_has_eight_slots_and_development_remains_exclusive():
     sweep = {"gpu_count": 1, "matrix_sweep": True}
     active = [{"status": "running", "matrix_sweep": True} for _ in range(7)]

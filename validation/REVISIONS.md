@@ -1,5 +1,22 @@
 # Evaluator revisions
 
+2026-09-06: Training qualification now snapshots the actual clipping norm and
+clipped gradients. An explicit resume_next_update gate serializes model/buffers,
+optimizer/RNG state and input position, compares the next full update after
+recreating optimizers, and restores the pre-warmup trajectory. The historical
+serialization smoke remains separately named. Compiler counters/timers, initial
+backward/update wall times, restore and cache-checkpoint times are untimed
+observations; nested compiler timers must not be summed. Export now observes
+callable grids using real JIT-bound metadata and retains global launch order.
+CPU tests include an optimizer with deliberately omitted state to ensure resume
+qualification rejects false serialization-only success. GPU qualification and
+final source-selection contracts remain pending; a new bf16_primary_v2.json
+qualifies the current harness and requires the new state checks in admission
+and reports. Historical contracts and all
+numerical tolerances are unchanged. The user authorized $100 additional budget;
+the live ledger cap is $600 with the increase assigned to confirmation ($240).
+No operator source or README layout changes.
+
 2026-09-06: Added opt-in incremental compiler persistence to the cloud transport.
 Compressed content-addressed files precede immutable manifests and durability
 callbacks. Restore combines complete compatible compiler groups and checks all

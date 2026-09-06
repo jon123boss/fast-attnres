@@ -21,6 +21,7 @@ def _tensor_layouts(arguments):
 
 def export_selected(module, call, directory):
     selected, originals = {}, []
+    sequence = []
     names = ('_fla_standard_forward_kernel', '_fla_standard_backward_kernel',
              '_routing_forward', '_weighted_value_forward', '_routing_probabilities',
              '_fla_query_reduce_kernel', '_fla_standard_query_reduce_kernel',
@@ -39,10 +40,29 @@ def export_selected(module, call, directory):
             original = target.run
             originals.append((target, original))
             def record(*args, _run=original, _name=name, **kwargs):
-                kernel = _run(*args, **kwargs)
+                launch = {'grid': kwargs.get('grid'), 'sequence': len(sequence)}
+                sequence.append(launch)
+                actual_kwargs = dict(kwargs)
+                grid = actual_kwargs.get('grid')
+                if callable(grid):
+                    def observed_grid(meta):
+                        dimensions = tuple(grid(meta))
+                        launch['grid'] = dimensions
+                        return dimensions
+                    actual_kwargs['grid'] = observed_grid
+                kernel = _run(*args, **actual_kwargs)
                 if kernel is not None:
-                    selected.setdefault(_name, []).append((kernel, {
-                        'grid': kwargs.get('grid'), 'inputs': _tensor_layouts(args)}))
+                    dimensions = launch['grid']
+                    if callable(dimensions):
+                        raise RuntimeError('export did not observe the actual launch grid')
+                    if dimensions is not None:
+                        dimensions = tuple(int(value) for value in dimensions)
+                        if not 1 <= len(dimensions) <= 3:
+                            raise ValueError('launch grid must have one to three dimensions')
+                        launch['grid'] = dimensions
+                        launch['grid_xyz'] = dimensions + (1,) * (3 - len(dimensions))
+                    launch['inputs'] = _tensor_layouts(args)
+                    selected.setdefault(_name, []).append((kernel, launch))
                 return kernel
             target.run = record
         call()

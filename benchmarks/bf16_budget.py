@@ -29,6 +29,15 @@ def money(value):
     return result
 
 
+def stage_caps(ledger):
+    """Use explicitly recorded allocations, retaining the original defaults."""
+    defaults = {"baseline": 80, "experiments": 220, "confirmation": 140, "reserve": 60}
+    limits = ledger.get("stage_caps_usd", defaults)
+    if set(limits) != set(defaults):
+        raise ValueError("stage allocations must name every campaign stage")
+    return {name: money(value) for name, value in limits.items()}
+
+
 def reconciliation_upper(row, proof):
     reserved = money(row["reserved_usd"])
     app = proof["lifecycle"]

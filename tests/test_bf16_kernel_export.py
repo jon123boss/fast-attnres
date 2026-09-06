@@ -67,6 +67,42 @@ def test_export_rejects_cold_autotuning_trials(tmp_path):
     assert not list(tmp_path.iterdir())
 
 
+def test_callable_grid_uses_actual_bound_metadata_once_and_keeps_launch_order(tmp_path):
+    observed = []
+    metadata = namedtuple('Metadata', 'shared')(0)
+    kernel = SimpleNamespace(hash='grid', name='reduce', n_regs=8, n_spills=0,
+                             metadata=metadata, asm={}, src=SimpleNamespace(constants={}))
+    def launch(*args, grid):
+        if callable(grid):
+            assert grid({'N': 257, 'BN': 32}) == (9, 2)
+        return kernel
+    first = SimpleNamespace(device_caches={}, run=launch)
+    second = SimpleNamespace(device_caches={}, run=launch)
+    module = SimpleNamespace(_routing_forward=second, _weighted_value_forward=first)
+    def grid(meta):
+        observed.append(dict(meta))
+        return ((meta['N'] + meta['BN'] - 1) // meta['BN'], 2)
+    def call():
+        first.run(grid=grid)
+        second.run(grid=(3,))
+    result = export_selected(module, call, tmp_path)
+    assert observed == [{'N': 257, 'BN': 32}]
+    assert result['_weighted_value_forward']['launch'] == {
+        'grid': (9, 2), 'grid_xyz': (9, 2, 1), 'sequence': 0, 'inputs': []}
+    assert result['_routing_forward']['launch']['sequence'] == 1
+    assert first.run is launch and second.run is launch
+
+
+def test_callable_grid_not_evaluated_by_jit_is_not_guessed(tmp_path):
+    def launch(**kwargs):
+        return object()
+    target = SimpleNamespace(device_caches={}, run=launch)
+    with pytest.raises(RuntimeError, match='actual launch grid'):
+        export_selected(SimpleNamespace(_routing_forward=target),
+                        lambda: target.run(grid=lambda meta: (meta['BN'],)), tmp_path)
+    assert target.run is launch
+
+
 def test_backward_identity_includes_referenced_helpers_and_scalar_globals():
     from benchmarks.bf16_kernel_export import _jit_identity
     def kernel(helper):
