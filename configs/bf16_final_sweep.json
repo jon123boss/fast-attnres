@@ -164,5 +164,5 @@
     "benchmarks/training_graph.py": "b35e04997c5e2653087814b046d72b2bb5945017ed621ba880b53bb7d9f1524f",
     "benchmarks/bf16_device.py": "b4b4588afade0486e4da3a4a3e94e250ccf38dd67d1f2bf878e702c1bb467b6f"
   },
-  "candidate_package_sha256": "2a8838d1471c8eb45899c423f7bfae0c334c922d151a6c0de7f680e226900bb2"
+  "candidate_package_sha256": "70559c428b07d945770e93e8715ce8384b43888b080e0f6e7273d9322b37e5b5"
 }
