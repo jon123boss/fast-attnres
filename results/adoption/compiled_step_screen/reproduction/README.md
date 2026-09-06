@@ -1,0 +1,1 @@
+The compressed renderer preserves the exact generator bytes recorded in the historical screen manifest. Its uncompressed SHA-256 is `ded91b02715ce19e46eeec0a6c5473f3e26d2797c9609dec122018b990d6d6d2`. The original manifest and figures are unchanged.

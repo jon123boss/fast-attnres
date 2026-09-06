@@ -419,6 +419,8 @@ def render_hero(
         if projection.status == "audited"
         else "Fixture projection"
     )
+    if projection.provenance.get("audit_schema") == "attnres.final_sweep_audit.v1":
+        status_line = "Verified final sweep" if projection.status == "audited" else "Fixture projection"
 
     with mpl.rc_context(
         {
