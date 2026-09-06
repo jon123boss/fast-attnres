@@ -88,7 +88,7 @@
   "tests/test_installation.py": "b64ffb096304fd207acb8bf8ed9ba764a84de1326b1580625a68d55eb5a00364",
   "tests/test_modal_cache.py": "116ed114c13e9bdb002042907ff552064e9a167cbf8602750536ae5023e91886",
   "tests/test_modal_fla_block_codegen_probe.py": "37e7ece4dcdad16b98ae73a897febb3dd4a235e200ccd729c0f762a8af121279",
-  "tests/test_model_routes.py": "ecf3fbb66ddc7f9b4a1b1e3dbb8525931bb2640e2a09a884d0d4b7dbba593df9",
+  "tests/test_model_routes.py": "e2625d7cc27244aa1190ad2aabecf33902005b9601b3e73b40ef80ca032f86f3",
   "tests/test_offsets.py": "bd799006495f9efb695654ac529c481d059b129a367ec08f7593918e2d239f5b",
   "tests/test_packaging_metadata.py": "56e5071c004db12dacd328bc2738c5f338df116a4516074765bea3be9d2d15fd",
   "tests/test_production_ladder_configs.py": "6e9dd1f8cab8df8d1c181418600cf7c3837d135447806a163d44cdac2ee84688",
