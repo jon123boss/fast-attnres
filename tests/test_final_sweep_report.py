@@ -1,6 +1,8 @@
 """Failures in paired evidence must never become plotted speedup claims."""
 
 import copy
+import hashlib
+import json
 import random
 
 import pytest
@@ -127,6 +129,61 @@ def test_phase_join_preserves_all_workloads_and_rejects_protocol_changes():
     screen['cells'] = []
     with pytest.raises(ValueError, match='planned matrix'):
         combined_contract(screen, headline)
+
+
+def test_continuation_retains_failure_and_rejects_changed_kernel(tmp_path, monkeypatch):
+    from benchmarks import final_sweep_report as report
+
+    first, last = dict(name="screen", seeds=[1]), dict(name="last", seeds=[1])
+    common = dict(runtime={"torch": "pinned"}, identities={},
+                  candidate_package_sha256=hashlib.sha256(b"").hexdigest())
+    original, continuation = tmp_path/"original", tmp_path/"continuation"
+    failure = dict(phase="model_qualification", error=dict(type="AssertionError",
+        message="Mismatched elements: 2", traceback="assert_close(candidate_logits_cpu, reference_logits"))
+    for directory, selected, status in ((original, [first, last], "needs_attention"),
+                                        (continuation, [last], "complete")):
+        (directory/"runner/src/attnres").mkdir(parents=True)
+        (directory/"results").mkdir()
+        contract = dict(common, cells=selected)
+        if directory == continuation:
+            contract["normalization_rounding_policy"] = {"authorization": "explicit user direction"}
+        (directory/"contract.json").write_text(json.dumps(contract))
+        (directory/"manifest.json").write_text(json.dumps(dict(commit="revision", files={})))
+        descriptors = []
+        for cell in selected:
+            failed = directory == original and cell == last
+            value = dict(status="failed" if failed else "complete",
+                final_sweep_source=dict(commit="revision", config=contract,
+                    manifest_sha256=report.digest(directory/"manifest.json")),
+                model_timings=dict(failures=[failure] if failed else []))
+            path = directory/"results"/(cell["name"]+"-1.json")
+            path.write_text(json.dumps(value))
+            descriptors.append(dict(name=cell["name"]+"-1", status=value["status"],
+                                    sha256=report.digest(path)))
+        (directory/"summary.json").write_text(json.dumps(dict(status=status, gpu="H100",
+            commit="revision", runtime=common["runtime"], results=descriptors,
+            failed_cells=["last-1"] if directory == original else [])))
+    model = dict(comparator_failures=[], qualification={}, comparator_qualification={})
+    monkeypatch.setattr(report, "audit_report", lambda *args: (model, {"kernel": [1.]}, {}))
+    monkeypatch.setattr(report, "project_cells", lambda *args: [])
+    _, records = report.audit_device(original, "H100", original,
+        completion_directory=continuation, completion_source=continuation)
+    assert [r["cell"] for r in records] == ["screen", "last"]
+    assert records[-1]["original_failed_reports"][0]["status"] == "failed"
+    failed_path = original/"results/last-1.json"
+    preserved = failed_path.read_bytes()
+    failed_path.write_bytes(preserved+b" ")
+    with pytest.raises(ValueError, match="original failure was changed"):
+        report.audit_device(original, "H100", original,
+            completion_directory=continuation, completion_source=continuation)
+    failed_path.write_bytes(preserved)
+    path = continuation/"contract.json"
+    value = json.loads(path.read_text())
+    value["candidate_package_sha256"] = "changed"
+    path.write_text(json.dumps(value))
+    with pytest.raises(ValueError, match="changed kernel"):
+        report.audit_device(original, "H100", original,
+            completion_directory=continuation, completion_source=continuation)
 
 
 @pytest.mark.parametrize('change', ['exit', 'seed', 'source', 'summary'])

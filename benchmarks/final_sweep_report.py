@@ -167,8 +167,22 @@ def audit_report(report, cell, seed, gpu, source, source_digest, contract):
                 f"initial model state differs: {name}")
         qualification = (model["qualification"][name.removeprefix("kernel_")]
                          if name.startswith("kernel_") else model["comparator_qualification"][name])
+        deviation = qualification.get("output_comparison")
+        if deviation is not None:
+            require(config.get("accept_normalization_rounding") is True
+                    and contract.get("normalization_rounding_policy", {}).get("authorization"),
+                    "normalization-rounding acceptance is not authorized by the contract")
+            require(deviation["status"] == "accepted_normalization_rounding"
+                    and deviation["tolerance"] == contract["tolerance"]
+                    and 0 < deviation["mismatched_elements"] <= deviation["total_elements"]
+                    and deviation["total_elements"] == math.prod(
+                        cell["model"][k] for k in ("batch", "sequence", "vocab"))
+                    and deviation["max_abs"] == qualification["output_max_abs"],
+                    "incomplete normalization-rounding evidence")
         sweep._validate_model_qualification(
-            {k: v for k, v in qualification.items() if k != "eligibility"}, name)
+            {k: v for k, v in qualification.items() if k not in {"eligibility", "output_comparison"}}, name)
+        require(len(qualification["gradient_max_abs"]) == qualification["parameter_count"],
+                "missing parameter-gradient comparisons")
         comp = model["compile"][name]
         require(comp["status"] == "ok" and comp["fullgraph"] is True
                 and comp["dynamic"] is False, f"compile not qualified: {name}")
@@ -252,7 +266,8 @@ def combined_contract(screen, headline):
     return headline
 
 
-def audit_device(directory, gpu, source_dir, *, headline_only=False):
+def audit_device(directory, gpu, source_dir, *, headline_only=False,
+                 completion_directory=None, completion_source=None):
     """Verify a completed device before releasing it; this needs no GPU."""
     directory, source_dir = Path(directory), Path(source_dir)
     source, contract = read(source_dir / "manifest.json"), read(source_dir / "contract.json")
@@ -267,8 +282,41 @@ def audit_device(directory, gpu, source_dir, *, headline_only=False):
     require(summary["gpu"] == gpu, "device identity changed")
     require(summary["commit"] == source["commit"] and summary["runtime"] == contract["runtime"],
             "device source/runtime differs")
-    selected, descriptors = phase_records(
-        directory, summary, contract, source_digest, headline_only)
+    require(bool(completion_directory) == bool(completion_source), "missing continuation evidence")
+    if completion_source:
+        require(not headline_only and summary["status"] == "needs_attention",
+                "continuation requires the original incomplete screen")
+        continuation = read(Path(completion_source) / "contract.json")
+        require(continuation["cells"] == contract["cells"][-1:], "continuation changed its workload")
+        varying = {"cells", "identities", "normalization_rounding_policy"}
+        require({k: v for k, v in continuation.items() if k not in varying}
+                == {k: v for k, v in contract.items() if k not in varying},
+                "continuation changed kernel or measurement protocol")
+        expected_failed = [f"{cell['name']}-{seed}" for cell in continuation["cells"]
+                           for seed in cell["seeds"]]
+        require(summary["failed_cells"] == expected_failed
+                and len(summary["results"]) == sum(len(c["seeds"]) for c in contract["cells"]),
+                "unexpected original failure or missing report")
+        failed_records = summary["results"][-len(expected_failed):]
+        for descriptor, name in zip(failed_records, expected_failed):
+            failed_path = directory / "results" / (name + ".json")
+            require(descriptor["name"] == name and descriptor["status"] == "failed"
+                    and digest(failed_path) == descriptor["sha256"], "original failure was changed")
+            failed = read(failed_path)
+            require(failed["status"] == "failed" and failed["final_sweep_source"] == {
+                "commit": source["commit"], "config": contract, "manifest_sha256": source_digest},
+                "original failure identity changed")
+            failures = failed["model_timings"]["failures"]
+            require(failures and all(f["phase"] == "model_qualification"
+                    and f["error"]["type"] == "AssertionError"
+                    and "Mismatched elements:" in f["error"]["message"]
+                    and "assert_close(candidate_logits_cpu, reference_logits" in f["error"]["traceback"]
+                    for f in failures),
+                    "continuation cannot dispose of an unrelated failure")
+        selected, descriptors = contract["cells"][:-1], summary["results"][:-len(expected_failed)]
+    else:
+        selected, descriptors = phase_records(
+            directory, summary, contract, source_digest, headline_only)
     expected = [(cell, seed) for cell in selected for seed in cell["seeds"]]
     require(len(descriptors) == len(expected), "incomplete final matrix")
     cells, records = [], []
@@ -289,7 +337,18 @@ def audit_device(directory, gpu, source_dir, *, headline_only=False):
                         "candidate_package_sha256": package_sha,
                         "sha256": descriptor["sha256"], "statistics": statistics,
                         "means_ms": {k: mean(v) for k, v in vectors.items()},
-                        "comparator_failures": model["comparator_failures"]})
+                        "comparator_failures": model["comparator_failures"],
+                        "normalization_rounding": {
+                            name: entry["output_comparison"] for name, entry in
+                            {**model["qualification"], **model["comparator_qualification"]}.items()
+                            if "output_comparison" in entry}})
+    if completion_source:
+        continued_cells, continued_records = audit_device(
+            completion_directory, gpu, completion_source)
+        for record in continued_records:
+            record["original_failed_reports"] = failed_records
+        cells.extend(continued_cells)
+        records.extend(continued_records)
     return cells, records
 
 
@@ -334,6 +393,9 @@ def main():
     parser.add_argument("--headline-source", type=Path)
     parser.add_argument("--headline-h100", type=Path)
     parser.add_argument("--headline-b200", type=Path)
+    parser.add_argument("--completion-source", type=Path)
+    parser.add_argument("--completion-h100", type=Path)
+    parser.add_argument("--completion-b200", type=Path)
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
     contract = read(args.source / "contract.json")
@@ -342,6 +404,8 @@ def main():
         contract = combined_contract(contract, read(args.headline_source / "contract.json"))
     require(bool(args.headline_source) == bool(args.headline_h100 or args.headline_b200),
             "supply the headline source and its device evidence together")
+    require(bool(args.completion_source) == bool(args.completion_h100 or args.completion_b200),
+            "supply the continuation source and its device evidence together")
     cells, records = [], []
     for gpu, directory, headline_directory in (
             ("H100", args.h100, args.headline_h100), ("B200", args.b200, args.headline_b200)):
@@ -353,7 +417,10 @@ def main():
             cells.extend(device_cells)
             records.extend(device_records)
         if directory:
-            device_cells, device_records = audit_device(directory, gpu, args.source)
+            completion = args.completion_h100 if gpu == "H100" else args.completion_b200
+            require(not args.completion_source or completion, "device is missing its continuation")
+            device_cells, device_records = audit_device(directory, gpu, args.source,
+                completion_directory=completion, completion_source=args.completion_source)
             cells.extend(device_cells)
             records.extend(device_records)
     require(records, "supply at least one device")
@@ -361,6 +428,16 @@ def main():
     audit = {"schema": "attnres.final_sweep_audit.v1", "status": "passed", "records": records}
     (args.output / "audit.json").write_text(json.dumps(audit, indent=2) + "\n")
     sweep.write_table(sweep.table_rows(cells), args.output / "results.csv", args.output / "results.md")
+    deviations = [(r, arm, entry) for r in records
+                  for arm, entry in r.get("normalization_rounding", {}).items()]
+    if deviations:
+        with (args.output / "results.md").open("a") as output:
+            output.write("\nNormalization-order rounding was accepted explicitly for initial model logits. "
+                         "Nominal tolerance failures remain recorded; loss, all-gradient and training-state checks passed.\n\n")
+            for record, arm, entry in deviations:
+                output.write(f"- {record['gpu']} / {record['cell']} / {arm}: "
+                    f"{entry['mismatched_elements']:,} of {entry['total_elements']:,} logits; "
+                    f"maximum absolute error {entry['max_abs']:.8g}.\n")
     rank_rows = []
     for gpu in dict.fromkeys(r["gpu"] for r in records):
         rows = rank_comparisons(records, contract, gpu)

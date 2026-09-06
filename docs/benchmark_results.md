@@ -26,6 +26,11 @@ compilation, input copies, qualification, and CUDA Graph capture are excluded.
 The reference accepts BF16 inputs, accumulates internally in FP32, normalizes
 keys before the query dot product, and returns BF16 outputs. The same
 `rtol=0.05, atol=0.05` applies to outputs and first-order gradients.
+The final D2048 continuation explicitly accepts and counts initial-logit
+differences from normalization order. Loss, all parameter gradients and
+complete training-state checks retain their original tolerances. Original
+failed reports remain in the evidence; these deviations are not strict
+output-tolerance passes.
 
 Each report must identify its rank, eligible comparators, BF16 correctness result, timing
 boundary, paired samples, and exact source/runtime. Unsupported, failed, and
