@@ -19,9 +19,11 @@ gradient reductions in FP32 internally. The gate checks the BF16 tensors at the
 operator boundary and does not treat internal accumulator dtype as a public
 mode.
 
-The only allowed oracle in a correctness test is a test-local PyTorch/autograd
-calculation with BF16 inputs and BF16 intermediate tensors throughout. It is test machinery, not an importable runtime
-entry point and not a second public operator.
+The independent PyTorch/autograd reference uses BF16 inputs, outputs, and
+input gradients, with FP32 internal accumulation matching the kernel's
+precision contract. It disables ambient autocast so its arithmetic is the same
+inside and outside compiled training checks. It rejects other input dtypes and
+is validation machinery, not a second public operator.
 
 ## Required correctness coverage
 

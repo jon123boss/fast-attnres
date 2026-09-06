@@ -128,7 +128,8 @@ such as 384 and 640. Other ranks retain the same mathematical support.
 ## Validation scope
 
 Correctness checks compare BF16 outputs and first-order gradients with an
-independent BF16 PyTorch reference at `rtol=0.05` and `atol=0.05`. Coverage
+independent BF16 PyTorch reference with FP32 internal accumulation at
+`rtol=0.05` and `atol=0.05`. Coverage
 includes packed/list sources, repeated reads, partial Blocks, changed inputs,
 non-contiguous layouts, shared sources, and compiled replay. See the
 [validation protocol](docs/validation.md).

@@ -1,4 +1,4 @@
-"""BF16 arithmetic is enforced throughout the independent reference."""
+"""BF16 boundaries and autocast-independent reference arithmetic."""
 import pytest
 import torch
 
@@ -6,28 +6,25 @@ from validation.oracle import oracle
 
 
 @pytest.mark.parametrize("sequence", [False, True])
-def test_reference_keeps_every_floating_intermediate_and_gradient_bf16(sequence):
-    from torch.utils._python_dispatch import TorchDispatchMode
-    from torch.utils._pytree import tree_leaves
-
-    class BF16Only(TorchDispatchMode):
-        def __torch_dispatch__(self, func, types, args=(), kwargs=None):
-            result = func(*args, **(kwargs or {}))
-            for tensor in tree_leaves(result):
-                if isinstance(tensor, torch.Tensor) and tensor.is_floating_point():
-                    assert tensor.dtype == torch.bfloat16, str(func)
-            return result
-
+@pytest.mark.parametrize("device", ["cpu", pytest.param("cuda", marks=pytest.mark.cuda)])
+def test_reference_bf16_boundaries_are_independent_of_autocast(sequence, device):
+    if device == "cuda" and not torch.cuda.is_available():
+        pytest.skip("CUDA unavailable")
     torch.manual_seed(19)
-    values = torch.randn(5, 3, 17, dtype=torch.bfloat16, requires_grad=True)
-    query = torch.randn(7, dtype=torch.bfloat16, requires_grad=True)
-    upstream = torch.randn(3, 17, dtype=torch.bfloat16)
-    with BF16Only():
-        inputs = tuple(values.unbind()) if sequence else values
-        output = oracle(inputs, query, scale=.7)
+    values = torch.randn(5, 3, 17, device=device, dtype=torch.bfloat16, requires_grad=True)
+    query = torch.randn(7, device=device, dtype=torch.bfloat16, requires_grad=True)
+    upstream = torch.randn(3, 17, device=device, dtype=torch.bfloat16)
+    results = []
+    for enabled in (False, True):
+        with torch.autocast(device_type=device, dtype=torch.bfloat16, enabled=enabled):
+            inputs = tuple(values.unbind()) if sequence else values
+            output = oracle(inputs, query, scale=.7)
         gradients = torch.autograd.grad(output, (values, query), upstream)
-    assert output.dtype == torch.bfloat16
-    assert all(gradient.dtype == torch.bfloat16 for gradient in gradients)
+        result = (output, *gradients)
+        assert all(tensor.dtype == torch.bfloat16 for tensor in result)
+        results.append(result)
+    for actual, expected in zip(*results):
+        torch.testing.assert_close(actual, expected, rtol=0, atol=0)
 
 
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
