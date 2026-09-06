@@ -10,7 +10,9 @@ retain the exact workload, source identity, and comparison scope.
 The 24-layer Full workload has 5.95% lower step latency on H100 SXM and
 22.74% lower on B200 than native FLA checkpoint 1, using the median of three
 paired seed estimates. H100 standard D2048 is 0.28% slower than FLA, within
-the predefined 1% parity band. These results cover the listed configurations.
+the predefined 1% parity band; the other nine standard comparisons are faster.
+Quarter rank reduces step latency in all ten device/workload pairs. These
+results cover `R=D` and `R=D/4` on the listed configurations.
 
 | Plot | Existing workload and harness |
 | --- | --- |

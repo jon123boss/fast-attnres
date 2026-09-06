@@ -12,4 +12,6 @@ results/*
 !results/compiled_step/**
 !results/current_24l/
 !results/current_24l/**
+!results/final_sweep/
+!results/final_sweep/**
 .DS_Store

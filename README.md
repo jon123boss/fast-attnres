@@ -6,7 +6,7 @@
 [![Triton 3.7.1](https://img.shields.io/badge/tested-Triton_3.7.1-654FF0.svg)](https://github.com/triton-lang/triton/releases/tag/v3.7.1)
 [![License: MIT](https://img.shields.io/badge/license-MIT-2E7D32.svg)](LICENSE)
 
-<!-- Final asset: ![Full AttnRes training on H100 SXM and B200](results/final_sweep/compiled_step_hero.svg) -->
+![Full AttnRes training on H100 SXM and B200](results/final_sweep/compiled_step_hero.svg)
 
 **Fast Attention Residuals** (`Fast-AttnRes`) makes
 [Attention Residuals](https://arxiv.org/abs/2603.15031) a single PyTorch
@@ -52,18 +52,19 @@ standard FLA compare different routing equations.
 The D2048 results retain [disclosed normalization-rounding deviations](docs/benchmark_results.md).
 On H100, standard D2048 is 0.28% slower than FLA, within the declared 1% parity band.
 
-<!-- Final asset: ![H100 compiled BF16 training steps](results/final_sweep/compiled_step_sweep_h100.svg) -->
+![H100 compiled BF16 training steps](results/final_sweep/compiled_step_sweep_h100.svg)
 
-<!-- Final asset: ![B200 compiled BF16 training steps](results/final_sweep/compiled_step_sweep_b200.svg) -->
+![B200 compiled BF16 training steps](results/final_sweep/compiled_step_sweep_b200.svg)
 
 ### Quarter-rank routing
 
 These figures compare our `R=D/4` kernel with our `R=D` kernel on each workload.
 Values and outputs retain width `D`; only the routing rank changes.
+Quarter rank reduces step latency in all ten measured device/workload pairs.
 
-<!-- Final asset: ![H100 quarter-rank versus full-rank routing](results/final_sweep/rank_comparison_h100.svg) -->
+![H100 quarter-rank versus full-rank routing](results/final_sweep/rank_comparison_h100.svg)
 
-<!-- Final asset: ![B200 quarter-rank versus full-rank routing](results/final_sweep/rank_comparison_b200.svg) -->
+![B200 quarter-rank versus full-rank routing](results/final_sweep/rank_comparison_b200.svg)
 
 ## Install
 

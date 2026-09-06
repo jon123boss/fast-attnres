@@ -1,0 +1,91 @@
+{
+  "schema": "attnres.compiled_step_hero_projection.v1",
+  "status": "audited",
+  "provenance": {
+    "generator": "benchmarks.final_sweep_report",
+    "audit_schema": "attnres.final_sweep_audit.v1",
+    "audit_status": "passed",
+    "source_digest": "3b132897de0376e7cfda825aee6eba047c593394f7a474ce8236e1f536ba7f45"
+  },
+  "campaign": {
+    "mode": "full",
+    "dtype": "bf16",
+    "rank_relation": "R=D",
+    "timing_method": "cuda_graph",
+    "baseline": "native FLA Triton checkpoint 1",
+    "optimizer": "AdamW(fused=True,capturable=True)",
+    "rounds": 120,
+    "warmup": 10,
+    "confidence": 0.95,
+    "seeds": [
+      "20260827",
+      "20260903",
+      "20260911"
+    ],
+    "schedule": "paired rotating arm order; three unpooled seeds",
+    "model": {
+      "layers": 24,
+      "width": 1024,
+      "heads": 16,
+      "ffn": 2816,
+      "batch": 2,
+      "sequence": 1024,
+      "vocab": 32768,
+      "block_count": 8
+    }
+  },
+  "devices": {
+    "H100 SXM": {
+      "absolute_ms": {
+        "attnres": 28.1748970190684,
+        "fla_ckpt1": 29.958256848653157
+      },
+      "ratios": [
+        {
+          "seed": "20260827",
+          "ratio": 0.941159405539804,
+          "ci_low": 0.9408661446793176,
+          "ci_high": 0.94145266640029
+        },
+        {
+          "seed": "20260903",
+          "ratio": 0.9402559611481955,
+          "ci_low": 0.9399737334962658,
+          "ci_high": 0.9405381888001253
+        },
+        {
+          "seed": "20260911",
+          "ratio": 0.940472662527024,
+          "ci_low": 0.9401910874929723,
+          "ci_high": 0.9407542375610766
+        }
+      ]
+    },
+    "B200": {
+      "absolute_ms": {
+        "attnres": 16.692918078104654,
+        "fla_ckpt1": 21.598188861211142
+      },
+      "ratios": [
+        {
+          "seed": "20260827",
+          "ratio": 0.7730156773176579,
+          "ci_low": 0.7726182779983359,
+          "ci_high": 0.7734130766369807
+        },
+        {
+          "seed": "20260903",
+          "ratio": 0.7633696755598557,
+          "ci_low": 0.7631046802189402,
+          "ci_high": 0.763634670900771
+        },
+        {
+          "seed": "20260911",
+          "ratio": 0.7726015290646446,
+          "ci_low": 0.7721800399618044,
+          "ci_high": 0.7730230181674844
+        }
+      ]
+    }
+  }
+}

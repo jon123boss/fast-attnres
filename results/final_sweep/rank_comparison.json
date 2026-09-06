@@ -1,0 +1,526 @@
+[
+  {
+    "gpu": "H100",
+    "cell": "headline_full",
+    "model": {
+      "layers": 24,
+      "width": 1024,
+      "heads": 16,
+      "ffn": 2816,
+      "vocab": 32768,
+      "sequence": 1024,
+      "batch": 2,
+      "block_count": 8,
+      "mode": "full",
+      "variant": "sliced",
+      "source_layout": "list"
+    },
+    "rounds": 120,
+    "seeds": [
+      {
+        "seed": 20260827,
+        "source_sha256": "68d6a6df01f750e58817e263ac78ee1469c294bcffb881f2777f398debd78a6a",
+        "standard_ms": 28.181261587142945,
+        "quarter_ms": 28.10585069656372,
+        "paired": {
+          "n": 120,
+          "estimate": 0.9973253622950604,
+          "ratio": 0.9973253622950604,
+          "ci": [
+            0.9970321014345743,
+            0.9976186231555467
+          ],
+          "ci_low": 0.9970321014345743,
+          "ci_high": 0.9976186231555467,
+          "confidence": 0.95,
+          "bootstrap_samples": 20000,
+          "simultaneous": true,
+          "classification": "gain"
+        }
+      },
+      {
+        "seed": 20260903,
+        "source_sha256": "ffc82911e2fe4459c61e783d42b18242b91bb960a5e1efe79ec81e6a3d9e59d3",
+        "standard_ms": 28.174352598190307,
+        "quarter_ms": 28.10525813102722,
+        "paired": {
+          "n": 120,
+          "estimate": 0.9975481194523764,
+          "ratio": 0.9975481194523764,
+          "ci": [
+            0.9972658918004468,
+            0.9978303471043063
+          ],
+          "ci_low": 0.9972658918004468,
+          "ci_high": 0.9978303471043063,
+          "confidence": 0.95,
+          "bootstrap_samples": 20000,
+          "simultaneous": true,
+          "classification": "gain"
+        }
+      },
+      {
+        "seed": 20260911,
+        "source_sha256": "1697e2fddb73f7155894b7eb3d2da213af92cdfd2406855b4c0df23d436f96ff",
+        "standard_ms": 28.1748970190684,
+        "quarter_ms": 28.101850334803263,
+        "paired": {
+          "n": 120,
+          "estimate": 0.9974080658854227,
+          "ratio": 0.9974080658854227,
+          "ci": [
+            0.9971264908513708,
+            0.9976896409194751
+          ],
+          "ci_low": 0.9971264908513708,
+          "ci_high": 0.9976896409194751,
+          "confidence": 0.95,
+          "bootstrap_samples": 20000,
+          "simultaneous": true,
+          "classification": "gain"
+        }
+      }
+    ],
+    "standard_ms": 28.1748970190684,
+    "quarter_ms": 28.10525813102722,
+    "lower_time_pct": 0.25919341145772545
+  },
+  {
+    "gpu": "H100",
+    "cell": "screen_full",
+    "model": {
+      "layers": 8,
+      "width": 1024,
+      "heads": 16,
+      "ffn": 2816,
+      "vocab": 8192,
+      "sequence": 512,
+      "batch": 2,
+      "block_count": 16,
+      "mode": "full",
+      "variant": "sliced",
+      "source_layout": "list"
+    },
+    "rounds": 40,
+    "seeds": [
+      {
+        "seed": 20260827,
+        "source_sha256": "009d47e684c8323e314aa825043560705e49002fc31523511ce7f956d7893345",
+        "standard_ms": 5.686447978019714,
+        "quarter_ms": 5.673744821548462,
+        "paired": {
+          "n": 40,
+          "estimate": 0.9977669105486552,
+          "ratio": 0.9977669105486552,
+          "ci": [
+            0.9972566743217048,
+            0.9982771467756055
+          ],
+          "ci_low": 0.9972566743217048,
+          "ci_high": 0.9982771467756055,
+          "confidence": 0.95,
+          "bootstrap_samples": 20000,
+          "simultaneous": true,
+          "classification": "gain"
+        }
+      }
+    ],
+    "standard_ms": 5.686447978019714,
+    "quarter_ms": 5.673744821548462,
+    "lower_time_pct": 0.22330894513448163
+  },
+  {
+    "gpu": "H100",
+    "cell": "screen_block_1536_s9",
+    "model": {
+      "layers": 8,
+      "width": 1536,
+      "heads": 24,
+      "ffn": 4224,
+      "vocab": 8192,
+      "sequence": 512,
+      "batch": 2,
+      "block_count": 8,
+      "mode": "block",
+      "variant": "sliced",
+      "source_layout": "list"
+    },
+    "rounds": 40,
+    "seeds": [
+      {
+        "seed": 20260827,
+        "source_sha256": "1e3fe69c5d973344313e4f4f1f17826d7b78ca7df89c5941dc556356ed1c7e59",
+        "standard_ms": 9.62557761669159,
+        "quarter_ms": 9.575056004524232,
+        "paired": {
+          "n": 40,
+          "estimate": 0.9947521192407922,
+          "ratio": 0.9947521192407922,
+          "ci": [
+            0.9942389962313192,
+            0.9952652422502657
+          ],
+          "ci_low": 0.9942389962313192,
+          "ci_high": 0.9952652422502657,
+          "confidence": 0.95,
+          "bootstrap_samples": 20000,
+          "simultaneous": true,
+          "classification": "gain"
+        }
+      }
+    ],
+    "standard_ms": 9.62557761669159,
+    "quarter_ms": 9.575056004524232,
+    "lower_time_pct": 0.524788075920779
+  },
+  {
+    "gpu": "H100",
+    "cell": "screen_block_1536_s3",
+    "model": {
+      "layers": 8,
+      "width": 1536,
+      "heads": 24,
+      "ffn": 4224,
+      "vocab": 8192,
+      "sequence": 512,
+      "batch": 2,
+      "block_count": 2,
+      "mode": "block",
+      "variant": "sliced",
+      "source_layout": "list"
+    },
+    "rounds": 40,
+    "seeds": [
+      {
+        "seed": 20260827,
+        "source_sha256": "07760949603960e2d3a22e99728eac47098833ba957808196b9406c9fd497706",
+        "standard_ms": 9.274902415275573,
+        "quarter_ms": 9.246966433525085,
+        "paired": {
+          "n": 40,
+          "estimate": 0.9969880217072573,
+          "ratio": 0.9969880217072573,
+          "ci": [
+            0.9965306200718559,
+            0.9974454233426583
+          ],
+          "ci_low": 0.9965306200718559,
+          "ci_high": 0.9974454233426583,
+          "confidence": 0.95,
+          "bootstrap_samples": 20000,
+          "simultaneous": true,
+          "classification": "gain"
+        }
+      }
+    ],
+    "standard_ms": 9.274902415275573,
+    "quarter_ms": 9.246966433525085,
+    "lower_time_pct": 0.30119782927426897
+  },
+  {
+    "gpu": "H100",
+    "cell": "screen_block_2048_s9",
+    "model": {
+      "layers": 8,
+      "width": 2048,
+      "heads": 32,
+      "ffn": 5632,
+      "vocab": 8192,
+      "sequence": 512,
+      "batch": 2,
+      "block_count": 8,
+      "mode": "block",
+      "variant": "sliced",
+      "source_layout": "list"
+    },
+    "rounds": 40,
+    "seeds": [
+      {
+        "seed": 20260827,
+        "source_sha256": "e438d1daec99fd32b15711c397cdcca809d4615849802cf0a20531ec9d5850e9",
+        "standard_ms": 14.807083201408386,
+        "quarter_ms": 14.735756874084473,
+        "paired": {
+          "n": 40,
+          "estimate": 0.9951841453340219,
+          "ratio": 0.9951841453340219,
+          "ci": [
+            0.9945690631198384,
+            0.9957992275482049
+          ],
+          "ci_low": 0.9945690631198384,
+          "ci_high": 0.9957992275482049,
+          "confidence": 0.95,
+          "bootstrap_samples": 20000,
+          "simultaneous": true,
+          "classification": "gain"
+        }
+      }
+    ],
+    "standard_ms": 14.807083201408386,
+    "quarter_ms": 14.735756874084473,
+    "lower_time_pct": 0.48158546659781143
+  },
+  {
+    "gpu": "B200",
+    "cell": "headline_full",
+    "model": {
+      "layers": 24,
+      "width": 1024,
+      "heads": 16,
+      "ffn": 2816,
+      "vocab": 32768,
+      "sequence": 1024,
+      "batch": 2,
+      "block_count": 8,
+      "mode": "full",
+      "variant": "sliced",
+      "source_layout": "list"
+    },
+    "rounds": 120,
+    "seeds": [
+      {
+        "seed": 20260827,
+        "source_sha256": "23860c84f60924eaf4906057c5df5c9a2731b10fbccfe83ff0b9195c53e70624",
+        "standard_ms": 16.69576319058736,
+        "quarter_ms": 16.415758641560874,
+        "paired": {
+          "n": 120,
+          "estimate": 0.9832297477195211,
+          "ratio": 0.9832297477195211,
+          "ci": [
+            0.9828323484001987,
+            0.9836271470388435
+          ],
+          "ci_low": 0.9828323484001987,
+          "ci_high": 0.9836271470388435,
+          "confidence": 0.95,
+          "bootstrap_samples": 20000,
+          "simultaneous": true,
+          "classification": "gain"
+        }
+      },
+      {
+        "seed": 20260903,
+        "source_sha256": "bf62592217bf701e41b95a07a80deb5e881e5691796256c6e7764b802d986776",
+        "standard_ms": 15.982367142041523,
+        "quarter_ms": 15.687572010358174,
+        "paired": {
+          "n": 120,
+          "estimate": 0.9815555722910018,
+          "ratio": 0.9815555722910018,
+          "ci": [
+            0.9812905769500867,
+            0.9818205676319175
+          ],
+          "ci_low": 0.9812905769500867,
+          "ci_high": 0.9818205676319175,
+          "confidence": 0.95,
+          "bootstrap_samples": 20000,
+          "simultaneous": true,
+          "classification": "gain"
+        }
+      },
+      {
+        "seed": 20260911,
+        "source_sha256": "2acc52be98e18de928afa11eb395e9052d44ce8cfa183bb21001ce121c61eecc",
+        "standard_ms": 16.692918078104654,
+        "quarter_ms": 16.413353617986044,
+        "paired": {
+          "n": 120,
+          "estimate": 0.9832557770470828,
+          "ratio": 0.9832557770470828,
+          "ci": [
+            0.9828342879442427,
+            0.9836772661499227
+          ],
+          "ci_low": 0.9828342879442427,
+          "ci_high": 0.9836772661499227,
+          "confidence": 0.95,
+          "bootstrap_samples": 20000,
+          "simultaneous": true,
+          "classification": "gain"
+        }
+      }
+    ],
+    "standard_ms": 16.692918078104654,
+    "quarter_ms": 16.413353617986044,
+    "lower_time_pct": 1.6770252280478903
+  },
+  {
+    "gpu": "B200",
+    "cell": "screen_full",
+    "model": {
+      "layers": 8,
+      "width": 1024,
+      "heads": 16,
+      "ffn": 2816,
+      "vocab": 8192,
+      "sequence": 512,
+      "batch": 2,
+      "block_count": 16,
+      "mode": "full",
+      "variant": "sliced",
+      "source_layout": "list"
+    },
+    "rounds": 40,
+    "seeds": [
+      {
+        "seed": 20260827,
+        "source_sha256": "72a53b17ce18367af1b0d6d6a5f0400d7dd84eb83906c0904651e04f2f879429",
+        "standard_ms": 3.809364801645279,
+        "quarter_ms": 3.7319320142269135,
+        "paired": {
+          "n": 40,
+          "estimate": 0.9796900421629186,
+          "ratio": 0.9796900421629186,
+          "ci": [
+            0.9781538570115694,
+            0.9812262273142675
+          ],
+          "ci_low": 0.9781538570115694,
+          "ci_high": 0.9812262273142675,
+          "confidence": 0.95,
+          "bootstrap_samples": 20000,
+          "simultaneous": true,
+          "classification": "gain"
+        }
+      }
+    ],
+    "standard_ms": 3.809364801645279,
+    "quarter_ms": 3.7319320142269135,
+    "lower_time_pct": 2.030995783708145
+  },
+  {
+    "gpu": "B200",
+    "cell": "screen_block_1536_s9",
+    "model": {
+      "layers": 8,
+      "width": 1536,
+      "heads": 24,
+      "ffn": 4224,
+      "vocab": 8192,
+      "sequence": 512,
+      "batch": 2,
+      "block_count": 8,
+      "mode": "block",
+      "variant": "sliced",
+      "source_layout": "list"
+    },
+    "rounds": 40,
+    "seeds": [
+      {
+        "seed": 20260827,
+        "source_sha256": "379fd4a7b2ce74a9a05f4f14b8f61d48c5b1d28da1f3d597643e100c6b4024b4",
+        "standard_ms": 5.70124477148056,
+        "quarter_ms": 5.576524782180786,
+        "paired": {
+          "n": 40,
+          "estimate": 0.9781241594090607,
+          "ratio": 0.9781241594090607,
+          "ci": [
+            0.9774548711451717,
+            0.9787934476729502
+          ],
+          "ci_low": 0.9774548711451717,
+          "ci_high": 0.9787934476729502,
+          "confidence": 0.95,
+          "bootstrap_samples": 20000,
+          "simultaneous": true,
+          "classification": "gain"
+        }
+      }
+    ],
+    "standard_ms": 5.70124477148056,
+    "quarter_ms": 5.576524782180786,
+    "lower_time_pct": 2.1875840590939277
+  },
+  {
+    "gpu": "B200",
+    "cell": "screen_block_1536_s3",
+    "model": {
+      "layers": 8,
+      "width": 1536,
+      "heads": 24,
+      "ffn": 4224,
+      "vocab": 8192,
+      "sequence": 512,
+      "batch": 2,
+      "block_count": 2,
+      "mode": "block",
+      "variant": "sliced",
+      "source_layout": "list"
+    },
+    "rounds": 40,
+    "seeds": [
+      {
+        "seed": 20260827,
+        "source_sha256": "9413a8e718fbb9adc5bcb57405f20256951c827ec6ba62b7cca34f5ab64650d8",
+        "standard_ms": 5.566040778160096,
+        "quarter_ms": 5.3983160018920895,
+        "paired": {
+          "n": 40,
+          "estimate": 0.9698646210334368,
+          "ratio": 0.9698646210334368,
+          "ci": [
+            0.9659544000068094,
+            0.9737748420600647
+          ],
+          "ci_low": 0.9659544000068094,
+          "ci_high": 0.9737748420600647,
+          "confidence": 0.95,
+          "bootstrap_samples": 20000,
+          "simultaneous": true,
+          "classification": "gain"
+        }
+      }
+    ],
+    "standard_ms": 5.566040778160096,
+    "quarter_ms": 5.3983160018920895,
+    "lower_time_pct": 3.0135378966563153
+  },
+  {
+    "gpu": "B200",
+    "cell": "screen_block_2048_s9",
+    "model": {
+      "layers": 8,
+      "width": 2048,
+      "heads": 32,
+      "ffn": 5632,
+      "vocab": 8192,
+      "sequence": 512,
+      "batch": 2,
+      "block_count": 8,
+      "mode": "block",
+      "variant": "sliced",
+      "source_layout": "list"
+    },
+    "rounds": 40,
+    "seeds": [
+      {
+        "seed": 20260827,
+        "source_sha256": "9e5c7027d25c628609a507f12bc3becdb625f8c4052d347f18bf31704df38bd1",
+        "standard_ms": 8.071904850006103,
+        "quarter_ms": 7.973764002323151,
+        "paired": {
+          "n": 40,
+          "estimate": 0.9878468605442645,
+          "ratio": 0.9878468605442645,
+          "ci": [
+            0.987177473325511,
+            0.9885162477630185
+          ],
+          "ci_low": 0.987177473325511,
+          "ci_high": 0.9885162477630185,
+          "confidence": 0.95,
+          "bootstrap_samples": 20000,
+          "simultaneous": true,
+          "classification": "gain"
+        }
+      }
+    ],
+    "standard_ms": 8.071904850006103,
+    "quarter_ms": 7.973764002323151,
+    "lower_time_pct": 1.2153139455735484
+  }
+]
