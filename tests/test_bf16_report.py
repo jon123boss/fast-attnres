@@ -9,13 +9,15 @@ import pytest
 from benchmarks import bf16_report
 
 
-def test_final_sweep_local_identities_match_current_sources():
+def test_final_sweep_local_identities_match_current_sources(final_measured_source):
     import hashlib
     from benchmarks.source_identity import package_digest
 
     root = Path(__file__).resolve().parents[1]
+    from scripts.verify_final_release import verify_runtime
+    verify_runtime(root / "src/attnres", final_measured_source / "src/attnres")
     contract = json.loads((root / "configs/bf16_final_sweep.json").read_text())
-    assert contract["candidate_package_sha256"] == package_digest(root / "src/attnres")
+    assert contract["candidate_package_sha256"] == package_digest(final_measured_source / "src/attnres")
     for name, expected in contract["identities"].items():
         assert expected == hashlib.sha256((root / name).read_bytes()).hexdigest(), name
 

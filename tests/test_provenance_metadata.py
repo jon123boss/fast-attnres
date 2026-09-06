@@ -18,7 +18,7 @@ def test_citation_file_has_verified_public_identity():
     assert "title: Fast Attention Residuals" in citation
     assert "type: software" in citation
     assert "license: MIT" in citation
-    assert "version: 1.0.0" in citation
+    assert "version: 2.0.0" in citation
     assert "family-names: Su" in citation
     assert "given-names: Jonathan" in citation
     assert "2607.09694" in citation
@@ -27,7 +27,7 @@ def test_citation_file_has_verified_public_identity():
     assert "orcid:" not in citation
 
 
-def test_provenance_covers_kernel_and_license_identities(historical_release_root):
+def test_provenance_covers_kernel_and_license_identities(historical_release_root, final_measured_source):
     provenance = (ROOT / "PROVENANCE.md").read_text(encoding="utf-8")
     campaign = json.loads(
         (ROOT / "results/compiled_step/campaign_manifest.json").read_text(encoding="utf-8")
@@ -57,8 +57,10 @@ def test_provenance_covers_kernel_and_license_identities(historical_release_root
     assert "v1.0.0/results/compiled_step" in provenance
     assert "5e02dd3a7651f5f2797eb8b12bbec401826031e1" in provenance
     from benchmarks.source_identity import package_digest
+    from scripts.verify_final_release import verify_runtime
+    verify_runtime(ROOT / "src/attnres", final_measured_source / "src/attnres")
     final = json.loads((ROOT / "configs/bf16_final_sweep.json").read_text())
-    assert final["candidate_package_sha256"] == package_digest(ROOT / "src/attnres")
+    assert final["candidate_package_sha256"] == package_digest(final_measured_source / "src/attnres")
     assert "configs/bf16_final_sweep.json" in provenance
     frozen = json.loads((ROOT / "validation/frozen.json").read_text())
     for name in historical_runtime_hashes:
@@ -67,7 +69,7 @@ def test_provenance_covers_kernel_and_license_identities(historical_release_root
     for path, digest in current_runtime_hashes.items():
         assert _sha256(historical_release_root / path) == digest
     assert "Historical evidence" in provenance
-    assert "not been merged or released" in provenance
+    assert "allowing" in provenance and "`__version__` literal" in provenance
     assert _sha256(ROOT / "LICENSE") == (
         "1f373b38f897df1fffb9e5747f44b1a1f3249fffc7da687c96ee6f46a251901d"
     )

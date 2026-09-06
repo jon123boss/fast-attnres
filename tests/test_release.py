@@ -432,11 +432,9 @@ def test_release_workflow_is_pinned_protected_and_least_privilege() -> None:
     assert "python scripts/build_release.py" in workflow
     assert 'SOURCE_DATE_EPOCH="$epoch"' in workflow
     assert "validation/frozen.json" in workflow
-    assert "results/compiled_step" in workflow
-    assert "--campaign-manifest results/compiled_step/campaign_manifest.json" in workflow
-    assert "--performance-source \"$PERFORMANCE_SOURCE_DIR\"" in workflow
-    assert "git bundle verify" in workflow
-    assert "git clone --no-local" in workflow
+    assert "--evidence-dir results/final_sweep" in workflow
+    assert "release-audit.json" in workflow
+    assert "--skip-evidence-audit" not in workflow
     assert "git fetch --no-tags origin" not in workflow
     assert "fetch-depth: 1" in workflow
     assert "subject-path: ${{ runner.temp }}/fast-attnres-release/*" in workflow

@@ -14,7 +14,7 @@ from attnres.modules import LearnedQuery as ModuleLearnedQuery
 def test_root_exports_learned_query_and_version_without_shadowing_function():
     assert LearnedQuery is ModuleLearnedQuery
     assert package.LearnedQuery is LearnedQuery
-    assert __version__ == "1.0.0"
+    assert __version__ == "2.0.0"
     assert package.__version__ == __version__
     assert callable(attnres)
     assert attnres is package.attnres
@@ -59,7 +59,7 @@ def test_info_module_runs_without_triton_on_cpu():
     )
 
     assert result.returncode == 0, result.stdout + "\n" + result.stderr
-    assert "fast-attnres 1.0.0" in result.stdout
+    assert "fast-attnres 2.0.0" in result.stdout
     assert "torch:" in result.stdout
     assert "cuda available:" in result.stdout
     assert "triton available:" in result.stdout

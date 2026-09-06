@@ -1,93 +1,55 @@
-# Release artifacts
+# Releasing Fast-AttnRes
 
-This page describes the v1.0.0 release workflow and its historical evidence.
-For the current CUDA BF16 benchmark refresh, see
-[benchmark results](benchmark_results.md). The workflow below retains its
-historical evidence requirements; new measurements must be connected to the
-release checks before a new release can claim them.
+Version 2.0.0 ships the CUDA BF16 operator and the final H100/B200 sweep.
+Version 1's CPU/FP32 execution and exported reference are removed. The
+[original release procedure](https://github.com/jon123boss/fast-attnres/blob/v1.0.0/docs/release.md)
+remains available with its historical evidence.
 
-The release workflow builds four assets from the tagged source tree:
+## Build and verify
 
-* the installable wheel;
-* the source distribution;
-* a standalone evidence archive; and
-* `SHA256SUMS`, containing the SHA256 digest of the other three files.
-
-The wheel and source distribution are produced through the PEP 517 backend.
-The builder then canonicalizes ZIP and tar/gzip ordering, timestamps, owner
-metadata, permissions, and compression. Set `SOURCE_DATE_EPOCH` to the commit
-timestamp (the GitHub workflow does this) to make repeated builds of the same
-tree byte-identical. The default is epoch zero, which is also deterministic.
-
-The installable artifact's historical evidence bundle is the six-report Full
-compiled-step campaign under `results/compiled_step`. It preserves its compact campaign
-manifest, raw reports, audited sidecars, hardware/vendor attestations, the
-exact reproduction wrapper and per-seed configs, and the projection JSON
-freshly recomputed from all six reports. The later 24-layer headline is a
-separate historical campaign and is not copied into this archive.
-The `MANIFEST.in` `prune results` rule keeps this evidence out of both
-installable package formats.
-No results tree is embedded in the wheel or source distribution.
-
-The historical GitHub adoption screen is repository-hosted under
-`results/adoption/compiled_step_screen`; its chart, table, CSV, raw reports,
-and manifest are independently hash-bound. It is
-intentionally excluded from installable packages to avoid shipping benchmark
-reports to library users. It is distinct from the historical standalone
-evidence archive produced by `scripts/build_release.py`.
-
-The bundle measures its own pinned pre-autotune kernel hashes. It must not be
-used to claim performance for a release whose current kernel hashes differ;
-such a release needs a new sealed campaign. The old raw reports and manifest
-remain byte-for-byte historical evidence.
-
-## Local build
-
-From the repository root:
+From a clean release checkout, install the development dependencies and run:
 
 ```bash
-SOURCE_DATE_EPOCH=0 PYTHONPATH=src:. python scripts/build_release.py \
-  --performance-source /path/to/clean/81dffbf-checkout
+python -m pip install -e ".[dev]" "matplotlib==3.8.0"
+python -m pytest -m "not cuda" -q
+python scripts/verify_final_release.py --work /tmp/fast-attnres-release-audit
+SOURCE_DATE_EPOCH="$(git show -s --format=%ct HEAD)" \
+  python scripts/build_release.py --output-dir dist/release
+python -m twine check dist/release/*.whl dist/release/fast_attnres-2.0.0.tar.gz
+(cd dist/release && shasum -a 256 -c SHA256SUMS)
 ```
 
-Use `--output-dir` and `--evidence-dir` to select different output and
-evidence locations. Published builds require `results/compiled_step`, its
-compact `campaign_manifest.json`, all six raw/audit/attestation triplets, and a
-clean checkout of measured commit `81dffbfeb0f84470513e846e3df8080e8ffb563d`.
-`--skip-evidence-audit` is available only for a local packaging smoke test and
-must not be used for a published release.
+The auditor checks the final archive and every member hash, reconstructs all
+14 admitted timing reports and the original failures, reproduces the audit and
+both chart projections, and compares every runtime source file with the final
+measured snapshot. Only the package `__version__` literal may differ. This is
+explicit metadata equivalence, not a new GPU measurement. All historical source
+manifests and the documented normalization-rounding exceptions remain intact.
 
-Verify an asset set with:
+The deterministic builder produces exactly four assets:
 
-```bash
-cd dist/release
-sha256sum -c SHA256SUMS
-```
+- `fast_attnres-2.0.0-py3-none-any.whl`: runtime package.
+- `fast_attnres-2.0.0.tar.gz`: source distribution.
+- `fast-attnres-2.0.0-evidence.tar.gz`: the final evidence directory, immutable
+  raw source/report bundle, release audit, attribution and reproduction guidance.
+- `SHA256SUMS`: hashes of those three payloads.
 
-## Tag workflow
+The large evidence bundle stays outside the installable distributions. README
+images and documentation links use the release tag and render on PyPI as well
+as GitHub. Compare two builds with the same source and `SOURCE_DATE_EPOCH` to
+check reproducibility. `--skip-evidence-audit` is for local packaging diagnostics
+only and must never be used for a published release.
 
-Tags matching `v*` invoke `.github/workflows/release.yml`. The tag must be
-protected and must equal `v` followed by the version in `pyproject.toml`.
-Before building, the workflow verifies every file in `validation/frozen.json`,
-audits the archived 24-layer H100/B200 campaign against the exact production
-kernel bytes in the tagged checkout,
-reconstructs a clean checkout of the exact measured source commit from the
-sealed repository bundle, and checks the compact compiled-step manifest, all
-six reports and attestations, and the deterministic historical projection. It
-then builds and checks exactly the four
-documented assets, verifies `SHA256SUMS`, and uploads all four files to the
-GitHub release. GitHub build provenance attestations are created for all four
-files.
+## Publish
 
-Only the wheel and source distribution are copied into the PyPI upload
-directory. The final publish step uses PyPI Trusted Publishing through the
-`pypi` GitHub environment and never sends the evidence archive or checksum
-file to PyPI. The workflow's write-capable GitHub token is limited to the
-GitHub release job; build and attestation jobs retain read-only contents
-access.
+After the exact release commit passes CI on `main`, push its matching protected
+`v2.0.0` tag. The release workflow verifies the frozen contract and evidence,
+builds and checks the assets, and creates build-provenance attestations. Only
+the wheel and source distribution are sent to PyPI through the existing `pypi`
+environment and OIDC trusted publisher. All four assets are attached to the
+GitHub release. Tag protection and job-scoped permissions remain required.
 
-Repository settings must provide a protected `v*` tag rule. Availability of
-tag protection can depend on the GitHub plan, including private repositories.
-The `pypi` environment must exist and its Trusted Publisher configuration
-must match this repository, workflow, and environment; otherwise the OIDC
-publish step intentionally fails closed.
+Verify the GitHub asset checksums, PyPI version and distribution hashes, then
+install the published wheel in an isolated location and check package metadata,
+exports and CUDA-only input validation. Do not overwrite an existing published
+version; fix any release issue in a new version.

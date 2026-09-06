@@ -25,3 +25,11 @@ def historical_release_root(tmp_path_factory):
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(data)
     return root
+
+
+@pytest.fixture(scope="session")
+def final_measured_source(tmp_path_factory):
+    from scripts.verify_final_release import extract_evidence
+    root = Path(__file__).resolve().parents[1]
+    evidence = extract_evidence(root, tmp_path_factory.mktemp("final-evidence"))
+    return evidence / "sources/final78/runner"

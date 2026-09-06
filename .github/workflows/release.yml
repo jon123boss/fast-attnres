@@ -34,7 +34,8 @@ jobs:
       - name: Install release tooling
         run: |
           python -m pip install --upgrade pip
-          python -m pip install "setuptools>=68" wheel "build>=1" "twine>=5" "numpy>=1.24,<3"
+          python -m pip install "setuptools>=68" wheel "build>=1" "twine>=5" "numpy>=1.24,<3" "matplotlib==3.8.0"
+          python -m pip install --index-url https://download.pytorch.org/whl/cpu torch==2.9.0
       - name: Check tag matches project version
         env:
           RELEASE_TAG: ${{ github.ref_name }}
@@ -74,45 +75,6 @@ jobs:
               raise SystemExit("frozen release contract mismatch:\n" + "\n".join(mismatches))
           print(f"verified {len(manifest)} frozen files")
           PY
-      - name: Audit current shipped-kernel performance evidence
-        env:
-          PYTHONDONTWRITEBYTECODE: "1"
-          PYTHONPATH: src:.
-        run: |
-          python benchmarks/audit_current_24l.py \
-            --evidence-dir results/current_24l \
-            --repo . \
-            --output "${RUNNER_TEMP}/current-24l-audit.json"
-      - name: Reconstruct exact compiled-step performance source checkout
-        env:
-          PYTHONDONTWRITEBYTECODE: "1"
-        run: |
-          set -euo pipefail
-          performance_commit="$(python - <<'PY'
-          import json
-          import re
-          from pathlib import Path
-
-          manifest = json.loads(
-              (Path("results") / "compiled_step" / "campaign_manifest.json").read_text(encoding="utf-8")
-          )
-          revision = manifest.get("repo_head") or manifest.get("repo_base_revision")
-          if not isinstance(revision, str) or re.fullmatch(r"[0-9a-f]{40}", revision) is None:
-              raise SystemExit(f"invalid compiled-step performance source revision: {revision!r}")
-          print(revision)
-          PY
-          )"
-          bundle="validation/performance_sources/compiled-step-${performance_commit}.bundle"
-          test -f "$bundle"
-          echo "09547604f0a9630ed8769cf55479f255754dce2431d325ddcf250af8bafdde17  $bundle" | sha256sum -c -
-          git bundle verify "$bundle"
-          performance_source="${RUNNER_TEMP}/fast-attnres-performance-source"
-          git clone --no-local "$bundle" "$performance_source"
-          actual_commit="$(git -C "$performance_source" rev-parse HEAD)"
-          test "$actual_commit" = "$performance_commit"
-          test -z "$(git -C "$performance_source" status --porcelain --untracked-files=all)"
-          echo "PERFORMANCE_SOURCE_DIR=$performance_source" >> "$GITHUB_ENV"
-          echo "auditing compiled-step evidence against $performance_commit"
       - name: Build deterministic release assets
         env:
           PYTHONDONTWRITEBYTECODE: "1"
@@ -124,9 +86,7 @@ jobs:
           epoch="$(git show -s --format=%ct "$GITHUB_SHA")"
           SOURCE_DATE_EPOCH="$epoch" python scripts/build_release.py \
             --output-dir "$release_dir" \
-            --evidence-dir results/compiled_step \
-            --campaign-manifest results/compiled_step/campaign_manifest.json \
-            --performance-source "$PERFORMANCE_SOURCE_DIR"
+            --evidence-dir results/final_sweep
           RELEASE_DIR="$release_dir" python - <<'PY'
           import hashlib
           import os
@@ -172,21 +132,14 @@ jobs:
           evidence = next(Path(os.environ["RELEASE_DIR"]).glob("*-evidence.tar.gz"))
           with tarfile.open(evidence, mode="r:gz") as archive:
               names = {member.name for member in archive.getmembers()}
-          required_files = {"results/compiled_step/campaign_manifest.json"}
-          required_prefixes = {
-              "results/compiled_step/raw/",
-              "results/compiled_step/audits/",
-              "results/compiled_step/attestations/",
-          }
-          missing = sorted(
-              (required_files - names)
-              | {prefix for prefix in required_prefixes if not any(name.startswith(prefix) for name in names)}
-          )
-          if missing:
-              raise SystemExit(f"compiled-step evidence archive is incomplete: missing {missing}")
-          if any(name.startswith("results/") and not name.startswith("results/compiled_step") for name in names):
-              raise SystemExit("non compiled-step timing evidence entered the release archive")
-          print("verified compiled-step evidence archive")
+          required_files = {"results/final_sweep/manifest.json",
+                            "results/final_sweep/evidence.tar.gz",
+                            "results/final_sweep/audit.json", "release-audit.json"}
+          if not required_files <= names:
+              raise SystemExit(f"final sweep evidence archive is incomplete: {required_files - names}")
+          if any(name.startswith("results/") and not name.startswith("results/final_sweep/") for name in names):
+              raise SystemExit("unrelated timing evidence entered the release archive")
+          print("verified final sweep evidence archive")
           PY
           # Twine must inspect only the two installable distributions. The
           # evidence archive deliberately also ends in .tar.gz.

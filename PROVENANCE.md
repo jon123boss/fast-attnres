@@ -1,8 +1,10 @@
 # Provenance
 
-This branch develops the CUDA BF16 operator in the existing draft PR. It has
-not been merged or released. Measurements apply to the exact source bytes
-recorded in each report, rather than to a branch name or package version.
+Version 2.0.0 contains the CUDA BF16 operator merged in PR #1. Measurements
+apply to the exact source bytes recorded in each report. The release auditor
+compares every runtime source file with the final measured snapshot, allowing
+only the `__version__` literal to change from 1.0.0 to 2.0.0. Historical source
+manifests are preserved; a release version is not a new GPU measurement.
 
 ## Source identity
 

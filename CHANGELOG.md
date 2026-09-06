@@ -3,7 +3,7 @@
 User-visible changes to `fast-attnres`. Performance results remain tied to
 their raw artifacts, source commits, and measurement conditions.
 
-## [Unreleased]
+## [2.0.0] - 2026-09-06
 
 - Narrow the public operator to CUDA BF16 values, queries, and first-order
   gradients, with FP32 internal math and an independent BF16 validation reference.
@@ -11,7 +11,13 @@ their raw artifacts, source commits, and measurement conditions.
 - Reduce unused auxiliary-gradient work and coalesce transposed upstream
   gradients; tune source kernels with CUDA Graph timing on each architecture.
 - Preserve benchmark provenance and refresh the existing H100/B200 headline
-  and competitor workloads at `R=D` and `R=D/4`. Measurements are pending.
+  and competitor workloads at `R=D` and `R=D/4`. The headline step is 5.95%
+  faster on H100 SXM and 22.74% faster on B200 than native FLA checkpoint 1;
+  H100 D2048 is 0.28% slower, within the declared 1% parity band.
+- Publish the complete final evidence, including original failures and explicit
+  initial-logit normalization-rounding exceptions. Other training gates pass.
+- Keep package runtime bytes identical to the final measured source except for
+  the version literal; audit that relationship during release builds.
 - Clarify the API and benchmark documentation, retaining earlier results as
   historical evidence.
 

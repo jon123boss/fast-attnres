@@ -2,9 +2,10 @@
 """Build reproducible release artifacts for ``fast-attnres``.
 
 The installable wheel intentionally contains runtime code only.  The audited
-compiled-step reports live in ``results/compiled_step`` and are shipped as a
+final-sweep reports live in ``results/final_sweep`` and are shipped as a
 separately named evidence archive, together with the source distribution and a
-SHA256 manifest.  No other results tree is accepted as release evidence.
+SHA256 manifest. Historical compiled-step evidence remains available for
+reproducing v1 releases.
 All archive metadata is normalized after the PEP 517 build backend runs so the
 same source tree and ``SOURCE_DATE_EPOCH`` produce byte-identical files.
 """
@@ -878,28 +879,30 @@ def build_release(
 ) -> ReleaseArtifacts:
     """Build and return the complete release asset set.
 
-    The default CLI evidence directory is the compiled-step campaign.  When
+    The default CLI evidence directory is the final H100/B200 sweep.  When
     that directory is selected, evidence verification is mandatory unless the
     caller explicitly opts into a local smoke build with
-    ``verify_evidence=False``.  Other results trees are rejected.
+    ``verify_evidence=False``. Only the final sweep and the historical
+    compiled-step campaign are accepted.
     """
 
     root = Path(root).resolve()
     output_dir = Path(output_dir).resolve()
     evidence_dir = _absolute_leaf(evidence_dir)
-    expected_evidence_dir = root / "results" / COMPILED_STEP_EVIDENCE_DIRNAME
+    final = evidence_dir.name == "final_sweep"
+    expected_evidence_dir = root / "results" / ("final_sweep" if final else COMPILED_STEP_EVIDENCE_DIRNAME)
     if campaign_manifest is not None:
         if manifest is not None:
             raise ReleaseError("pass either manifest or campaign_manifest, not both")
         manifest = campaign_manifest
-    authoritative = evidence_dir.name == COMPILED_STEP_EVIDENCE_DIRNAME
+    authoritative = final or evidence_dir.name == COMPILED_STEP_EVIDENCE_DIRNAME
     if evidence_dir.name == "release" and evidence_dir.parent.name == "results":
         raise ReleaseError("release evidence must come from results/compiled_step")
     if verify_evidence is None:
         verify_evidence = authoritative
     if authoritative and verify_evidence and evidence_dir != expected_evidence_dir:
         raise ReleaseError(
-            "authoritative compiled-step evidence must be ROOT/results/compiled_step"
+            "authoritative evidence must be ROOT/results/compiled_step or ROOT/results/final_sweep"
         )
     if verify_evidence and not authoritative:
         raise ReleaseError(
@@ -907,7 +910,17 @@ def build_release(
         )
     if manifest is not None and not authoritative:
         raise ReleaseError("campaign manifest requires the results/compiled_step evidence directory")
-    if verify_evidence:
+    if verify_evidence and final:
+        try:
+            from scripts.verify_final_release import verify_release
+        except ModuleNotFoundError:
+            from verify_final_release import verify_release
+        with tempfile.TemporaryDirectory(prefix="final-release-audit-") as work:
+            try:
+                final_audit = verify_release(root, Path(work))
+            except (ValueError, KeyError) as exc:
+                raise ReleaseError(str(exc)) from exc
+    elif verify_evidence:
         performance_root = root if performance_source is None else performance_source
         audit_compiled_step_evidence(
             evidence_dir,
@@ -952,8 +965,17 @@ def build_release(
             "configs/compiled_step_campaign.json",
             "configs/compiled_step_campaign_manifest.json",
         )
+        if final:
+            evidence_support_files = (
+                "LICENSE", "NOTICE", "PROVENANCE.md", "docs/release.md",
+                "docs/benchmark_results.md", "scripts/verify_final_release.py",
+            )
         extra_files = [(root / relative, relative) for relative in evidence_support_files]
-        archive_prefix = COMPILED_STEP_ARCHIVE_PREFIX
+        if final and verify_evidence:
+            audit_path = staging / "release-audit.json"
+            audit_path.write_text(json.dumps(final_audit, indent=2) + "\n")
+            extra_files.append((audit_path, "release-audit.json"))
+        archive_prefix = "results/final_sweep" if final else COMPILED_STEP_ARCHIVE_PREFIX
         create_evidence_archive(
             evidence_dir,
             evidence,
@@ -1004,7 +1026,7 @@ def _parser() -> argparse.ArgumentParser:
         "--evidence-dir",
         type=Path,
         default=None,
-        help="compiled-step evidence directory (default: ROOT/results/compiled_step)",
+        help="evidence directory (default: ROOT/results/final_sweep)",
     )
     parser.add_argument(
         "--manifest",
@@ -1051,7 +1073,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = parser.parse_args(argv)
     root = args.root.resolve()
     output_dir = (args.output_dir or root / "dist" / "release").resolve()
-    evidence_dir = _absolute_leaf(args.evidence_dir or root / "results" / "compiled_step")
+    evidence_dir = _absolute_leaf(args.evidence_dir or root / "results" / "final_sweep")
     selected_manifest = args.campaign_manifest or args.manifest
     if args.campaign_manifest is not None and args.manifest is not None:
         parser.error("pass either --manifest or --campaign-manifest, not both")

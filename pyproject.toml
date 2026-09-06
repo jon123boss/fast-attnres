@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "fast-attnres"
-version = "1.0.0"
+version = "2.0.0"
 description = "CUDA BF16 PyTorch operators for standard and sliced low-rank Attention Residuals"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -28,7 +28,7 @@ Homepage = "https://github.com/jon123boss/fast-attnres"
 Repository = "https://github.com/jon123boss/fast-attnres"
 Issues = "https://github.com/jon123boss/fast-attnres/issues"
 Documentation = "https://github.com/jon123boss/fast-attnres#readme"
-Citation = "https://github.com/jon123boss/fast-attnres/blob/v1.0.0/CITATION.cff"
+Citation = "https://github.com/jon123boss/fast-attnres/blob/v2.0.0/CITATION.cff"
 Paper = "https://arxiv.org/abs/2603.15031"
 "LR-AttnRes Paper" = "https://arxiv.org/abs/2607.09694"
 
