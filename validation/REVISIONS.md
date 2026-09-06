@@ -1,5 +1,12 @@
 # Evaluator revisions
 
+2026-09-06: Moved progress logging and its JSON dependency into importable
+module scope. The cache-preserving worker imports the training evaluator, so
+an import previously guarded by __main__ was unavailable. Control62 retained
+both NameError failures before training; no memory-fit conclusion follows.
+A CPU regression now executes the imported progress function. Numerical
+operations, phase boundaries, workload and acceptance gates are unchanged.
+
 2026-09-06: Updated the frozen Torch control source identity after adding the
 compiler export helper. The launcher caught the stale identity before GPU
 admission. A CPU check now verifies all three locally available primary source

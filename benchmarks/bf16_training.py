@@ -6,6 +6,7 @@ from dataclasses import asdict
 import gc
 import importlib
 import io
+import json
 import sys
 import time
 import traceback
@@ -25,6 +26,11 @@ _QUALIFICATION_ATOL = 0.05
 _DEFAULT_DYNAMO_CACHE_SIZE_LIMIT = 64
 _DEFAULT_DYNAMO_ACCUMULATED_CACHE_SIZE_LIMIT = 4096
 _SAVE_RESUME_AUTO = "auto"
+
+
+def _progress(backend, phase, started):
+    print(json.dumps({"backend": backend, "phase": phase,
+                      "elapsed_s": time.monotonic() - started}), flush=True)
 
 
 def _validate_runtime(config):
@@ -646,10 +652,6 @@ def training_case(case, backends, config, seed, checkpoint, runtime=None):
     for name, op in selected_backends:
         started = time.monotonic()
 
-        def progress(phase):
-            print(json.dumps({"backend": name, "phase": phase,
-                              "elapsed_s": time.monotonic() - started}), flush=True)
-
         model = optimizers = compiled = compiled_loss = step = None
         gradients = None
         qualification = None
@@ -718,9 +720,9 @@ def training_case(case, backends, config, seed, checkpoint, runtime=None):
 
             # First compare the complete pre-update loss/gradient result.
             phase = "qualification"
-            progress(phase)
+            _progress(name, phase, started)
             loss = step(0, update=False)
-            progress("gradient_snapshot")
+            _progress(name, "gradient_snapshot", started)
             loss_cpu = loss.detach().cpu()
             gradients = {
                 parameter_name: parameter.grad.detach().cpu().clone()
@@ -753,13 +755,13 @@ def training_case(case, backends, config, seed, checkpoint, runtime=None):
             # Restore the pre-update model/optimizer state before warmup so the
             # timed training geometry retains its original update count.
             phase = "first_optimizer_update"
-            progress(phase)
+            _progress(name, phase, started)
             pre_update_optimizer = _cpu_optimizer_state(optimizers)
             step(0, update=True)
             torch.cuda.synchronize()
             model_update = _cpu_state(model)
             optimizer_update = _cpu_optimizer_state(optimizers)
-            progress("compare_first_update")
+            _progress(name, "compare_first_update", started)
             if baseline_model_update is None:
                 first_update = {
                     "status": "baseline",
@@ -799,7 +801,7 @@ def training_case(case, backends, config, seed, checkpoint, runtime=None):
             torch.cuda.synchronize()
 
             phase = "warmup"
-            progress(phase)
+            _progress(name, phase, started)
             for iteration in range(warmups - deferred_warmup):
                 step(iteration)
             torch.cuda.synchronize()
@@ -826,7 +828,7 @@ def training_case(case, backends, config, seed, checkpoint, runtime=None):
                 baseline_model_update = model_update
                 baseline_optimizer_update = optimizer_update
             _offload_arm(arms[name])
-            progress("qualified")
+            _progress(name, "qualified", started)
             committed = True
         except Exception as exc:
             if name in arms:
@@ -1048,7 +1050,6 @@ def run_training(config, checkpoint):
 
 if __name__ == "__main__":
     import argparse
-    import json
     from pathlib import Path
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config", type=Path, required=True)

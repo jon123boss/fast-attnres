@@ -6,6 +6,18 @@ import torch
 from benchmarks import bf16_training
 
 
+def test_training_progress_when_imported_by_worker(capsys):
+    import json
+    import time
+
+    started = time.monotonic()
+    bf16_training._progress("torch_compile", "qualification", started)
+    report = json.loads(capsys.readouterr().out)
+    assert report["backend"] == "torch_compile"
+    assert report["phase"] == "qualification"
+    assert 0 <= report["elapsed_s"] <= time.monotonic() - started
+
+
 def test_memory_record_separates_incremental_and_global_totals():
     result = bf16_training._memory_record(
         100,

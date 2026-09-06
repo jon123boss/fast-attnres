@@ -86,7 +86,7 @@
     "hilda": "1bfc85d6460035d24c565f5fa3d8273de5de708111ff6fb41634353a475685a4",
     "optimizer": "5d5ba904e41829b416cb7a0718201a86d945b26b79ca1ca32dab331e2da6fcce",
     "torch_compile": "2a904b4bbf1d9cdb8b9b91d910b42b7ca71e5d1d48fd059345d567fe9467581b",
-    "training_fixture": "f11dd114cfc24d1408ee133ed4c13400992cd473c1a3b30952cded0723a60bec"
+    "training_fixture": "a882428c03ffa0264827e3832f895d641b7034d9755e61a734b7d09eef624c65"
   },
   "status": "frozen before final primary measurements",
   "operator_qualification": {
