@@ -48,6 +48,7 @@ intervals, and reproduction commands.
 Comparators are native FLA Triton checkpoint 1, Liger 0.8.2, and Catswe phase 1.
 Unsupported and failed arms remain labelled. Quarter-rank comparisons against
 standard FLA compare different routing equations.
+The D2048 results retain [disclosed normalization-rounding deviations](docs/benchmark_results.md).
 
 <!-- Final asset: ![H100 compiled BF16 training steps](results/final_sweep/compiled_step_sweep_h100.svg) -->
 
