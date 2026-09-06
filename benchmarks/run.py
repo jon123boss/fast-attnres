@@ -2759,6 +2759,9 @@ def _model_timings(
     model_comparators: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     progress = _model_progress_logger(config)
+    # Independent workloads must not consume each other's Dynamo specializations.
+    # Keep filesystem compilation caches; reset only before qualification/timing.
+    torch.compiler.reset()
     try:
         from .model import (
             CANONICAL_MAX_RANK_STATE_PROTOCOL,
