@@ -31,6 +31,11 @@ The implementation may use FP32 accumulators for RMS normalization, routing
 logits, softmax, and value/gradient reductions. That is internal arithmetic;
 it does not change the BF16 input, output, or gradient contract.
 
+FP32 arithmetic has a finite range: finite Python scalars can underflow or
+overflow when converted to FP32, and finite inputs can overflow intermediate
+products or the BF16 result. The operator does not clamp these values or
+guarantee finite results outside that arithmetic range.
+
 ## Implicit-tail equation
 
 For source `s`, let `v_s` be the full-width value and let `t_s` be its final
