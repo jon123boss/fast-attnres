@@ -17,6 +17,7 @@ from statistics import mean, median
 
 from . import plot_compiled_step_hero as hero
 from . import plot_compiled_step_sweep as sweep
+from .plot_rank_comparison import rank_comparisons, render_rank_comparison
 from .statistics import simultaneous_paired_ratio_bootstrap
 
 
@@ -304,6 +305,12 @@ def main():
     audit = {"schema": "attnres.final_sweep_audit.v1", "status": "passed", "records": records}
     (args.output / "audit.json").write_text(json.dumps(audit, indent=2) + "\n")
     sweep.write_table(sweep.table_rows(cells), args.output / "results.csv", args.output / "results.md")
+    rank_rows = []
+    for gpu in dict.fromkeys(r["gpu"] for r in records):
+        rows = rank_comparisons(records, read(args.source / "contract.json"), gpu)
+        rank_rows.extend(rows)
+        render_rank_comparison(rows, args.output, gpu)
+    (args.output / "rank_comparison.json").write_text(json.dumps(rank_rows, indent=2) + "\n")
     if args.h100 and args.b200:
         sweep.render_sweep([c for c in cells if c.phase == "screen"], args.output)
         projection = headline_projection(records, read(args.source / "contract.json"),
