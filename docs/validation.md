@@ -25,6 +25,9 @@ precision contract. It disables ambient autocast so its arithmetic is the same
 inside and outside compiled training checks. It rejects other input dtypes and
 is validation machinery, not a second public operator.
 
+The calculation preserves the normalize-then-dot order of the training
+reference on main (`ce0881dc`), with explicit BF16 boundaries for this release.
+
 ## Required correctness coverage
 
 The CUDA gate should exercise:
