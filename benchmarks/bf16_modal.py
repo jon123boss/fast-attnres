@@ -146,6 +146,9 @@ def _remote(job):
             checkpoint(report)
             return json.loads(json.dumps(report, default=str))
         if config.get("kind", "operator") == "operator":
+            os.environ.pop("ATTNRES_KERNEL_EXPORTS", None)
+            if config.get("compiler_exports", False):
+                os.environ["ATTNRES_KERNEL_EXPORTS"] = str(root / "compiler")
             return json.loads(json.dumps(run_operator(config, checkpoint), default=str))
         if config.get("kind") == "alias_diagnostic":
             from benchmarks.bf16_alias_diagnostic import run_diagnostic

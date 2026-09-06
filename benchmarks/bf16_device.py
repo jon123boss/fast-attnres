@@ -4,6 +4,7 @@ from __future__ import annotations
 import gc
 import hashlib
 import json
+import os
 from pathlib import Path
 import platform
 import sys
@@ -68,7 +69,16 @@ def _profile_operator(op, values, query, params, upstream):
             if config is not None:
                 launches[name] = {"kwargs": config.kwargs, "num_warps": config.num_warps,
                                   "num_stages": config.num_stages}
+    compiler = {}
+    if module is not None and (directory := os.environ.get("ATTNRES_KERNEL_EXPORTS")):
+        from benchmarks.bf16_kernel_export import export_selected
+        def call():
+            output = op(values, query)
+            torch.autograd.grad(output, params, upstream)
+        compiler = export_selected(module, call, directory)
+        torch.cuda.synchronize()
     return {"iterations": 5, "timing_eligible": False, "launches": launches,
+            "compiler": compiler,
             "events": [{"name": event.key, "count": event.count,
                         "self_cpu_us": event.self_cpu_time_total,
                         "self_cuda_us": event.self_device_time_total,
@@ -224,6 +234,11 @@ def run_operator(config, checkpoint):
     report = {"kind": "operator", "config": config, "runtime": actual,
               "identities": identities, "import_failures": import_failures,
               "results": [], "status": "running"}
+    if config.get("shared_backward"):
+        if config.get("scope") or config.get("primary_contract_sha256"):
+            raise ValueError("shared backward tuning is for attribution experiments only")
+        from benchmarks.bf16_kernel_export import share_identical_backward
+        report["shared_backward"] = share_identical_backward(backends, config["shared_backward"])
     checkpoint(report)
     for name in config.get("scalar_checks", []):
         from validation.softmax_checks import run_equal_logit_checks

@@ -1,5 +1,14 @@
 # Evaluator revisions
 
+2026-09-06: Added opt-in selected-kernel compiler exports after timing and profiling.
+The exporter observes one ordinary launch, restores its temporary hooks even on
+failure, and records the actual selected binary, IR, constants, registers and
+spills. It does not select launch configurations or change captured calls,
+qualification assertions, samples, seeds, or statistical thresholds. An additional
+experiment-only option shares the incumbent backward autotuner after exact AST
+comparison, making forward attribution use the same backward configuration.
+This option is rejected for scoped confirmation and primary training jobs.
+
 2026-09-06: The first equal-logit GPU regression stopped on a stale default-stream
 UnbindBackward node before operator timing. Construct the test's leaves and views
 on its capture stream as well as running warmup there. The stopped run remains
