@@ -310,8 +310,7 @@ def verify_primary(snapshot, config):
     contract = json.loads((snapshot / "runner/configs" / CONTRACT.name).read_text())
     if (config.get("primary_contract_sha256") != contract_digest(contract) or
         config["expected_identities"] != contract["identities"] or
-        config.get("cache_autotuning") is not contract["runtime"]["cache_autotuning"] or
-        config.get("resume_next_update", False) is not contract.get("resume_next_update", False)):
+        config.get("cache_autotuning") is not contract["runtime"]["cache_autotuning"]):
         raise ValueError("primary configuration differs from the frozen contract")
     actual = {name: package_digest(snapshot / path / "src/attnres")
               for name, path in config["sources"].items()}

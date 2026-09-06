@@ -1,5 +1,15 @@
 # Evaluator revisions
 
+2026-09-06: Per the user's kernel-only scope clarification, removed model
+serialization and bitwise resumed-next-update checks from the training harness
+and primary admission. They test trainer state outside this stateless operator.
+The new bf16_primary_v3.json retains accumulated/clipped gradients, first
+optimizer updates, compiled/graph execution, all numerical tolerances and
+performance requirements. The v1/v2 contracts and raw failures are preserved
+unchanged; no historical failed run is reclassified as a pass. Activation
+checkpoint recomputation coverage is retained. The production package and
+README are unchanged.
+
 2026-09-06: Training qualification now snapshots the actual clipping norm and
 clipped gradients. An explicit resume_next_update gate serializes model/buffers,
 optimizer/RNG state and input position, compares the next full update after

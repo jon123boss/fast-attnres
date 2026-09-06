@@ -131,11 +131,6 @@ def _contract_errors(report, result, required_rounds):
                 clipped.get("gradient_count") != 146 or not isinstance(norm, (int, float)) or
                 not np.isfinite(norm)):
                 errors.append(f"missing clipped-gradient qualification: {name}")
-            resume = qualification.get("resume_next_update", {})
-            if (config.get("resume_next_update") is not True or resume.get("status") != "passed" or
-                resume.get("fresh_optimizers") is not True or resume.get("next_input") != 1 or
-                any(resume.get(field, {}).get("max_abs") != 0 for field in ("loss", "state"))):
-                errors.append(f"missing resumed-next-update qualification: {name}")
         elif not arm.get("error"):
             errors.append(f"missing failure evidence: {name}")
     return errors

@@ -5,7 +5,6 @@ from collections.abc import Mapping
 from dataclasses import asdict
 import gc
 import importlib
-import io
 import json
 import sys
 import time
@@ -25,7 +24,6 @@ _QUALIFICATION_RTOL = 0.05
 _QUALIFICATION_ATOL = 0.05
 _DEFAULT_DYNAMO_CACHE_SIZE_LIMIT = 64
 _DEFAULT_DYNAMO_ACCUMULATED_CACHE_SIZE_LIMIT = 4096
-_SAVE_RESUME_AUTO = "auto"
 
 
 def _progress(backend, phase, started):
@@ -418,54 +416,6 @@ def _case_backend_items(case, backends):
     return selected, missing
 
 
-def _save_resume_smoke(model, optimizers):
-    """Round-trip model and optimizer state through the normal torch serializer."""
-
-    model_state = _cpu_state(model)
-    optimizer_state = _cpu_optimizer_state(optimizers)
-    stream = io.BytesIO()
-    torch.save({"model": model_state, "optimizers": optimizer_state}, stream)
-    stream.seek(0)
-    restored = torch.load(stream, map_location="cpu")
-    model.load_state_dict(restored["model"])
-    restored_optimizers = restored["optimizers"]
-    if len(restored_optimizers) != len(optimizers):
-        raise AssertionError("save/resume changed the optimizer count")
-    for optimizer, state in zip(optimizers, restored_optimizers):
-        optimizer.load_state_dict(state)
-
-    return {
-        "status": "passed",
-        "model_state": _compare_state_tree(
-            _cpu_state(model), model_state, path="model", strict=True
-        ),
-        "optimizer_state": _compare_state_tree(
-            _cpu_optimizer_state(optimizers), optimizer_state,
-            path="optimizers", strict=True
-        ),
-    }
-
-
-def _save_resume_enabled(case, config, model_config):
-    requested = case.get("save_resume_smoke", config.get("save_resume_smoke", _SAVE_RESUME_AUTO))
-    if requested is True:
-        return True
-    if requested is False:
-        return False
-    if requested != _SAVE_RESUME_AUTO:
-        raise ValueError("save_resume_smoke must be true, false, or 'auto'")
-    # The smoke exercises serialization without adding a second resident model.
-    # Keep it automatic for the tiny structural configurations used in local
-    # checks, while leaving the production geometry's timed path unchanged.
-    return (
-        model_config.layers <= 4
-        and model_config.width <= 256
-        and model_config.ffn <= 1024
-        and model_config.vocab <= 1024
-        and model_config.context <= 256
-    )
-
-
 def _rng_state(model):
     return {"cpu": torch.get_rng_state(),
             "cuda": torch.cuda.get_rng_state_all() if any(p.is_cuda for p in model.parameters()) else []}
@@ -475,43 +425,6 @@ def _restore_rng(state):
     torch.set_rng_state(state["cpu"])
     if state["cuda"]:
         torch.cuda.set_rng_state_all(state["cuda"])
-
-
-def _resume_next_update(model, optimizers, step, make_optimizers, next_input=1):
-    """Compare uninterrupted and restored updates with one resident model."""
-    checkpoint = {"model": _cpu_state(model), "optimizers": _cpu_optimizer_state(optimizers),
-                  "rng": _rng_state(model), "next_input": next_input}
-    stream = io.BytesIO()
-    torch.save(checkpoint, stream)
-    stream.seek(0)
-    restored = torch.load(stream, map_location="cpu")
-
-    def restore():
-        model.load_state_dict(restored["model"])
-        # The step closure retains this list, but none of the old optimizer
-        # instances or their unserialized attributes survive restoration.
-        optimizers.clear()
-        optimizers.extend(make_optimizers())
-        if len(optimizers) != len(restored["optimizers"]):
-            raise AssertionError("resume changed the optimizer count")
-        for optimizer, state in zip(optimizers, restored["optimizers"]):
-            optimizer.load_state_dict(state)
-            optimizer.zero_grad(set_to_none=True)
-        _restore_rng(restored["rng"])
-
-    try:
-        expected_loss = _cpu_clone(step(next_input))
-        expected = {"model": _cpu_state(model), "optimizers": _cpu_optimizer_state(optimizers),
-                    "rng": _rng_state(model)}
-        restore()
-        actual_loss = _cpu_clone(step(restored["next_input"]))
-        actual = {"model": _cpu_state(model), "optimizers": _cpu_optimizer_state(optimizers),
-                  "rng": _rng_state(model)}
-        return {"status": "passed", "next_input": next_input, "fresh_optimizers": True,
-                "loss": _compare_state_tree(actual_loss, expected_loss, path="resume.loss", strict=True),
-                "state": _compare_state_tree(actual, expected, path="resume.state", strict=True)}
-    finally:
-        restore()
 
 
 def _clipped_gradients(model):
@@ -533,7 +446,7 @@ def _failure_record(phase, exc, *, samples_ms=(), wall_ms=(), compile_warmup_s=N
             "ineligible" if type(exc).__name__ == "Ineligible"
             else "incorrect" if (
                 isinstance(exc, AssertionError)
-                and phase in {"qualification", "clipped_gradients", "first_optimizer_update", "resume_next_update"}
+                and phase in {"qualification", "clipped_gradients", "first_optimizer_update"}
             )
             else "unresolved"
         )
@@ -585,8 +498,6 @@ def _public_arm(arm, status):
                 "peak_allocated_bytes_global_total"
             ],
         })
-    if "save_resume" in arm:
-        record["save_resume"] = arm["save_resume"]
     return record
 
 
@@ -714,7 +625,6 @@ def training_case(case, backends, config, seed, checkpoint, runtime=None):
     warmups = config.get("warmups", 10)
     deferred_warmup = int(warmups >= 2)
 
-    smoke_enabled = _save_resume_enabled(case, config, model_config)
     for name, op in selected_backends:
         started = time.monotonic()
 
@@ -870,21 +780,6 @@ def training_case(case, backends, config, seed, checkpoint, runtime=None):
                 }
             qualification["first_update"] = first_update
 
-            if case.get("resume_next_update", config.get("resume_next_update", False)):
-                phase = "resume_next_update"
-                _progress(name, phase, started)
-                qualification["resume_next_update"] = _resume_next_update(
-                    model, optimizers, step, lambda: _optimizers(model, config))
-
-            phase = "save_resume"
-            if smoke_enabled:
-                save_resume = _save_resume_smoke(model, optimizers)
-            else:
-                save_resume = {
-                    "status": "skipped",
-                    "reason": "auto-disabled for production-sized configuration",
-                }
-
             model.load_state_dict(initial)
             optimizers.clear()
             optimizers.extend(_optimizers(model, config))
@@ -913,7 +808,6 @@ def training_case(case, backends, config, seed, checkpoint, runtime=None):
                 "optimizer": optimizer_label,
                 "compile_warmup_s": time.monotonic() - started,
                 "memory": memory,
-                "save_resume": save_resume,
                 "samples_ms": [],
                 "wall_ms": [],
             }

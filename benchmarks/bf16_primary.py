@@ -6,7 +6,7 @@ import hashlib
 import json
 from pathlib import Path
 
-CONTRACT = Path(__file__).resolve().parents[1] / "configs/bf16_primary_v2.json"
+CONTRACT = Path(__file__).resolve().parents[1] / "configs/bf16_primary_v3.json"
 
 FIXTURE_FILES = tuple("benchmarks/" + name for name in (
     "baseline.py", "bf16_training.py", "bf16_model.py", "bf16_competitors.py",
@@ -45,7 +45,6 @@ def configuration(contract, modes, ranks, seeds):
             "rounds": contract["rounds"], "warmups": contract["warmups"],
             "torch_baseline": True, "reuse_compiler_cache": True,
             "comparison_residency": contract.get("comparison_residency", "one_gpu_arm"),
-            "resume_next_update": contract.get("resume_next_update", False),
             "cache_autotuning": contract["runtime"]["cache_autotuning"],
             "expected_identities": contract["identities"],
             "primary_contract_sha256": contract_digest(contract)}

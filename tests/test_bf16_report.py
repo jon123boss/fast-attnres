@@ -388,8 +388,7 @@ def _primary_report(gpu, mode, rank, seed):
             for name in bf16_report.BACKENDS}
     report = _training_report(gpu, mode, rank, seed, arms)
     report["config"].update(seeds=[seed], rounds=120, warmups=10,
-                            optimizer_source="/frozen/optimizer", cache_autotuning=True,
-                            resume_next_update=True)
+                            optimizer_source="/frozen/optimizer", cache_autotuning=True)
     report["identities"].update({
         name: {"sha256": name + "-v1"}
         for name in ("release", "torch_compile", "fla", "liger", "legacy", "catswe", "hydra", "hilda")})
@@ -422,18 +421,15 @@ def _primary_report(gpu, mode, rank, seed):
         arm.update(optimizer="Muon+AdamW(configured)", qualification={
             "gradient_count": 146,
             "clipped_gradients": {"status": "matched", "gradient_count": 146, "preclip_norm": 3.},
-            "resume_next_update": {"status": "passed", "fresh_optimizers": True, "next_input": 1,
-                                   "loss": {"max_abs": 0.}, "state": {"max_abs": 0.}},
             "first_update": {"status": "baseline" if name == "release" else "matched"}})
     return report
 
 
-@pytest.mark.parametrize('field', ['clipped_gradients', 'resume_next_update'])
-def test_primary_requires_clipped_gradients_and_resumed_update(field):
+def test_primary_accepts_kernel_qualification_without_model_resume_and_requires_clipping():
     report = _primary_report('H100', 'full', 1536, bf16_report.SEEDS[0])
     result = report['results'][0]
     assert not bf16_report._contract_errors(report, result, 120)
-    del result['arms']['candidate']['qualification'][field]
+    del result['arms']['candidate']['qualification']['clipped_gradients']
     assert bf16_report._contract_errors(report, result, 120)
 
 

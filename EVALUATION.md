@@ -30,12 +30,13 @@ BF16 nonlinearity clarification does not change the tolerance.
 Cover packed and source-list layouts, odd dimensions, strides, duplicate
 sources and shared views, repeated reads, partial blocks, analytic gradients,
 activation checkpointing, fullgraph compilation, eight changed-input CUDA
-Graph replays, optimizer updates, exact checkpoint restoration, and BF16
-continuation after resume. Compare equal ranks.
+Graph replays, clipped gradients, and optimizer updates. Compare equal ranks.
+Model checkpoint serialization and bitwise resumed training are outside this
+stateless kernel's qualification scope.
 
 ## Performance
 
-`configs/bf16_primary_v2.json` defines the current primary model, rank ladder,
+`configs/bf16_primary_v3.json` defines the current primary model, rank ladder,
 seeds, runtime, competitor inventory, and immutable source identity contract.
 The model has 24 layers, width 1536, 24 heads, MLP width 4224, vocabulary
 100277, context 1024, batch four, accumulation four, and eight blocks. It uses
@@ -43,8 +44,9 @@ ordinary source assembly, BF16 cross-entropy, gradient clipping at 1.0, and the
 original Muon plus AdamW implementation. Activation checkpointing is qualified
 separately and is disabled in the primary model.
 
-The v2 contract requires clipped gradients and exact resumed-next-update
-qualification. The earlier `bf16_primary.json` remains a historical contract.
+The v3 contract retains accumulated and clipped gradient comparisons and first
+optimizer-update qualification. The earlier `bf16_primary.json` and
+`bf16_primary_v2.json` remain unchanged historical contracts.
 
 Measure three seeds and 120 balanced paired rounds after ten warmups. Include
 input copies, source preparation, forward, loss, backward, accumulation,
