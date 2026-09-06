@@ -161,23 +161,25 @@ def _should_save_mixed(
     return len(sources) >= 4
 
 
+def _affine_row_stride(tensor: torch.Tensor) -> int | None:
+    """Flatten batch axes while ignoring unconstrained singleton strides."""
+
+    row_stride = None
+    trailing_rows = 1
+    for size, stride in zip(reversed(tensor.shape[:-1]), reversed(tensor.stride()[:-1])):
+        size, stride = int(size), int(stride)
+        if size == 1:
+            continue
+        if row_stride is None:
+            row_stride = stride
+        elif stride != trailing_rows * row_stride:
+            return None
+        trailing_rows *= size
+    return 0 if row_stride is None else row_stride
+
+
 def _is_row_affine(tensor: torch.Tensor) -> bool:
-    """Whether flattening all batch dimensions has one row stride.
-
-    A feature-strided tensor and a ``[..., :D]`` view of a contiguous
-    ``[..., D+R]`` producer both satisfy this test.  A permuted batch layout
-    does not and is compacted per source by ``_source_pointer_table``.
-    """
-
-    if tensor.ndim <= 2:
-        return True
-    row_stride = int(tensor.stride(-2))
-    trailing = 1
-    for dim in range(tensor.ndim - 3, -1, -1):
-        trailing *= int(tensor.shape[dim + 1])
-        if int(tensor.stride(dim)) != row_stride * trailing:
-            return False
-    return True
+    return _affine_row_stride(tensor) is not None
 
 
 def _source_pointer_table(
@@ -194,28 +196,26 @@ def _source_pointer_table(
     original = tuple(tensors)
     if not original:
         raise ValueError("sources must be nonempty")
-    prepared = tuple(
-        tensor if _is_row_affine(tensor) else tensor.contiguous()
-        for tensor in original
-    )
-    # The selector uses a constexpr loop bound but does not require a
-    # power-of-two pointer table.  Keep exactly one pointer per real source so
-    # short lists and the 129-source envelope do not pay for masked selector
-    # lanes that can never be addressed by a valid source id.
+    layouts = tuple(_row_layout(tensor) for tensor in original)
+    prepared = tuple(layout[0] for layout in layouts)
+    # Keep one pointer per source role, preserving multiplicity without
+    # power-of-two padding or masked selector lanes.
     length = len(prepared)
-    row_strides = tuple(
-        0 if tensor.ndim <= 1 else int(tensor.stride(-2)) for tensor in prepared
-    )
-    feature_strides = tuple(int(tensor.stride(-1)) for tensor in prepared)
+    row_strides = tuple(layout[1] for layout in layouts)
+    feature_strides = tuple(layout[2] for layout in layouts)
     return prepared, row_strides, feature_strides, length
 
 
 def _row_layout(tensor: torch.Tensor) -> tuple[torch.Tensor, int, int]:
     """Return a tensor and affine row/feature strides for a flattened view."""
 
-    prepared = tensor if _is_row_affine(tensor) else tensor.contiguous()
-    row_stride = 0 if prepared.ndim <= 1 else int(prepared.stride(-2))
-    return prepared, row_stride, int(prepared.stride(-1))
+    row_stride = _affine_row_stride(tensor)
+    if row_stride is None:
+        tensor = tensor.contiguous()
+        row_stride = _affine_row_stride(tensor)
+        if row_stride is None:
+            raise RuntimeError("contiguous preparation is not row-affine")
+    return tensor, row_stride, int(tensor.stride(-1))
 
 
 if triton is not None:

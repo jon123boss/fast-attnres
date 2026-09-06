@@ -37,6 +37,51 @@ def test_export_restores_autotuned_launch_after_operator_failure(tmp_path):
     assert not list(tmp_path.iterdir())
 
 
+def test_export_retains_both_query_reductions_and_restores_aliased_hooks(tmp_path):
+    metadata = namedtuple('Metadata', 'shared')(0)
+    def launch(index, **kwargs):
+        return SimpleNamespace(hash=str(index), name='query_reduce', n_regs=32, n_spills=0,
+                               metadata=metadata, asm={'cubin': bytes([index])},
+                               src=SimpleNamespace(constants={}, signature={}, attrs={}))
+    target = SimpleNamespace(device_caches={}, run=launch)
+    module = SimpleNamespace(_fla_query_reduce_kernel=target,
+                             _fla_standard_query_reduce_kernel=target)
+    def call():
+        target.run(1, grid=(4, 32))
+        target.run(2, grid=(4,))
+    result = export_selected(module, call, tmp_path)
+    assert result['_fla_query_reduce_kernel[0]']['hash'] == '1'
+    assert result['_fla_query_reduce_kernel[1]']['hash'] == '2'
+    assert result['_fla_query_reduce_kernel[1]']['launch']['grid'] == (4,)
+    assert target.run is launch
+
+
+def test_export_rejects_cold_autotuning_trials(tmp_path):
+    def launch():
+        return object()
+    target = SimpleNamespace(device_caches={}, run=launch)
+    module = SimpleNamespace(_routing_forward=target)
+    with pytest.raises(RuntimeError, match='extra launches'):
+        export_selected(module, lambda: [target.run() for _ in range(3)], tmp_path)
+    assert target.run is launch
+    assert not list(tmp_path.iterdir())
+
+
+def test_backward_identity_includes_referenced_helpers_and_scalar_globals():
+    from benchmarks.bf16_kernel_export import _jit_identity
+    def kernel(helper):
+        return SimpleNamespace(src='def backward(x):\n    return helper(x) * SCALE\n',
+                               fn=SimpleNamespace(__globals__={'helper': helper, 'SCALE': 2}))
+    helper = SimpleNamespace(src='def helper(x):\n    return x + 1\n')
+    first = _jit_identity(kernel(helper))
+    helper.src = helper.src.replace('+ 1', '+ 2')
+    assert _jit_identity(kernel(helper)) != first
+    second = kernel(helper)
+    before = _jit_identity(second)
+    second.fn.__globals__['SCALE'] = 3
+    assert _jit_identity(second) != before
+
+
 @pytest.mark.parametrize('different', [False, True])
 def test_shared_backward_requires_identical_equations(monkeypatch, different):
     import importlib

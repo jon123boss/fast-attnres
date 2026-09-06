@@ -1,5 +1,17 @@
 # Evaluator revisions
 
+2026-09-06: Corrected flattened source and upstream strides by ignoring singleton
+batch axes. Contiguous tensors can retain arbitrary singleton strides; copying
+them did not repair the old metadata. CPU addressing and physical-leaf gradient
+checks cover singleton, offset, strided, broadcast and non-affine layouts. The
+Triton bodies and source positions remain unchanged; GPU cases require new
+qualification. Added opt-in layout checks and parameterized equal-logit cases
+that can verify actual guarded-router launches. The exporter retains both query
+reductions, softmax and gradient-copy launches, rejects unexpected cold trials,
+and records physical layouts. Shared backward checks include JIT dependencies.
+The independent oracle, existing timing, tolerances and statistical gates remain
+unchanged; prior artifacts retain their original source/fixture identities.
+
 2026-09-06: Moved progress logging and its JSON dependency into importable
 module scope. The cache-preserving worker imports the training evaluator, so
 an import previously guarded by __main__ was unavailable. Control62 retained

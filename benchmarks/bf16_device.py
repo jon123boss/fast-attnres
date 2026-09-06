@@ -240,10 +240,22 @@ def run_operator(config, checkpoint):
         from benchmarks.bf16_kernel_export import share_identical_backward
         report["shared_backward"] = share_identical_backward(backends, config["shared_backward"])
     checkpoint(report)
+    for name in config.get("layout_checks", []):
+        from validation.layout_checks import run_layout_checks
+        try:
+            report.setdefault("layout_checks", {})[name] = run_layout_checks(backends[name])
+        except Exception as exc:
+            report.setdefault("layout_checks", {})[name] = {
+                "status": "failed", "error": f"{type(exc).__name__}: {exc}",
+                "traceback": traceback.format_exc()}
+            report["status"] = "failed"
+            checkpoint(report)
+            return report
+        checkpoint(report)
     for name in config.get("scalar_checks", []):
         from validation.softmax_checks import run_equal_logit_checks
         try:
-            checks = run_equal_logit_checks(backends[name])
+            checks = run_equal_logit_checks(backends[name], config.get("scalar_cases", {}).get(name))
             report.setdefault("scalar_checks", {})[name] = checks
         except Exception as exc:
             report.setdefault("scalar_checks", {})[name] = {
