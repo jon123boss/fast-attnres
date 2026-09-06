@@ -65,7 +65,7 @@ def render_rank_comparison(rows, output_dir, gpu):
                          f"B{model['batch']}×T{model['sequence']}{block} · Smax={sources}",
                          loc="left", color=text, fontsize=14, fontweight="bold", pad=14)
             values = [row["standard_ms"], row["quarter_ms"]]
-            ceiling = max(values) * 1.75
+            ceiling = max(values) * 1.4
             ax.bar([0, 1], values, width=.6, color=colors, zorder=2)
             for index, value in enumerate(values):
                 ax.text(index, value + .025 * ceiling, f"{value:.3f} ms", ha="center",
@@ -79,10 +79,6 @@ def render_rank_comparison(rows, output_dir, gpu):
                      else f"{abs(change):.1f}% {'lower' if change >= 0 else 'higher'} time")
             ax.text(.5, .96, label, transform=ax.transAxes, ha="center", va="top",
                     color=color, fontsize=14, fontweight="bold")
-            for index, (seed, (lo, hi)) in enumerate(zip(row["seeds"], intervals)):
-                ax.text(.5, .87 - .055 * index,
-                        f"{seed['seed']} · 95% CI {lo:+.1f}% to {hi:+.1f}%",
-                        transform=ax.transAxes, ha="center", va="top", fontsize=10, color=muted)
             ax.set_ylim(0, ceiling)
             ax.set_xticks([0, 1], [f"R=D\n{width}", f"R=D/4\n{width // 4}"],
                           color=text, fontsize=12, fontweight="bold")
@@ -95,8 +91,7 @@ def render_rank_comparison(rows, output_dir, gpu):
                    "Full-width values and output.\nOnly the routing rank changes.\n\n"
                    "Bars: median per-seed mean time.\n"
                    "Change: median paired estimate.\n"
-                   "Each seed retains its 95% interval.\n"
-                   "Intervals are simultaneous within a seed.\n"
+                   "Full statistics in the results tables.\n"
                    "Positive percentages mean less time.\n\n"
                    "L24 Full: 3 seeds × 120 paired rounds.\n"
                    "Other workloads: 1 seed × 40 paired rounds.",

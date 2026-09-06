@@ -47,7 +47,7 @@ def test_renders_all_workloads_and_signed_changes(tmp_path):
     records, contract = fixture_records()
     svg, png = render_rank_comparison(rank_comparisons(records, contract, "H100"), tmp_path, "H100")
     content = svg.read_text()
-    assert content.count("95% CI") == 7
+    assert "95% CI" not in content
     for label in ("L24", "D=2048", "bs=2", "bs=8", "R=D/4", "lower time", "higher time"):
         assert label in content
     assert png.stat().st_size > 1000

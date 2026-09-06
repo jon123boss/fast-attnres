@@ -30,8 +30,9 @@ Start with the [standard quickstart](#quickstart-standard-attnres), choose a
 
 ## Training performance
 
-The final H100/B200 sweep is in progress. Figures and measurements will be
-added after qualification and evidence checks finish.
+On the 24-layer Full workload, Fast-AttnRes reduces step latency by **5.95% on
+H100 SXM** and **22.74% on B200** against native FLA Triton checkpoint 1
+(median of three paired seed estimates).
 
 The figures measure complete BF16 CUDA Graph training steps on H100 SXM and
 B200, including forward, backward, and the optimizer update. Full and Block
@@ -39,9 +40,9 @@ use the same per-read Fast-AttnRes backend.
 
 The 24-layer headline uses three seeds with 120 paired rounds each. The
 8-layer comparisons use one seed with 40 paired rounds per configuration.
-See the [benchmark protocol](docs/benchmark_results.md) for workloads and
-archived evidence. Final reports will include source versions, confidence
-intervals, and reproduction commands.
+See the [benchmark protocol](docs/benchmark_results.md) and
+[reproducible results](results/final_sweep/README.md) for workloads, source
+versions, confidence intervals, and reproduction commands.
 
 ### Compiled BF16 training steps
 
@@ -49,6 +50,7 @@ Comparators are native FLA Triton checkpoint 1, Liger 0.8.2, and Catswe phase 1.
 Unsupported and failed arms remain labelled. Quarter-rank comparisons against
 standard FLA compare different routing equations.
 The D2048 results retain [disclosed normalization-rounding deviations](docs/benchmark_results.md).
+On H100, standard D2048 is 0.28% slower than FLA, within the declared 1% parity band.
 
 <!-- Final asset: ![H100 compiled BF16 training steps](results/final_sweep/compiled_step_sweep_h100.svg) -->
 

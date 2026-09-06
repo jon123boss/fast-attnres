@@ -1,8 +1,16 @@
 # Benchmark results
 
-The H100/B200 refresh uses the existing README headline and competitor plot
-workloads with standard (`R=D`) and sliced (`R=D/4`) routing. Fresh results
-are pending; archived measurements retain their original source identities.
+The H100/B200 measurements use the existing README headline and competitor
+workloads with standard (`R=D`) and sliced (`R=D/4`) routing. The
+[results table](../results/final_sweep/results.md),
+[CSV](../results/final_sweep/results.csv), and
+[source archive and reproduction commands](../results/final_sweep/README.md)
+retain the exact workload, source identity, and comparison scope.
+
+The 24-layer Full workload has 5.95% lower step latency on H100 SXM and
+22.74% lower on B200 than native FLA checkpoint 1, using the median of three
+paired seed estimates. H100 standard D2048 is 0.28% slower than FLA, within
+the predefined 1% parity band. These results cover the listed configurations.
 
 | Plot | Existing workload and harness |
 | --- | --- |
@@ -48,5 +56,4 @@ H100 and B200 results remain separate.
 - [Earlier compiled-step results](compiled_step_results.md): the six-report
   Full campaign preserved in the historical packaging evidence bundle.
 
-The existing plot assets remain unchanged until fresh reports have been
-checked and rendered through the corresponding report tools.
+Historical figures and reports retain their original sources and measurements.
